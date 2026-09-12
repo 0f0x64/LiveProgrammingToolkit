@@ -12,10 +12,12 @@ A lightweight, zero-runtime-overhead interactive development tool for C++20 and 
 
 ## 🇷🇺 Version
 
-### 📋 Требования к компилятору
-Библиотека использует современные возможности метапрограммирования и макросов. Перед установкой **обязательно** зайдите в свойства вашего проекта Visual Studio и включите два флага:
+### 📋 Требования к компилятору и IDE
+Библиотека использует современные возможности метапрограммирования, макросов и OLE-автоматизации. Перед установкой **обязательно** настройте ваш проект и среду Visual Studio:
+
 1. **Стандарт языка C++:** `Свойства проекта (Properties)` ➔ `C/C++` ➔ `Язык C++ (C++ Language Standard)` ➔ Установите **`ISO C++20 Standard (/std:c++20)`** (или выше).
 2. **Новый препроцессор:** `Свойства проекта` ➔ `C/C++` ➔ `Препроцессор (Preprocessor)` ➔ `Использовать конформный препроцессор (Use Standard Conforming Preprocessor)` ➔ Установите **`Да (Yes (/Zc:preprocessor))`**.
+3. **Отключение автоскролла в VS:** В верхнем меню Visual Studio зайдите в `Сервис (Tools)` ➔ `Параметры (Options)` ➔ `Текстовый редактор (Text Editor)` ➔ `Общие (General)` ➔ **Снимите галочку** с пункта **«Автоматическая прокрутка щелчком мыши» (Auto-scroll on mouse click)**. *Без этого при зажатии колесика мыши текст в редакторе будет хаотично улетать.*
 
 ---
 
@@ -54,7 +56,7 @@ LivePT::ProcessEdit();
 
 ### 📦 Поддерживаемые типы данных и их расширение
 
-Из коробки макрос `eval()` поддерживает типы: `int`, `float`, `bool`, `enum class`.
+Из коробки макрос `eval()` поддерживает типы: `int`, `float`, `bool`, `enum / enum class`.
 
 #### Как добавить новый тип (например, `double`):
 Благодаря использованию `std::variant` и шаблонов, вам **не нужно** писать свитчи, касты или условия парсинга. Достаточно добавить новый тип в одном месте в файле **`eval.h`**:
@@ -74,10 +76,12 @@ struct ref {
 
 ## 🇺🇸 English Version
 
-### 📋 Compiler Requirements
-The library relies on modern metaprogramming and macro features. Before installing, **make sure** to update your Visual Studio project configuration with these two flags:
+### 📋 Compiler & IDE Requirements
+The library relies on modern metaprogramming, macro features, and OLE automation. Before installing, **make sure** to configure your project and Visual Studio environment:
+
 1. **C++ Language Standard:** `Project Properties` ➔ `C/C++` ➔ `C++ Language Standard` ➔ Set to **`ISO C++20 Standard (/std:c++20)`** (or higher).
 2. **Conforming Preprocessor:** `Project Properties` ➔ `C/C++` ➔ `Preprocessor` ➔ `Use Standard Conforming Preprocessor` ➔ Set to **`Yes (/Zc:preprocessor)`**.
+3. **Disable Auto-Scroll in VS:** In the Visual Studio top menu, navigate to `Tools` ➔ `Options` ➔ `Text Editor` ➔ `General` ➔ **Uncheck** the **"Auto-scroll on mouse click"** option. *Without this, holding the middle mouse button will cause the text editor to scroll wildly.*
 
 ---
 
@@ -116,7 +120,7 @@ Once your app is running, you no longer need to stop it, rewrite constants, and 
 
 ### 📦 Supported Data Types & Extension
 
-Out of the box, the `eval()` macro supports: `int`, `float`, `bool`, `enum class`.
+Out of the box, the `eval()` macro supports: `int`, `float`, `bool`, `enum / enum class`.
 
 #### How to add a new type (e.g., `double`):
 Thanks to `std::visit` and compile-time templates, you do not need to write custom switches, type-casts, or manual string parsers. You only need to add your type in a single place inside **`eval.h`**:
