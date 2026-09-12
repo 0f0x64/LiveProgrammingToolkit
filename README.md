@@ -17,7 +17,7 @@ A lightweight, zero-runtime-overhead interactive development tool for C++20 and 
 
 1. **Стандарт языка C++:** `Свойства проекта (Properties)` ➔ `C/C++` ➔ `Язык C++ (C++ Language Standard)` ➔ Установите **`ISO C++20 Standard (/std:c++20)`** (или выше).
 2. **Новый препроцессор:** `Свойства проекта` ➔ `C/C++` ➔ `Препроцессор (Preprocessor)` ➔ `Использовать конформный препроцессор (Use Standard Conforming Preprocessor)` ➔ Установите **`Да (Yes (/Zc:preprocessor))`**.
-3. **Отключение автоскролла в VS:** В верхнем меню Visual Studio зайдите в `Сервис (Tools)` ➔ `Параметры (Options)` ➔ `Текстовый редактор (Text Editor)` ➔ `Общие (General)` ➔ **Снимите галочку** с пункта **«Автоматическая прокрутка щелчком мыши» (Auto-scroll on mouse click)**. *Без этого при зажатии колесика мыши текст в редакторе будет хаотично улетать.*
+3. **Отключение автоскролла в VS:** В верхнем меню Visual Studio зайдите в `Сервис (Tools)` ➔ `Параметры (Options)` ➔ `Текстовый редактор (Text Editor)` ➔ `Общие (General)` ➔ **Снимите галочку** с пункта **«Middle click to scroll»**. *Без этого при зажатии колесика мыши текст в редакторе будет хаотично улетать.*
 
 ---
 
@@ -81,7 +81,7 @@ The library relies on modern metaprogramming, macro features, and OLE automation
 
 1. **C++ Language Standard:** `Project Properties` ➔ `C/C++` ➔ `C++ Language Standard` ➔ Set to **`ISO C++20 Standard (/std:c++20)`** (or higher).
 2. **Conforming Preprocessor:** `Project Properties` ➔ `C/C++` ➔ `Preprocessor` ➔ `Use Standard Conforming Preprocessor` ➔ Set to **`Yes (/Zc:preprocessor)`**.
-3. **Disable Auto-Scroll in VS:** In the Visual Studio top menu, navigate to `Tools` ➔ `Options` ➔ `Text Editor` ➔ `General` ➔ **Uncheck** the **"Auto-scroll on mouse click"** option. *Without this, holding the middle mouse button will cause the text editor to scroll wildly.*
+3. **Disable Auto-Scroll in VS:** In the Visual Studio top menu, navigate to `Tools` ➔ `Options` ➔ `Text Editor` ➔ `General` ➔ **Uncheck** the **"Middle click to scroll"** option. *Without this, holding the middle mouse button will cause the text editor to scroll wildly.*
 
 ---
 
