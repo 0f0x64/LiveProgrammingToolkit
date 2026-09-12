@@ -12,6 +12,10 @@ A lightweight, zero-runtime-overhead interactive development tool for C++20 and 
 
 ## 🇷🇺 Version
 
+### 📋 Требования к компилятору
+Библиотека использует современные возможности метапрограммирования. Перед установкой **обязательно** зайдите в свойства вашего проекта Visual Studio и переключите стандарт языка:
+* **Свойства проекта (Properties)** ➔ **C/C++** ➔ **Язык C++ (C++ Language Standard)** ➔ Установите **`ISO C++20 Standard (/std:c++20)`** (или выше).
+
 ### 🚀 Быстрый старт (Инструкция по установке)
 
 Вы можете интегрировать библиотеку в свой проект за **5 простых шагов**:
@@ -66,6 +70,10 @@ struct ref {
 ---
 
 ## 🇺🇸 English Version
+
+### 📋 Compiler Requirements
+The library relies on modern metaprogramming features. Before installing, **make sure** to go to your Visual Studio project configuration and update the language standard:
+* **Project Properties** ➔ **C/C++** ➔ **C++ Language Standard** ➔ Set to **`ISO C++20 Standard (/std:c++20)`** (or higher).
 
 ### 🚀 Quick Start (Installation Guide)
 
