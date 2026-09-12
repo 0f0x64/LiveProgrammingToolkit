@@ -13,18 +13,21 @@ A lightweight, zero-runtime-overhead interactive development tool for C++20 and 
 ## 🇷🇺 Version
 
 ### 📋 Требования к компилятору
-Библиотека использует современные возможности метапрограммирования. Перед установкой **обязательно** зайдите в свойства вашего проекта Visual Studio и переключите стандарт языка:
-* **Свойства проекта (Properties)** ➔ **C/C++** ➔ **Язык C++ (C++ Language Standard)** ➔ Установите **`ISO C++20 Standard (/std:c++20)`** (или выше).
+Библиотека использует современные возможности метапрограммирования и макросов. Перед установкой **обязательно** зайдите в свойства вашего проекта Visual Studio и включите два флага:
+1. **Стандарт языка C++:** `Свойства проекта (Properties)` ➔ `C/C++` ➔ `Язык C++ (C++ Language Standard)` ➔ Установите **`ISO C++20 Standard (/std:c++20)`** (или выше).
+2. **Новый препроцессор:** `Свойства проекта` ➔ `C/C++` ➔ `Препроцессор (Preprocessor)` ➔ `Использовать конформный препроцессор (Use Standard Conforming Preprocessor)` ➔ Установите **`Да (Yes (/Zc:preprocessor))`**.
+
+---
 
 ### 🚀 Быстрый старт (Инструкция по установке)
 
 Вы можете интегрировать библиотеку в свой проект за **5 простых шагов**:
 
 1. **Скачайте папку `LivePT`** и положите её в директорию вашего проекта (рядом с исходным кодом).
-2. **Взведите два дефайна** конфигурации в самом верху вашего главного файла:
+2. **Взведите два дефайна конфигурации** в самом верху вашего главного файла:
 ```cpp
-#define LivePT_EditMode true       // true — активирует режим live-редактирования
-#define LivePT_WheelEditMode true  // true — включает управление мышью и контекстные меню
+#define LivePT_EditMode true       // true — активирует систему (в false полностью вырезает LivePT из релиза)
+#define LivePT_WheelEditMode true  // true — включает опрос мыши, захват фокуса VS и контекстные меню
 ```
 3. **Подключите инклуд** библиотеки:
 ```cpp
@@ -72,8 +75,11 @@ struct ref {
 ## 🇺🇸 English Version
 
 ### 📋 Compiler Requirements
-The library relies on modern metaprogramming features. Before installing, **make sure** to go to your Visual Studio project configuration and update the language standard:
-* **Project Properties** ➔ **C/C++** ➔ **C++ Language Standard** ➔ Set to **`ISO C++20 Standard (/std:c++20)`** (or higher).
+The library relies on modern metaprogramming and macro features. Before installing, **make sure** to update your Visual Studio project configuration with these two flags:
+1. **C++ Language Standard:** `Project Properties` ➔ `C/C++` ➔ `C++ Language Standard` ➔ Set to **`ISO C++20 Standard (/std:c++20)`** (or higher).
+2. **Conforming Preprocessor:** `Project Properties` ➔ `C/C++` ➔ `Preprocessor` ➔ `Use Standard Conforming Preprocessor` ➔ Set to **`Yes (/Zc:preprocessor)`**.
+
+---
 
 ### 🚀 Quick Start (Installation Guide)
 
@@ -82,8 +88,8 @@ You can integrate the library into your project in just **5 simple steps**:
 1. **Download the `LivePT` folder** and place it into your project directory (next to your source code).
 2. **Define two configuration macros** at the very top of your main file:
 ```cpp
-#define LivePT_EditMode true       // true — enables the live editing infrastructure
-#define LivePT_WheelEditMode true  // true — enables mouse dragging and context menus
+#define LivePT_EditMode true       // true — enables LivePT (false completely compiles it out for production release)
+#define LivePT_WheelEditMode true  // true — enables mouse integration, focus detection, and context menus
 ```
 3. **Include the header** file:
 ```cpp
