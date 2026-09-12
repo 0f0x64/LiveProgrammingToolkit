@@ -1,24 +1,15 @@
 <div align="center">
 
-
-
-\# 🚀 Live Programming Toolkit (LivePT)
-
-
+# 🚀 Live Programming Toolkit (LivePT)
 
 A lightweight, zero-runtime-overhead interactive development tool for C++20 and Visual Studio.
 
-
-
-\[🇷🇺 Читать на русском](#-russian-version) | \[🇺🇸 Read in English](#-english-version)
-
-
+<a href="#-version">🇷🇺 Читать на русском</a> | <a href="#-english-version">🇺🇸 Read in English</a>
 
 </div>
 
+---
 
-
-\---
 
 
 
