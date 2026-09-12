@@ -56,7 +56,7 @@ LivePT::ProcessEdit();
 
 ### 📦 Поддерживаемые типы данных и их расширение
 
-Из коробки макрос `eval()` поддерживает типы: `int`, `float`, `bool`, `enum / enum class`.
+Из коробки макрос `eval()` поддерживает типы: `int`, `float`, `bool`, `enum class`.
 
 #### Как добавить новый тип (например, `double`):
 Благодаря использованию `std::variant` и шаблонов, вам **не нужно** писать свитчи, касты или условия парсинга. Достаточно добавить новый тип в одном месте в файле **`eval.h`**:
@@ -120,7 +120,7 @@ Once your app is running, you no longer need to stop it, rewrite constants, and 
 
 ### 📦 Supported Data Types & Extension
 
-Out of the box, the `eval()` macro supports: `int`, `float`, `bool`, `enum / enum class`.
+Out of the box, the `eval()` macro supports: `int`, `float`, `bool`, `enum class`.
 
 #### How to add a new type (e.g., `double`):
 Thanks to `std::visit` and compile-time templates, you do not need to write custom switches, type-casts, or manual string parsers. You only need to add your type in a single place inside **`eval.h`**:
