@@ -1,0 +1,7 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="LivePT_Example/LivePT_Example.vcxproj" Id="ce788d65-84b9-4821-a162-3c8458c8a7fb" />
+</Solution>
