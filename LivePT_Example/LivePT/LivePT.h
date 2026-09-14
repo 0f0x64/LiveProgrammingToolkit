@@ -68,13 +68,14 @@ namespace LivePT {
     {
     #if LivePT_EditMode
 
-#if LivePT_WindowManagement
-        GetWindowManager().Tick();
-#endif
+        #if LivePT_WindowManagement
+            GetWindowManager().Tick();
+        #endif
+
         vsEditor();
 
         #if LivePT_WheelEditMode
-        Update();
+            Update();
         #endif
 
     #endif
