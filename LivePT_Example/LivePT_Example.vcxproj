@@ -146,6 +146,7 @@
     <ClInclude Include="LivePT\LivePT.h" />
     <ClInclude Include="LivePT\liveWheelEdit.h" />
     <ClInclude Include="LivePT\vsEditor.h" />
+    <ClInclude Include="LivePT\windowManagement.h" />
     <ClInclude Include="LivePT_Example.h" />
     <ClInclude Include="Resource.h" />
     <ClInclude Include="targetver.h" />

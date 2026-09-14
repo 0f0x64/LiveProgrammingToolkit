@@ -45,6 +45,9 @@
     <ClInclude Include="LivePT\vsEditor.h">
       <Filter>Source Files\LivePT</Filter>
     </ClInclude>
+    <ClInclude Include="LivePT\windowManagement.h">
+      <Filter>Source Files\LivePT</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="LivePT_Example.cpp">

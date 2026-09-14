@@ -27,6 +27,7 @@ namespace LivePT {
     #include "eval.h"
     #include "vsEditor.h"
     #include "liveWheelEdit.h"
+    #include "windowManagement.h"
 
 namespace LivePT {
 
@@ -65,6 +66,7 @@ namespace LivePT {
     {
     #if LivePT_EditMode
 
+        GetWindowManager().Tick();
         vsEditor();
 
         #if LivePT_WheelEditMode
