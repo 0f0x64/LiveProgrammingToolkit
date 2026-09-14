@@ -4,7 +4,7 @@
 #define LivePT_EditMode true // true for live text editing
 #define LivePT_WheelEditMode true // true for mouse mButton drag, switch, enums with context menu
 #define LivePT_WindowManagement true     
-#define LivePT_AppToSecondaryDisplay true 
+#define LivePT_AppToSecondaryDisplay false 
 #include "LivePT/LivePT.h" // incude it for using lib
 // ------------------------------------------------------------
 
@@ -82,7 +82,7 @@ void UpdateSceneParams() {
     // aggregate init alternative
     primitive[2].Set({
         .x = eval(-191),
-        .y = eval(36),
+        .y = eval(79),
         .type = eval(Primitive::ptype::circle),
         .show = eval(true)
         });

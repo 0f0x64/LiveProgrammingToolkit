@@ -46,9 +46,12 @@ namespace LivePT {
             GetMonitorInfoA(MonitorFromWindow(m_hUserWnd, MONITOR_DEFAULTTONEAREST), &info);
 
             SetWindowPos(m_hUserWnd, HWND_TOP, info.rcMonitor.left, info.rcMonitor.top,
-                info.rcMonitor.right - info.rcMonitor.left, info.rcMonitor.bottom - info.rcMonitor.top, SWP_NOACTIVATE);
+                info.rcMonitor.right - info.rcMonitor.left, info.rcMonitor.bottom - info.rcMonitor.top, SWP_NOACTIVATE | SWP_FRAMECHANGED);
             ShowWindow(m_hUserWnd, SW_MAXIMIZE);
             ApplyDarkTheme();
+
+            // 🔥 ФИКС МЕРЦАНИЯ: Жестко блокируем повторные вызовы после переноса окна
+            m_isArranged = true;
         }
 
         bool TrySetupDualMonitor() {
@@ -108,13 +111,17 @@ namespace LivePT {
         }
 
         void ArrangeWindows() {
-#ifndef LivePT_SecondaryDisplayIfAvailable
-#define LivePT_SecondaryDisplayIfAvailable true
+            // 🔥 ОБНОВЛЕННЫЙ ДЕФАЙН: LivePT_AppToSecondaryDisplay
+#ifndef LivePT_AppToSecondaryDisplay
+#define LivePT_AppToSecondaryDisplay true
 #endif
 
-            if (GetSystemMetrics(SM_CMONITORS) > 1 && LivePT_SecondaryDisplayIfAvailable) {
+            // Если макрос true и мониторов больше одного — пытаемся укинуть на второй
+            if (GetSystemMetrics(SM_CMONITORS) > 1 && LivePT_AppToSecondaryDisplay) {
                 if (TrySetupDualMonitor()) return;
             }
+
+            // Если макрос false или монитор один — гарантированно разворачиваем сплит на текущем экране
             SetupSingleMonitor();
         }
 #endif
@@ -146,11 +153,9 @@ namespace LivePT {
 #if LivePT_WindowManagement
             if (m_vsSaved && m_hVsWnd && IsWindow(m_hVsWnd)) {
                 if (m_wasMaximized) {
-                    // Если была развернута — просто возвращаем статус Maximized
                     ShowWindow(m_hVsWnd, SW_MAXIMIZE);
                 }
                 else {
-                    // Если была в обычном окне — возвращаем в исходные координаты
                     SetWindowPos(m_hVsWnd, HWND_TOP,
                         m_oldVsRc.left, m_oldVsRc.top,
                         m_oldVsRc.right - m_oldVsRc.left,
