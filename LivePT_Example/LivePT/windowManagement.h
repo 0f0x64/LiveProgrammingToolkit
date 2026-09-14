@@ -1,23 +1,17 @@
-#pragma once
-#include <windows.h>
 #include <dwmapi.h>
-
 #pragma comment(lib, "Dwmapi.lib")
 
 namespace LivePT {
 
-    // Ссылка на внешнюю функцию получения PID из твоего vsEditor.h
-    DWORD GetStudioProcessId();
-
     class LptWindowManager {
     private:
-#if LivePT_WindowManagement
+
         HWND m_hUserWnd = NULL;
         HWND m_hVsWnd = NULL;
         RECT m_oldVsRc = { 0 };
         bool m_isArranged = false;
         bool m_vsSaved = false;
-        bool m_wasMaximized = false; // Запоминаем статус: была ли развернута на старте
+        bool m_wasMaximized = false; 
 
         bool isWin11() {
             auto sharedUserData = (BYTE*)0x7FFE0000;
@@ -50,7 +44,6 @@ namespace LivePT {
             ShowWindow(m_hUserWnd, SW_MAXIMIZE);
             ApplyDarkTheme();
 
-            // 🔥 ФИКС МЕРЦАНИЯ: Жестко блокируем повторные вызовы после переноса окна
             m_isArranged = true;
         }
 
@@ -94,13 +87,11 @@ namespace LivePT {
 
             const int PAD = 7;
 
-            // 1. Окно приложения влево
             SetWindowPos(m_hUserWnd, HWND_TOP,
                 rc.left - PAD, rc.top,
                 halfWidth + (PAD * 2), (rc.bottom - rc.top) + PAD,
                 SWP_SHOWWINDOW | SWP_NOACTIVATE | SWP_FRAMECHANGED);
 
-            // 2. Окно Visual Studio вправо
             SetWindowPos(m_hVsWnd, HWND_TOP,
                 rc.left + halfWidth - PAD, rc.top,
                 halfWidth + (PAD * 2), (rc.bottom - rc.top) + PAD,
@@ -111,24 +102,17 @@ namespace LivePT {
         }
 
         void ArrangeWindows() {
-            // 🔥 ОБНОВЛЕННЫЙ ДЕФАЙН: LivePT_AppToSecondaryDisplay
-#ifndef LivePT_AppToSecondaryDisplay
-#define LivePT_AppToSecondaryDisplay true
-#endif
 
-            // Если макрос true и мониторов больше одного — пытаемся укинуть на второй
             if (GetSystemMetrics(SM_CMONITORS) > 1 && LivePT_AppToSecondaryDisplay) {
                 if (TrySetupDualMonitor()) return;
             }
 
-            // Если макрос false или монитор один — гарантированно разворачиваем сплит на текущем экране
             SetupSingleMonitor();
         }
-#endif
 
     public:
         LptWindowManager() {
-#if LivePT_WindowManagement
+
             DWORD vsPid = GetStudioProcessId();
             if (vsPid != 0) {
                 DWORD_PTR result = vsPid;
@@ -146,11 +130,10 @@ namespace LivePT {
                     }, (LPARAM)&result);
                 if (result != vsPid) m_hVsWnd = (HWND)result;
             }
-#endif
         }
 
         ~LptWindowManager() {
-#if LivePT_WindowManagement
+
             if (m_vsSaved && m_hVsWnd && IsWindow(m_hVsWnd)) {
                 if (m_wasMaximized) {
                     ShowWindow(m_hVsWnd, SW_MAXIMIZE);
@@ -163,17 +146,14 @@ namespace LivePT {
                         SWP_SHOWWINDOW);
                 }
             }
-#endif
         }
 
         void SetUserWindow(HWND hwnd) {
-#if LivePT_WindowManagement
             m_hUserWnd = hwnd;
-#endif
         }
 
         void Tick() {
-#if LivePT_WindowManagement
+
             if (m_isArranged) return;
 
             if (!m_hUserWnd) {
@@ -184,7 +164,7 @@ namespace LivePT {
             if (!m_hUserWnd || !IsWindow(m_hUserWnd) || !IsWindowVisible(m_hUserWnd)) return;
 
             ArrangeWindows();
-#endif
+
         }
     };
 

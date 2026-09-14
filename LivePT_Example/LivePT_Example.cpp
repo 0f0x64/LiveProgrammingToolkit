@@ -3,7 +3,7 @@
 // ---------------- LivePT integration section ----------------
 #define LivePT_EditMode true // true for live text editing
 #define LivePT_WheelEditMode true // true for mouse mButton drag, switch, enums with context menu
-#define LivePT_WindowManagement true     
+#define LivePT_WindowManagement true // 50/50 VisualStudio/your App split mode
 #define LivePT_AppToSecondaryDisplay false 
 #include "LivePT/LivePT.h" // incude it for using lib
 // ------------------------------------------------------------
