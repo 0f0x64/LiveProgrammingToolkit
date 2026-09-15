@@ -19,8 +19,8 @@ class Primitive {
 public:
     enum class ptype { circle, box, roundbox };
 
-    int x = 0;
-    int y = 0;
+    float x = 0;
+    float y = 0;
     ptype type = ptype::circle;
     bool show = true;
 
@@ -28,7 +28,7 @@ public:
     color clr = { 0, 120, 215 };
 
     // ОБЩИЙ МЕТОД: позиция раздельно, тип енам, цвет как агрегат
-    void Set(int xPos, int yPos, ptype form, color objectColor, bool showObj = true) {
+    void Set(float xPos, float yPos, ptype form, color objectColor, bool showObj = true) {
         x = xPos;
         y = yPos;
         type = form;
@@ -86,8 +86,8 @@ void UpdateSceneParams() {
 
     // ПЕРВЫЙ ПРИМИТИВ: Тестируем кастомный агрегат цвета в одном eval
     primitive[0].Set(
-        eval(-116),
-        eval(-118),
+        eval(-116.2f),
+        eval(-18),
         eval(Primitive::ptype::roundbox),
         eval(color{210, 10, 15 }), // <--- Наш целевой тестовый вызов
         eval(true)
@@ -103,13 +103,13 @@ void UpdateSceneParams() {
 
     // ТРЕТИЙ ПРИМИТИВ: Традиционный агрегатный синтаксис инициализации полей (снаружи eval)
     // Он гарантированно продолжит работать, так как внутри eval только примитивы
-    unsigned char g = rand()%25;
-    int x = rand() % 25;
+    unsigned char g = rand()%255;
+    int x = eval(110)+rand() % 25;
     primitive[2].Set(
-        eval(10),
-        eval(-69),
+        eval(x),
+        eval(-59),
         eval(Primitive::ptype::circle),
-        eval(color{ 0, g, 1 }),
+        eval(color{ 222, g, 21 }),
         eval(true)
     );
 }

@@ -486,122 +486,32 @@ namespace LivePT {
 
         size_t openBracket = fileText.find(L'(', targetEvalAbsolutePos);
         size_t closeBracket = FindCloseBracket(fileText, openBracket);
-        if (openBracket == std::wstring::npos || closeBracket == std::wstring::npos) return;
+        if (openBracket != std::wstring::npos && closeBracket != std::wstring::npos) {
+            std::wstring innerValueW = fileText.substr(openBracket + 1, closeBracket - openBracket - 1);
+            std::string innerValueA = ConvertWStringToUtf8(innerValueW);
 
-        std::wstring innerValueW = fileText.substr(openBracket + 1, closeBracket - openBracket - 1);
-        std::string innerValueA = ConvertWStringToUtf8(innerValueW);
-        innerValueA.erase(0, innerValueA.find_first_not_of(" \t\r\n"));
-        innerValueA.erase(innerValueA.find_last_not_of(" \t\r\n") + 1);
+            innerValueA.erase(0, innerValueA.find_first_not_of(" \t\r\n"));
+            innerValueA.erase(innerValueA.find_last_not_of(" \t\r\n") + 1);
 
-        std::string cleanQuery = innerValueA;
-        cleanQuery.erase(std::remove_if(cleanQuery.begin(), cleanQuery.end(), [](unsigned char c) {
-            return c == ' ' || c == '\t' || c == '\r' || c == '\n';
-            }), cleanQuery.end());
+            // Безопасно убираем пробелы, защитившись от CRT-ассерта кириллицы
+            std::string cleanQuery = innerValueA;
+            cleanQuery.erase(std::remove_if(cleanQuery.begin(), cleanQuery.end(), [](unsigned char c) {
+                return c == ' ' || c == '\t' || c == '\r' || c == '\n';
+                }), cleanQuery.end());
 
-        // --- УМНАЯ МОНОЛИТНАЯ ЗАЩИТА НА ВХОДЕ ---
-        std::string tName = paramDesc[targetId].typeName;
-        bool isString = (tName.find("string") != std::string::npos || tName.find("char*") != std::string::npos);
-        if (!isString && !IsLptNumericTextSecure(cleanQuery)) return;
+            // Умный санитарный кордон: если это не строка из VS, отсекаем только кириллический мусор
+            std::string tName = paramDesc[targetId].typeName;
+            bool isString = (tName.find("string") != std::string::npos || tName.find("char*") != std::string::npos);
+            if (!isString && !IsLptNumericTextSecure(cleanQuery)) return;
 
-        if (paramDesc[targetId].isEnum) {
-            // Энамы пропускаем как есть
-        }
-        else if (cleanQuery.find('{') != std::string::npos) {
-            // ===================================================================
-            // 🔄 УМНЫЙ ПОКОМПОНЕНТНЫЙ БАЙПАС АГРЕГАТОВ БЕЗ ХАРДКОДА СТРОК 🔄
-            // ===================================================================
-            auto tokens = SplitArgs(cleanQuery);
-            if (!tokens.empty()) {
-                size_t bytesPerComponent = sizeof(paramDesc[targetId].value) / tokens.size();
-
-                // Извлекаем указатель на СВЕЖИЕ рантайм-байты объекта из памяти игры (где лежит rand())
-                unsigned char* liveBytePtr = reinterpret_cast<unsigned char*>(&paramDesc[targetId].value);
-
-                for (size_t i = 0; i < tokens.size(); ++i) {
-                    // Если токен — это переменная (например, буква "x"), мы берём её 
-                    // актуальное рантайм-значение прямо из памяти игры и перезаписываем строку!
-                    if (!IsWholeNumeric(tokens[i]) && !IsFloatNumeric(tokens[i])) {
-                        if (bytesPerComponent == 1) {
-                            // Вытаскиваем живой unsigned char и превращаем в текстовое число
-                            tokens[i] = std::to_string(liveBytePtr[i]);
-                        }
-                        else if (bytesPerComponent == 4) { // Поля типа int / float
-                            // Для int/float определяем тип по названию в паспорте или по наличию точки
-                            if (tName.find("float") != std::string::npos || tName.find("Vec") != std::string::npos) {
-                                float fVal = 0.0f;
-                                std::memcpy(&fVal, liveBytePtr + (i * 4), 4); // Исправлено: fVal вместо val
-                                tokens[i] = std::to_string(fVal) + "f";
-                            }
-                            else {
-                                int iVal = 0;
-                                std::memcpy(&iVal, liveBytePtr + (i * 4), 4); // Исправлено: iVal вместо val
-                                tokens[i] = std::to_string(iVal);
-                            }
-                        }
-                        // Компонент успешно байпасился! Переходим к следующему токену
-                        continue;
-                    }
-
-                    // Если токен — это ЧИСЛО, применяем к нему стандартный жесткий зажим
-                    if (bytesPerComponent == 1) {
-                        long long val = std::strtoll(tokens[i].c_str(), nullptr, 10);
-                        if (val < 0) val = 0; if (val > 255) val = 255;
-                        tokens[i] = std::to_string(val);
-                    }
-                    else if (bytesPerComponent == 4) {
-                        if (tokens[i].find('.') != std::string::npos || tokens[i].back() == 'f' || tokens[i].back() == 'F') {
-                            double val = std::strtod(tokens[i].c_str(), nullptr);
-                            if (val > (std::numeric_limits<float>::max)()) val = (std::numeric_limits<float>::max)();
-                            if (val < -(std::numeric_limits<float>::max)()) val = -(std::numeric_limits<float>::max)();
-                            tokens[i] = std::to_string(val) + "f";
-                        }
-                        else {
-                            long long val = std::strtoll(tokens[i].c_str(), nullptr, 10);
-                            if (val > INT_MAX) val = INT_MAX; if (val < INT_MIN) val = INT_MIN;
-                            tokens[i] = std::to_string(val);
-                        }
-                    }
-                }
-
-                // Собираем зажатый и байпаснутый агрегат обратно с его динамическим именем типа
-                std::string reconstructed = "";
-                size_t firstBrace = cleanQuery.find('{');
-                if (firstBrace != std::string::npos) reconstructed = cleanQuery.substr(0, firstBrace + 1);
-
-                for (size_t i = 0; i < tokens.size(); ++i) {
-                    reconstructed += tokens[i] + (i == tokens.size() - 1 ? "}" : ",");
-                }
-                innerValueA = reconstructed;
+            // Записываем сырой текст ("color{0,g,1}" или "x") в базу как std::string!
+            if (paramDesc[targetId].parseFromString) {
+                paramDesc[targetId].value = cleanQuery;
+                paramDesc[targetId].loaded = true;
             }
         }
-        else {
-            // АТОМАРНЫЕ ТИПЫ (int, float, double, bool)
-            if (paramDesc[targetId].typeName == "bool") {
-                // Булы пропускаем без числовых валидаций
-            }
-            else {
-                // Если вместо числа в VS написана переменная (например, "x") -> УМНЫЙ АВТО-БАЙПАС
-                if (!IsWholeNumeric(cleanQuery) && !IsFloatNumeric(cleanQuery)) {
-                    return; // Просто выходим! Базу не трогаем, рантайм сам пробросит живой x
-                }
-
-                // Зажимаем 50 девяток по лимитам констант компилятора
-                if (cleanQuery.find('.') != std::string::npos || cleanQuery.back() == 'f' || cleanQuery.back() == 'F') {
-                    double val = std::strtod(cleanQuery.c_str(), nullptr);
-                    if (val > (std::numeric_limits<float>::max)() || _isnan(val)) innerValueA = std::to_string((std::numeric_limits<float>::max)()) + "f";
-                    else innerValueA = cleanQuery;
-                }
-                else {
-                    long long val = std::strtoll(cleanQuery.c_str(), nullptr, 10);
-                    if (val > INT_MAX) innerValueA = std::to_string(INT_MAX);
-                    else if (val < INT_MIN) innerValueA = std::to_string(INT_MIN);
-                    else innerValueA = cleanQuery;
-                }
-            }
-        }
-
-        UpdateParamValue(targetId, innerValueA);
     }
+
 
 
 

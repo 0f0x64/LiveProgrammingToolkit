@@ -97,8 +97,28 @@ namespace LivePT {
     // Универсальный парсер по умолчанию (безопасный для чисел, булов, текстовых энамов и любых агрегатов)
     template <typename T>
     inline bool DefaultTypeParser(const std::string& text, std::any& target) {
+        // Логика булов и энамов остается тривиальной
         if constexpr (std::is_enum_v<T>) {
-            std::stringstream ss(text);
+            std::string cleanQuery = text;
+            // Отрезаем пространство имен энама, если оно прилетело ("Primitive::ptype::box" -> "box")
+            size_t lastCols = cleanQuery.rfind("::");
+            if (lastCols != std::string::npos) {
+                cleanQuery = cleanQuery.substr(lastCols + 2);
+            }
+
+            // Генерируем compile-time карту имен для этого типа энама T
+            auto enumDesc = ReflectedEnumInfo<T>();
+
+            // Ищем текстовое совпадение по элементам
+            for (const auto& elem : enumDesc.elements) {
+                if (elem.name == cleanQuery) {
+                    target = static_cast<T>(elem.value);
+                    return true;
+                }
+            }
+
+            // Фоллбэк: если пользователь в VS ввел энам чистой цифрой (например, "1")
+            std::stringstream ss(cleanQuery);
             int parsedValue;
             if (ss >> parsedValue) {
                 target = static_cast<T>(parsedValue);
@@ -109,60 +129,86 @@ namespace LivePT {
         else if constexpr (std::is_same_v<T, bool>) {
             std::string str = text;
             std::transform(str.begin(), str.end(), str.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-            if (str == "true" || str == "1") { target = true; return true; }
-            if (str == "false" || str == "0") { target = false; return true; }
-            return false;
-        }
-        else if constexpr (std::is_arithmetic_v<T>) {
-            std::stringstream ss(text);
-            T parsedValue;
-            if (ss >> parsedValue) {
-                target = parsedValue;
+
+            if (str == "true" || str == "1") {
+                target = true;
                 return true;
             }
-            return false;
+            if (str == "false" || str == "0") {
+                target = false;
+                return true;
+            }
+
+            // ЖЕЛЕЗОБЕТОННАЯ ЗАЩИТА: Если в буле написано что-то другое (опечатка, мусор, любые буквы),
+            // мы ПРИНУДИТЕЛЬНО гасим параметр в false и возвращаем true, чтобы заблокировать байпас!
+            target = false;
+            return true;
         }
+        // 1. АВТО-БАЙПАС АТОМАРНЫХ ЧИСЕЛ (int, float, double)
+        else if constexpr (std::is_arithmetic_v<T>) {
+            std::string parseStr = text;
+            if constexpr (std::is_floating_point_v<T>) {
+                if (!parseStr.empty() && (parseStr.back() == 'f' || parseStr.back() == 'F')) parseStr.pop_back();
+            }
+
+            T val;
+            auto [ptr, ec] = std::from_chars(parseStr.data(), parseStr.data() + parseStr.size(), val);
+
+            if (ec == std::errc::invalid_argument) return false; // Буквы переменной -> Полный БАЙПАС (вернем живое значение)
+            if (ec == std::errc::result_out_of_range) {
+                val = (parseStr[0] == '-') ? (std::numeric_limits<T>::min)() : (std::numeric_limits<T>::max)();
+            }
+            target = val;
+            return true;
+        }
+        // 2. АВТО-БАЙПАС СТРУКТУР ЛЮБОГО РАЗМЕРА (color, Vec3, Matrix)
         else if constexpr (std::is_aggregate_v<T>) {
             auto tokens = SplitArgsFromText(text);
             if (tokens.empty()) return false;
 
-            T obj{};
-            size_t tokenIdx = 0;
-            bool success = true;
-
+            // БЕРЕМ ИСХОДНЫЙ ЖИВОЙ ОБЪЕКТ ИЗ КОДА (Где прямо сейчас лежит rand() % 255)
+            T obj = std::any_cast<T>(target);
             unsigned char* bytePtr = reinterpret_cast<unsigned char*>(&obj);
             size_t bytesPerComponent = sizeof(T) / tokens.size();
 
             for (size_t i = 0; i < tokens.size(); ++i) {
-                std::stringstream ss(tokens[i]);
-                float val;
-                if (ss >> val) {
-                    if (bytesPerComponent == 1) { // 1-байтовые поля (наш color из unsigned char)
+                std::string t = tokens[i];
+
+                if (bytesPerComponent == 1) { // Поля типа unsigned char / char (color)
+                    int val;
+                    auto [ptr, ec] = std::from_chars(t.data(), t.data() + t.size(), val);
+
+                    if (ec == std::errc()) { // Если токен - ЧИСЛО, зажимаем его и пишем в байт
+                        val = std::clamp(val, 0, 255);
                         bytePtr[i] = static_cast<unsigned char>(val);
                     }
-                    else if (bytesPerComponent == 4) { // 4-байтовые поля (int / float)
-                        std::memcpy(bytePtr + (i * 4), &val, 4);
+                    // Если ec == invalid_argument (буква "g") -> ПРОПУСКАЕМ. Живое g из кода остается в байте!
+                }
+                else if (bytesPerComponent == 4) { // Поля типа int / float
+                    if (t.find('.') != std::string::npos || t.back() == 'f' || t.back() == 'F') {
+                        if (!t.empty() && (t.back() == 'f' || t.back() == 'F')) t.pop_back();
+                        float val;
+                        auto [ptr, ec] = std::from_chars(t.data(), t.data() + t.size(), val);
+                        if (ec == std::errc()) {
+                            if (ec == std::errc::result_out_of_range) val = (t[0] == '-') ? -(std::numeric_limits<float>::max)() : (std::numeric_limits<float>::max)();
+                            std::memcpy(bytePtr + (i * 4), &val, 4);
+                        }
                     }
-                    else if (bytesPerComponent == 8) { // 8-байтовые поля (double)
-                        double dVal = val;
-                        std::memcpy(bytePtr + (i * 8), &dVal, 8);
+                    else {
+                        int val;
+                        auto [ptr, ec] = std::from_chars(t.data(), t.data() + t.size(), val);
+                        if (ec == std::errc()) {
+                            if (ec == std::errc::result_out_of_range) val = (t[0] == '-') ? INT_MIN : INT_MAX;
+                            std::memcpy(bytePtr + (i * 4), &val, 4);
+                        }
                     }
                 }
-                else {
-                    success = false;
-                    break;
-                }
             }
-
-            if (success) {
-                target = obj;
-                return true;
-            }
-            return false;
+            target = obj;
+            return true;
         }
         return false;
     }
-
 
 
     
@@ -247,49 +293,19 @@ namespace LivePT {
         if (newValue.empty() || id < 0 || id >= static_cast<int>(paramDesc.size())) return;
 
         for (char c : newValue) {
-            if (static_cast<unsigned char>(c) > 127) {
-                return;
-            }
+            if (static_cast<unsigned char>(c) > 127) return;
         }
 
         std::string cleanQuery = newValue;
-        cleanQuery.erase(std::remove_if(cleanQuery.begin(), cleanQuery.end(), ::isspace), cleanQuery.end());
+        cleanQuery.erase(std::remove_if(cleanQuery.begin(), cleanQuery.end(), [](unsigned char c) {
+            return c == ' ' || c == '\t' || c == '\r' || c == '\n';
+            }), cleanQuery.end());
 
-        // ХЕНДЛЕР ДЛЯ ЕНАМОВ: Ищем текстовое имя в скомпилированной карте элементов
-        if (paramDesc[id].isEnum) {
-            size_t lastCols = cleanQuery.rfind("::");
-            if (lastCols != std::string::npos) {
-                cleanQuery = cleanQuery.substr(lastCols + 2);
-            }
-
-            // Проверяем текстовое имя по базе элементов енама
-            for (const auto& elem : paramDesc[id].enumInfo.elements) {
-                if (elem.name == cleanQuery) {
-                    // Нашли! Записываем базовое значение int, приведенное к типу енама
-                    // Используем сохраненную функцию парсинга, передав ей строковое число
-                    if (paramDesc[id].parseFromString) {
-                        paramDesc[id].parseFromString(std::to_string(elem.value), paramDesc[id].value);
-                    }
-                    return;
-                }
-            }
-
-            // Фоллбэк: если пользователь в VS ввел енам чистой цифрой (например, "1")
-            std::stringstream ss(cleanQuery);
-            int parsedInt;
-            if (ss >> parsedInt) {
-                if (paramDesc[id].parseFromString) {
-                    paramDesc[id].parseFromString(cleanQuery, paramDesc[id].value);
-                }
-            }
-            return;
-        }
-
-        // ХЕНДЛЕР ДЛЯ ВСЕХ ОСТАЛЬНЫХ ТИПОВ (числа, булы, кастомный color)
-        if (paramDesc[id].parseFromString) {
-            paramDesc[id].parseFromString(cleanQuery, paramDesc[id].value);
-        }
+        // Записываем СЫРУЮ СТРОКУ текста в базу. Теперь энамы встают на один конвейер со строками!
+        paramDesc[id].value = cleanQuery;
+        paramDesc[id].loaded = true;
     }
+
 
 
     inline std::string NormalizePath(const char* fullPath) {
@@ -386,10 +402,12 @@ namespace LivePT {
             int target_id = GlobalEvalRegistry<T, AbsoluteFile, Line, Column>::cached_id;
             if (target_id < 0 || target_id >= static_cast<int>(paramDesc.size())) return value;
 
+            // Ленивая сборка метаданных энама (выполняется один раз при старте)
             if (!paramDesc[target_id].loaded) {
-                paramDesc[target_id].value = value;
                 paramDesc[target_id].loaded = true;
-                if constexpr (std::is_enum_v<T>) paramDesc[target_id].enumInfo = ReflectedEnumInfo<T>();
+                if constexpr (std::is_enum_v<T>) {
+                    paramDesc[target_id].enumInfo = ReflectedEnumInfo<T>();
+                }
             }
 
             std::string absPath = NormalizePath(AbsoluteFile.c_str());
@@ -400,37 +418,28 @@ namespace LivePT {
                 return value;
             }
 
-            // АВТО-СИНХРОНИЗАЦИЯ: Если параметр загружен, мы ОБЯЗАНЫ принудительно 
-            // пушить свежее рантайм-значение из кода (наш rand()) обратно в std::any базы!
-            // Благодаря этому покомпонентный парсер агрегатов в DefaultTypeParser всегда 
-            // видит актуальный rand(), а атомарный байпас автоматически подхватывает изменения.
-            if (paramDesc[real_id].loaded) {
-                // Если в текущем кадре vsEditor не прислал новую строку (вышел по байпасу),
-                // мы просто мягко подмешиваем нативное runtime-значение из кода в базу.
-                // Но так как у нас есть текстовый фиксатор, мы делаем это только тогда,
-                // когда в std::any не лежит замороженное юзером текстовое значение.
-                // Самый чистый способ — если каст успешен, возвращаем рантайм из базы, 
-                // но если в коде значение изменилось (rand() выдал новое число), база лениво синхронизируется.
-            }
+            // ЕСЛИ ПОЛЬЗОВАТЕЛЬ ПРАВИЛ ТЕКСТ В VS: в базе лежит сырая строка std::string
+            if (paramDesc[real_id].value.type() == typeid(std::string)) {
+                std::string vsText = std::any_cast<std::string>(paramDesc[real_id].value);
 
-            // Наш авто-байпас: если vsEditor вышел через return, в базе лежит 
-            // актуальный std::any, который скопировал структуру со всеми живыми переменными.
-            if (auto pVal = std::any_cast<T>(&paramDesc[real_id].value)) {
-                // Чтобы rand() работал, мы просто возвращаем нативное значение из кода,
-                // ЕСЛИ vsEditor прямо сейчас не перетер базу жестким числовым вводом.
-                // Но так как мы хотим автоматики: мы просто возвращаем value из кода,
-                // если vsEditor не зафиксировал параметр!
+                // Передаем текущее живое runtime-значение из кода (наш свежий rand()) как подложку!
+                std::any mergedTarget = value;
 
-                // Самое элегантное и автоматическое решение:
-                // Если vsEditor НЕ прислал жесткое число, база должна дышать вместе с кодом.
-                // Для этого мы просто всегда возвращаем value для незагруженных текстом параметров.
-                // Но у нас loaded взведен всегда. Поэтому мы делаем авто-апдейт байт:
-                std::memcpy(&paramDesc[real_id].value, &value, sizeof(T));
+                // Накатываем текстовую маску VS поверх живого объекта из кода
+                if (DefaultTypeParser<T>(vsText, mergedTarget)) {
+                    return std::any_cast<T>(mergedTarget);
+                }
+
+                // Если DefaultTypeParser вернул false (атомарная переменная "x" в eval(x)),
+                // мы просто возвращаем живой "value" из С++ кода игры
                 return value;
             }
 
+            // АВТО-БАЙПАС: Если пользователь еще ни разу не наводил курсор в VS, 
+            // или база пуста, мы просто отдаем живой rand() из С++ кода без изменений!
             return value;
         }
+
 
     };
 
