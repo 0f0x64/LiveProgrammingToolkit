@@ -26,7 +26,9 @@ namespace LivePT {
 
     #include "eval.h"
     #include "vsEditor.h"
+#if LivePT_WheelEditMode
     #include "liveWheelEdit.h"
+#endif
 #if LivePT_WindowManagement
     #include "windowManagement.h"
 #endif
@@ -85,6 +87,6 @@ namespace LivePT {
 
 #else
 
-    #define eval(val) val
+#define eval(...) __VA_ARGS__ 
 
 #endif

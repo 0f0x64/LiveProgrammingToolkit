@@ -2,7 +2,7 @@
 
 // ---------------- LivePT integration section ----------------
 #define LivePT_EditMode true // true for live text editing
-#define LivePT_WheelEditMode true // true for mouse mButton drag, switch, enums with context menu
+#define LivePT_WheelEditMode false // true for mouse mButton drag, switch, enums with context menu
 #define LivePT_WindowManagement true // 50/50 VisualStudio/your App split mode
 #define LivePT_AppToSecondaryDisplay false 
 #include "LivePT/LivePT.h" // incude it for using lib
@@ -10,7 +10,23 @@
 
 #define TIMER_ID 1
 
-//simple class for demo purposes
+// 2. НАШ НОВЫЙ ТЕСТОВЫЙ АГРЕГАТНЫЙ ТИП
+struct color {
+    unsigned char r, g, b;
+};
+
+namespace LivePT {
+    template <>
+    inline bool DefaultTypeParser<color>(const std::string& text, std::any& target) {
+        color clr{ 0, 0, 0 };
+        if (sscanf_s(text.c_str(), "color{%hhu,%hhu,%hhu}", &clr.r, &clr.g, &clr.b) == 3) {
+            target = clr;
+            return true;
+        }
+        return false;
+    }
+}
+
 class Primitive {
 public:
     enum class ptype { circle, box, roundbox };
@@ -20,75 +36,96 @@ public:
     ptype type = ptype::circle;
     bool show = true;
 
-    // Unified setters using C++20 aggregate initialization rules
-    void Set(int xPos, int yPos, ptype form, bool showObj) { *this = { xPos, yPos, form, showObj }; }
-    void Set(const Primitive& in) { *this = in; }
+    // Поле для хранения агрегата цвета
+    color clr = { 0, 120, 215 };
 
-    // Fully encapsulated rendering method (accepts any array size)
+    // ОБЩИЙ МЕТОД: позиция раздельно, тип енам, цвет как агрегат
+    void Set(int xPos, int yPos, ptype form, color objectColor, bool showObj = true) {
+        x = xPos;
+        y = yPos;
+        type = form;
+        clr = objectColor;
+        show = showObj;
+    }
+
+    // Полностью инкапсулированный метод рендеринга
     template <size_t N>
     static void DrawScene(HWND hwnd, HDC hdc, const Primitive(&arr)[N]) {
         RECT r;
         GetClientRect(hwnd, &r);
         int w = r.right - r.left, h = r.bottom - r.top;
 
-        // Double buffering initialization
         HDC memDC = CreateCompatibleDC(hdc);
         HBITMAP memBM = CreateCompatibleBitmap(hdc, w, h);
         HBITMAP oldBM = (HBITMAP)SelectObject(memDC, memBM);
 
-        // Clear background and prepare brushes
         FillRect(memDC, &r, (HBRUSH)(COLOR_WINDOW + 1));
-        HBRUSH hBrush = CreateSolidBrush(RGB(0, 120, 215));
-        HBRUSH hOldBrush = (HBRUSH)SelectObject(memDC, hBrush);
 
-        // Render loop for all visible primitives in the array
         for (const auto& p : arr) {
             if (!p.show) continue;
 
             int posX = (w / 2) + p.x;
             int posY = (h / 2) + p.y;
-            int size = 20; // shape radius
+            int size = 20;
+
+            // ДИНАМИЧЕСКИЙ ЦВЕТ: Берем r, g, b прямо из нашего агрегата clr
+            HBRUSH hBrush = CreateSolidBrush(RGB(p.clr.r, p.clr.g, p.clr.b));
+            HBRUSH hOldBrush = (HBRUSH)SelectObject(memDC, hBrush);
 
             switch (p.type) {
             case ptype::circle:   Ellipse(memDC, posX - size, posY - size, posX + size, posY + size); break;
             case ptype::box:      Rectangle(memDC, posX - size, posY - size, posX + size, posY + size); break;
             case ptype::roundbox: RoundRect(memDC, posX - size, posY - size, posX + size, posY + size, 25, 25); break;
             }
+
+            SelectObject(memDC, hOldBrush);
+            DeleteObject(hBrush);
         }
 
-        // Blit buffer to screen and release GDI resources
         BitBlt(hdc, 0, 0, w, h, memDC, 0, 0, SRCCOPY);
-        SelectObject(memDC, hOldBrush);
-        DeleteObject(hBrush);
         SelectObject(memDC, oldBM);
         DeleteObject(memBM);
         DeleteDC(memDC);
     }
 };
 
-// Global instance array of primitives
+// Глобальный массив экземпляров примитивов
 Primitive primitive[3];
 
 // =================== USER SPACE ===================
 
 void UpdateSceneParams() {
 
-    // drag numbers by pressing&move mButton inside eval, click mButton for switch / context menu
-    primitive[0].Set(eval(-116), eval(-118), eval(Primitive::ptype::roundbox), eval(true));
+    // ПЕРВЫЙ ПРИМИТИВ: Тестируем кастомный агрегат цвета в одном eval
+    primitive[0].Set(
+        eval(-116),
+        eval(-118),
+        eval(Primitive::ptype::roundbox),
+        eval(color{ 210, 10, 15 }), // <--- Наш целевой тестовый вызов
+        eval(true)
+    );
 
-    // floating point numbers allowed (will be casted to int in this case, but you can modify class to use native floats)
-    primitive[1].Set(eval(-196.069f), eval(-28.6f), eval(Primitive::ptype::box), eval(true));
+    // ВТОРОЙ ПРИМИТИВ: Проверка обратной совместимости (другой цвет)
+    primitive[1].Set(
+        eval(-6),
+        eval(-128),
+        eval(Primitive::ptype::box),
+        eval(color{ 5, 210, 0 }),eval(true)
+    );
 
-    // aggregate init alternative
-    primitive[2].Set({
-        .x = eval(-191),
-        .y = eval(79),
-        .type = eval(Primitive::ptype::circle),
-        .show = eval(true)
-        });
+    // ТРЕТИЙ ПРИМИТИВ: Традиционный агрегатный синтаксис инициализации полей (снаружи eval)
+    // Он гарантированно продолжит работать, так как внутри eval только примитивы
+    primitive[2].Set(
+        eval(91),
+        eval(-69),
+        eval(Primitive::ptype::circle),
+        eval(color{ 0, 0, 240 }),
+        eval(true)
+    );
 }
 
 // ================ END OF USER SPACE ================
+
 
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     switch (uMsg) {
@@ -162,11 +199,14 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             TranslateMessage(&msg);
             DispatchMessage(&msg);
         }
+
         else {
             DWORD currentTick = GetTickCount();
             if (currentTick - lastUpdate > 16) { // ~60 FPS update limit
                 lastUpdate = currentTick;
-                LivePT::ProcessEdit();// don't forget this call
+                #if LivePT_EditMode
+                    LivePT::ProcessEdit();// don't forget this call
+                #endif
             }
         }
     }

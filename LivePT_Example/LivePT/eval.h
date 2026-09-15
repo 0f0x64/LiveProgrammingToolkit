@@ -1,3 +1,28 @@
+#pragma once
+#include <vector>
+#include <string>
+#include <unordered_map>
+#include <map>
+#include <variant>
+#include <any>
+#include <cstdlib>
+#include <algorithm>
+#include <sstream>
+#include <type_traits>
+#include <cctype>
+#include <string_view>
+
+namespace LivePT {
+
+    // ... твой метод UpdateParamValue ...
+
+    // ВРЕМЕННАЯ ЗАГЛУШКА ДЛЯ ЛИНКЕРА:
+    // Возвращает false, так как в текстовом режиме мышь гарантированно не драгает
+    inline bool isMouseDragging() {
+        return false;
+    }
+}
+
 namespace LivePT {
 
     constexpr int MAX_SCAN_RANGE = 1024;
@@ -16,6 +41,105 @@ namespace LivePT {
         bool isEnum = false;
         std::vector<EnumElementDesc> elements;
     };
+
+    struct ref {
+        std::any value;
+        bool loaded = false;
+        std::string fileName;
+        unsigned int counterID;
+        EnumTypeDesc enumInfo;
+
+        std::string typeName;
+        bool isEnum = false;
+        bool (*parseFromString)(const std::string& text, std::any& target) = nullptr;
+    };
+
+    inline std::vector<ref>& getParamDesc() {
+        static std::vector<ref> instance;
+        return instance;
+    }
+
+    inline std::unordered_map<std::string, int>& getRegistry() {
+        static std::unordered_map<std::string, int> instance;
+        return instance;
+    }
+
+    inline std::vector<ref>& paramDesc = getParamDesc();
+    inline std::unordered_map<std::string, int>& registry = getRegistry();
+
+    inline int getID(const std::string& key) {
+        auto it = registry.find(key);
+        if (it != registry.end()) return it->second;
+        return -1;
+    }
+}
+
+
+namespace LivePT {
+
+    // Универсальный парсер по умолчанию (безопасный для чисел, булов и текстовых энамов)
+    template <typename T>
+    inline bool DefaultTypeParser(const std::string& text, std::any& target) {
+        if constexpr (std::is_enum_v<T>) {
+            // Енамы мы больше не парсим через стрим! Мы найдем их в базе данных.
+            // Но так как внутри этого статического шаблона у нас нет доступа к конкретному id параметра,
+            // мы можем распарсить строку, если она пришла как число "0", "1", "2" (для обратной совместимости)
+            std::stringstream ss(text);
+            int parsedValue;
+            if (ss >> parsedValue) {
+                target = static_cast<T>(parsedValue);
+                return true;
+            }
+            return false;
+        }
+        else if constexpr (std::is_same_v<T, bool>) {
+            // Нативная поддержка текстовых булов true/false/1/0
+            std::string str = text;
+            std::transform(str.begin(), str.end(), str.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+            if (str == "true" || str == "1") {
+                target = true;
+                return true;
+            }
+            else if (str == "false" || str == "0") {
+                target = false;
+                return true;
+            }
+            return false;
+        }
+        else {
+            // Обычная логика для стандартных чисел int, float, double
+            std::stringstream ss(text);
+            T parsedValue;
+            if (ss >> parsedValue) {
+                target = parsedValue;
+                return true;
+            }
+            return false;
+        }
+    }
+
+
+    
+}
+namespace LivePT {
+
+    template <typename T>
+    inline std::string_view GetTypeName() {
+        std::string_view sig = __FUNCSIG__;
+        size_t start = sig.find("GetTypeName<");
+        if (start == std::string_view::npos) return "UnknownType";
+        start += 12; // Смещение за "GetTypeName<"
+        size_t end = sig.find_last_of('>');
+        if (end == std::string_view::npos || end <= start) return "UnknownType";
+
+        std::string_view rawName = sig.substr(start, end - start);
+
+        if (rawName.rfind("struct ", 0) == 0) rawName.remove_prefix(7);
+        else if (rawName.rfind("class ", 0) == 0) rawName.remove_prefix(6);
+
+        return rawName;
+    }
 
     inline void ParseSignature(std::string_view rawSigView, int V, EnumTypeDesc& desc) {
         std::string rawSig(rawSigView);
@@ -71,34 +195,8 @@ namespace LivePT {
             return desc;
         }
     }
-
-    struct ref {
-        using typeVariant = std::variant<int, float, bool>;
-        typeVariant value;
-        bool loaded = false;
-        std::string fileName;
-        unsigned int counterID;
-        EnumTypeDesc enumInfo;
-    };
-
-    inline std::vector<ref>& getParamDesc() {
-        static std::vector<ref> instance;
-        return instance;
-    }
-
-    inline std::unordered_map<std::string, int>& getRegistry() {
-        static std::unordered_map<std::string, int> instance;
-        return instance;
-    }
-
-    inline std::vector<ref>& paramDesc = getParamDesc();
-    inline std::unordered_map<std::string, int>& registry = getRegistry();
-
-    inline int getID(const std::string& key) {
-        auto it = registry.find(key);
-        if (it != registry.end()) return it->second;
-        return -1;
-    }
+}
+namespace LivePT {
 
     inline void UpdateParamValue(int id, const std::string& newValue) {
         if (newValue.empty() || id < 0 || id >= static_cast<int>(paramDesc.size())) return;
@@ -109,56 +207,45 @@ namespace LivePT {
             }
         }
 
-        std::visit([&newValue, id](auto& activeValue) {
-            using T = std::decay_t<decltype(activeValue)>;
+        std::string cleanQuery = newValue;
+        cleanQuery.erase(std::remove_if(cleanQuery.begin(), cleanQuery.end(), ::isspace), cleanQuery.end());
 
-            if (paramDesc[id].enumInfo.isEnum) {
-                std::string cleanQuery = newValue;
+        // ХЕНДЛЕР ДЛЯ ЕНАМОВ: Ищем текстовое имя в скомпилированной карте элементов
+        if (paramDesc[id].isEnum) {
+            size_t lastCols = cleanQuery.rfind("::");
+            if (lastCols != std::string::npos) {
+                cleanQuery = cleanQuery.substr(lastCols + 2);
+            }
 
-                cleanQuery.erase(std::remove_if(cleanQuery.begin(), cleanQuery.end(), ::isspace), cleanQuery.end());
-
-                size_t lastCols = cleanQuery.rfind("::");
-                if (lastCols != std::string::npos) {
-                    cleanQuery = cleanQuery.substr(lastCols + 2);
-                }
-
-                for (const auto& elem : paramDesc[id].enumInfo.elements) {
-                    if (elem.name == cleanQuery) {
-                        activeValue = elem.value;
-                        return;
+            // Проверяем текстовое имя по базе элементов енама
+            for (const auto& elem : paramDesc[id].enumInfo.elements) {
+                if (elem.name == cleanQuery) {
+                    // Нашли! Записываем базовое значение int, приведенное к типу енама
+                    // Используем сохраненную функцию парсинга, передав ей строковое число
+                    if (paramDesc[id].parseFromString) {
+                        paramDesc[id].parseFromString(std::to_string(elem.value), paramDesc[id].value);
                     }
-                }
-
-                std::stringstream ss(cleanQuery);
-                int parsedInt;
-                if (ss >> parsedInt) {
-                    activeValue = parsedInt;
-                }
-                return;
-            }
-
-            if constexpr (std::is_same_v<T, bool>) {
-                std::string str = newValue;
-                std::transform(str.begin(), str.end(), str.begin(), [](unsigned char c) {
-                    return static_cast<char>(std::tolower(c));
-                    });
-
-                if (str == "true" || str == "1") {
-                    activeValue = true;
-                }
-                else if (str == "false" || str == "0") {
-                    activeValue = false;
+                    return;
                 }
             }
-            else {
-                std::stringstream ss(newValue);
-                T parsedValue;
-                if (ss >> parsedValue) {
-                    activeValue = parsedValue;
+
+            // Фоллбэк: если пользователь в VS ввел енам чистой цифрой (например, "1")
+            std::stringstream ss(cleanQuery);
+            int parsedInt;
+            if (ss >> parsedInt) {
+                if (paramDesc[id].parseFromString) {
+                    paramDesc[id].parseFromString(cleanQuery, paramDesc[id].value);
                 }
             }
-            }, paramDesc[id].value);
+            return;
+        }
+
+        // ХЕНДЛЕР ДЛЯ ВСЕХ ОСТАЛЬНЫХ ТИПОВ (числа, булы, кастомный color)
+        if (paramDesc[id].parseFromString) {
+            paramDesc[id].parseFromString(cleanQuery, paramDesc[id].value);
+        }
     }
+
 
     inline std::string NormalizePath(const char* fullPath) {
         std::string path(fullPath);
@@ -175,8 +262,10 @@ namespace LivePT {
             return column < other.column;
         }
     };
+}
+namespace LivePT {
 
-    inline int RegisterEvalPreMain(const char* file, ref::typeVariant value, int line, int column, EnumTypeDesc enumDesc) {
+    inline int RegisterEvalPreMain(const char* file, std::any value, int line, int column, std::string typeName, bool isEnum, EnumTypeDesc enumDesc) {
         std::string absolutePath = NormalizePath(file);
 
         static std::unordered_map<std::string, std::map<StaticOrderKey, int>> fileCompileTree;
@@ -194,7 +283,10 @@ namespace LivePT {
             .loaded = false,
             .fileName = absolutePath,
             .counterID = 0,
-            .enumInfo = enumDesc
+            .enumInfo = enumDesc,
+            .typeName = typeName,
+            .isEnum = isEnum,
+            .parseFromString = nullptr
             });
 
         fileMap[key] = paramID;
@@ -225,15 +317,20 @@ namespace LivePT {
     template <typename T, FixedString<260> AbsoluteFile, int Line, int Column>
     struct GlobalEvalRegistry {
         static inline const int cached_id = []() {
-            if constexpr (std::is_enum_v<T>) {
-                auto enumMetadata = ReflectedEnumInfo<T>();
-                return RegisterEvalPreMain(AbsoluteFile.c_str(), ref::typeVariant{ static_cast<int>(T{}) }, Line, Column, enumMetadata);
-            }
-            else {
-                return RegisterEvalPreMain(AbsoluteFile.c_str(), ref::typeVariant{ T{} }, Line, Column, EnumTypeDesc{ false });
-            }
+            std::string tName(GetTypeName<T>());
+            bool isEnum = std::is_enum_v<T>;
+
+            // Просто регистрируем ID, передавая пустой EnumTypeDesc
+            int paramID = RegisterEvalPreMain(AbsoluteFile.c_str(), std::any{ T{} }, Line, Column, tName, isEnum, EnumTypeDesc{ false });
+
+            // Привязываем базовый парсер
+            paramDesc[paramID].parseFromString = &DefaultTypeParser<T>;
+
+            return paramID;
             }();
     };
+
+
 
     template <typename T, FixedString<260> AbsoluteFile, int Line, int Column>
     struct EvalSyntaxShield {
@@ -245,27 +342,23 @@ namespace LivePT {
 
             if (target_id < 0 || target_id >= static_cast<int>(paramDesc.size())) return value;
 
+            // Первая ленивая загрузка параметра в рантайме
             if (!paramDesc[target_id].loaded) {
-                if constexpr (std::is_enum_v<T>) {
-                    paramDesc[target_id].value = static_cast<int>(value);
-                }
-                else {
-                    paramDesc[target_id].value = value;
-                }
+                paramDesc[target_id].value = value;
                 paramDesc[target_id].loaded = true;
+
+                // ВОТ ЗДЕСЬ: Безопасный рантайм-вызов для энамов
+                if constexpr (std::is_enum_v<T>) {
+                    paramDesc[target_id].enumInfo = ReflectedEnumInfo<T>();
+                }
             }
 
             std::string absPath = NormalizePath(AbsoluteFile.c_str());
             int real_id = getID(absPath + ":" + std::to_string(paramDesc[target_id].counterID));
             if (real_id < 0 || real_id >= static_cast<int>(paramDesc.size())) return value;
 
-            if constexpr (std::is_enum_v<T>) {
-                if (auto pVal = std::get_if<int>(&paramDesc[real_id].value)) {
-                    return static_cast<T>(*pVal);
-                }
-            }
-            else {
-                if (auto pVal = std::get_if<T>(&paramDesc[real_id].value)) return *pVal;
+            if (auto pVal = std::any_cast<T>(&paramDesc[real_id].value)) {
+                return *pVal;
             }
 
             return value;
@@ -274,11 +367,12 @@ namespace LivePT {
 
 }
 
-#define eval(value) ( \
+// Вариативный макрос, корректно собирающий __VA_ARGS__ при наличии запятых во входящем выражении
+#define eval(...) ( \
     LivePT::EvalSyntaxShield< \
-        decltype(value), \
+        decltype(__VA_ARGS__), \
         LivePT::FixedString<260>{__FILE__}, \
         static_cast<int>(__LINE__), \
         static_cast<int>(__builtin_COLUMN()) \
-    >(value) \
+    >(__VA_ARGS__) \
 )
