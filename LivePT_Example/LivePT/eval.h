@@ -166,44 +166,57 @@ namespace LivePT {
             auto tokens = SplitArgsFromText(text);
             if (tokens.empty()) return false;
 
-            // БЕРЕМ ИСХОДНЫЙ ЖИВОЙ ОБЪЕКТ ИЗ КОДА (Где прямо сейчас лежит rand() % 255)
             T obj = std::any_cast<T>(target);
             unsigned char* bytePtr = reinterpret_cast<unsigned char*>(&obj);
-            size_t bytesPerComponent = sizeof(T) / tokens.size();
 
-            for (size_t i = 0; i < tokens.size(); ++i) {
+            // Задаем базовый шаг смещения по умолчанию на основе пропорций структуры
+            size_t defaultStep = (sizeof(T) / tokens.size() == 0) ? 1 : (sizeof(T) / tokens.size());
+            size_t currentOffset = 0;
+            bool success = true;
+
+            for (size_t i = 0; i < tokens.size() && currentOffset < sizeof(T); ++i) {
                 std::string t = tokens[i];
 
-                if (bytesPerComponent == 1) { // Поля типа unsigned char / char (color)
-                    int val;
-                    auto [ptr, ec] = std::from_chars(t.data(), t.data() + t.size(), val);
-
-                    if (ec == std::errc()) { // Если токен - ЧИСЛО, зажимаем его и пишем в байт
-                        val = std::clamp(val, 0, 255);
-                        bytePtr[i] = static_cast<unsigned char>(val);
-                    }
-                    // Если ec == invalid_argument (буква "g") -> ПРОПУСКАЕМ. Живое g из кода остается в байте!
-                }
-                else if (bytesPerComponent == 4) { // Поля типа int / float
-                    if (t.find('.') != std::string::npos || t.back() == 'f' || t.back() == 'F') {
+                // 1. ОПРЕДЕЛЯЕМ ТИП КОМПОНЕНТА ПО СИНТАКСИСУ СТРОКИ И СМЕЩАЕМ БАЙТЫ ДИНАМИЧЕСКИ
+                if (t.find('.') != std::string::npos || t.back() == 'f' || t.back() == 'F') {
+                    // Это гарантированно float поле (4 байта)
+                    if (currentOffset + 4 <= sizeof(T)) {
                         if (!t.empty() && (t.back() == 'f' || t.back() == 'F')) t.pop_back();
                         float val;
                         auto [ptr, ec] = std::from_chars(t.data(), t.data() + t.size(), val);
                         if (ec == std::errc()) {
-                            if (ec == std::errc::result_out_of_range) val = (t[0] == '-') ? -(std::numeric_limits<float>::max)() : (std::numeric_limits<float>::max)();
-                            std::memcpy(bytePtr + (i * 4), &val, 4);
+                            if (ec == std::errc::result_out_of_range) val = (t == "-") ? -(std::numeric_limits<float>::max)() : (std::numeric_limits<float>::max)();
+                            std::memcpy(bytePtr + currentOffset, &val, 4);
                         }
                     }
-                    else {
-                        int val;
-                        auto [ptr, ec] = std::from_chars(t.data(), t.data() + t.size(), val);
-                        if (ec == std::errc()) {
-                            if (ec == std::errc::result_out_of_range) val = (t[0] == '-') ? INT_MIN : INT_MAX;
-                            std::memcpy(bytePtr + (i * 4), &val, 4);
+                    currentOffset += 4; // Шагаем на размер float
+                }
+                else {
+                    // Это либо целое число (int/char), либо вложенный энам/переменная (color::tt::on)
+                    int val;
+                    auto [ptr, ec] = std::from_chars(t.data(), t.data() + t.size(), val);
+
+                    if (ec == std::errc()) {
+                        // Токен успешно распарсился как число! Смотрим, куда его положить
+                        if (defaultStep == 1 && currentOffset + 1 <= sizeof(T)) {
+                            if (val < 0) val = 0; if (val > 255) val = 255;
+                            bytePtr[currentOffset] = static_cast<unsigned char>(val);
                         }
+                        else if (defaultStep == 4 && currentOffset + 4 <= sizeof(T)) {
+                            if (ec == std::errc::result_out_of_range) val = (t == "-") ? INT_MIN : INT_MAX;
+                            std::memcpy(bytePtr + currentOffset, &val, 4);
+                        }
+                        currentOffset += defaultStep;
+                    }
+                    else {
+                        // УМНЫЙ БАЙПАС ДЛЯ ВЛОЖЕННЫХ ЭНАМОВ И ПЕРЕМЕННЫХ (color::tt::on или g):
+                        // std::from_chars выдал ошибку invalid_argument. Мы просто пропускаем этот кусок памяти,
+                        // сохраняя в нем нативное значение из С++ кода игры, и смещаем указатель дальше!
+                        currentOffset += defaultStep;
                     }
                 }
             }
+
             target = obj;
             return true;
         }

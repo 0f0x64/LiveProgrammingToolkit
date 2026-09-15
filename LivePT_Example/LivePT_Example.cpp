@@ -13,6 +13,8 @@
 // 2. НАШ НОВЫЙ ТЕСТОВЫЙ АГРЕГАТНЫЙ ТИП
 struct color {
     unsigned char r, g, b;
+    enum class tt{on,off};
+    tt ttt;
 };
 
 class Primitive {
@@ -57,7 +59,14 @@ public:
             int size = 20;
 
             // ДИНАМИЧЕСКИЙ ЦВЕТ: Берем r, g, b прямо из нашего агрегата clr
-            HBRUSH hBrush = CreateSolidBrush(RGB(p.clr.r, p.clr.g, p.clr.b));
+            HBRUSH hBrush;
+            if (p.clr.ttt == color::tt::on)
+            {
+                hBrush = CreateSolidBrush(RGB(p.clr.r, p.clr.g, p.clr.b));
+            }
+            else {
+                hBrush = CreateSolidBrush(RGB(0,0,0));
+            }
             HBRUSH hOldBrush = (HBRUSH)SelectObject(memDC, hBrush);
 
             switch (p.type) {
@@ -109,7 +118,7 @@ void UpdateSceneParams() {
         eval(x),
         eval(-59),
         eval(Primitive::ptype::circle),
-        eval(color{ 222, g, 21 }),
+        eval(color{ 222, g, 21, color::tt::on }),
         eval(true)
     );
 }
