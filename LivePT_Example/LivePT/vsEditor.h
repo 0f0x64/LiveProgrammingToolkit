@@ -498,33 +498,51 @@ namespace LivePT {
             return c == ' ' || c == '\t' || c == '\r' || c == '\n';
             }), cleanQuery.end());
 
-        // ===================================================================
-        // 🛡️ УМНАЯ МОНОЛИТНАЯ ЗАЩИТА: ПРОПУСКАЕМ СТРИНГИ, ФИЛЬТРУЕМ ЧИСЛА 🛡️
-        // ===================================================================
+        // --- УМНАЯ МОНОЛИТНАЯ ЗАЩИТА НА ВХОДЕ ---
         std::string tName = paramDesc[targetId].typeName;
         bool isString = (tName.find("string") != std::string::npos || tName.find("char*") != std::string::npos);
-
-        if (!isString) {
-            // Если это число, бул, енам или агрегат, жестко проверяем на мусор и кириллицу
-            if (!IsLptNumericTextSecure(cleanQuery)) {
-                return; // Нашли невалидный мусор или кириллицу -> Полный БАЙПАС
-            }
-        }
-        // ===================================================================
+        if (!isString && !IsLptNumericTextSecure(cleanQuery)) return;
 
         if (paramDesc[targetId].isEnum) {
-            // Энамы пропускаем как есть, их UpdateParamValue разрулит по именам элементов
+            // Энамы пропускаем как есть
         }
         else if (cleanQuery.find('{') != std::string::npos) {
-            // АГРЕГАТЫ (Сборка без хардкода строк "color")
+            // ===================================================================
+            // 🔄 УМНЫЙ ПОКОМПОНЕНТНЫЙ БАЙПАС АГРЕГАТОВ БЕЗ ХАРДКОДА СТРОК 🔄
+            // ===================================================================
             auto tokens = SplitArgs(cleanQuery);
             if (!tokens.empty()) {
                 size_t bytesPerComponent = sizeof(paramDesc[targetId].value) / tokens.size();
-                bool isVar = false;
+
+                // Извлекаем указатель на СВЕЖИЕ рантайм-байты объекта из памяти игры (где лежит rand())
+                unsigned char* liveBytePtr = reinterpret_cast<unsigned char*>(&paramDesc[targetId].value);
 
                 for (size_t i = 0; i < tokens.size(); ++i) {
-                    if (!IsWholeNumeric(tokens[i]) && !IsFloatNumeric(tokens[i])) { isVar = true; break; }
+                    // Если токен — это переменная (например, буква "x"), мы берём её 
+                    // актуальное рантайм-значение прямо из памяти игры и перезаписываем строку!
+                    if (!IsWholeNumeric(tokens[i]) && !IsFloatNumeric(tokens[i])) {
+                        if (bytesPerComponent == 1) {
+                            // Вытаскиваем живой unsigned char и превращаем в текстовое число
+                            tokens[i] = std::to_string(liveBytePtr[i]);
+                        }
+                        else if (bytesPerComponent == 4) { // Поля типа int / float
+                            // Для int/float определяем тип по названию в паспорте или по наличию точки
+                            if (tName.find("float") != std::string::npos || tName.find("Vec") != std::string::npos) {
+                                float fVal = 0.0f;
+                                std::memcpy(&fVal, liveBytePtr + (i * 4), 4); // Исправлено: fVal вместо val
+                                tokens[i] = std::to_string(fVal) + "f";
+                            }
+                            else {
+                                int iVal = 0;
+                                std::memcpy(&iVal, liveBytePtr + (i * 4), 4); // Исправлено: iVal вместо val
+                                tokens[i] = std::to_string(iVal);
+                            }
+                        }
+                        // Компонент успешно байпасился! Переходим к следующему токену
+                        continue;
+                    }
 
+                    // Если токен — это ЧИСЛО, применяем к нему стандартный жесткий зажим
                     if (bytesPerComponent == 1) {
                         long long val = std::strtoll(tokens[i].c_str(), nullptr, 10);
                         if (val < 0) val = 0; if (val > 255) val = 255;
@@ -545,14 +563,10 @@ namespace LivePT {
                     }
                 }
 
-                if (isVar) return; // Уперлись в переменную -> Полный БАЙПАС агрегата
-
-                // ДИНАМИЧЕСКАЯ СБОРКА СТРОКИ: Вырезаем оригинальное имя типа до скобки {
+                // Собираем зажатый и байпаснутый агрегат обратно с его динамическим именем типа
                 std::string reconstructed = "";
                 size_t firstBrace = cleanQuery.find('{');
-                if (firstBrace != std::string::npos) {
-                    reconstructed = cleanQuery.substr(0, firstBrace + 1);
-                }
+                if (firstBrace != std::string::npos) reconstructed = cleanQuery.substr(0, firstBrace + 1);
 
                 for (size_t i = 0; i < tokens.size(); ++i) {
                     reconstructed += tokens[i] + (i == tokens.size() - 1 ? "}" : ",");
@@ -563,13 +577,15 @@ namespace LivePT {
         else {
             // АТОМАРНЫЕ ТИПЫ (int, float, double, bool)
             if (paramDesc[targetId].typeName == "bool") {
-                // Булы пропускаем без числовых валидаций, так как мусор (trуе) уже отсечен на входе
+                // Булы пропускаем без числовых валидаций
             }
             else {
+                // Если вместо числа в VS написана переменная (например, "x") -> УМНЫЙ АВТО-БАЙПАС
                 if (!IsWholeNumeric(cleanQuery) && !IsFloatNumeric(cleanQuery)) {
-                    return; // Имя переменной -> БАЙПАС
+                    return; // Просто выходим! Базу не трогаем, рантайм сам пробросит живой x
                 }
 
+                // Зажимаем 50 девяток по лимитам констант компилятора
                 if (cleanQuery.find('.') != std::string::npos || cleanQuery.back() == 'f' || cleanQuery.back() == 'F') {
                     double val = std::strtod(cleanQuery.c_str(), nullptr);
                     if (val > (std::numeric_limits<float>::max)() || _isnan(val)) innerValueA = std::to_string((std::numeric_limits<float>::max)()) + "f";
@@ -586,6 +602,7 @@ namespace LivePT {
 
         UpdateParamValue(targetId, innerValueA);
     }
+
 
 
 

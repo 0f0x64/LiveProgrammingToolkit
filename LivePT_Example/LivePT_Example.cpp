@@ -103,12 +103,13 @@ void UpdateSceneParams() {
 
     // ТРЕТИЙ ПРИМИТИВ: Традиционный агрегатный синтаксис инициализации полей (снаружи eval)
     // Он гарантированно продолжит работать, так как внутри eval только примитивы
-    unsigned char x = rand()%255;
+    unsigned char g = rand()%25;
+    int x = rand() % 25;
     primitive[2].Set(
-        eval(121),
+        eval(10),
         eval(-69),
         eval(Primitive::ptype::circle),
-        eval(color{ 0, 1, 14 }),
+        eval(color{ 0, g, 1 }),
         eval(true)
     );
 }

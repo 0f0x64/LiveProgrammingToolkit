@@ -384,33 +384,51 @@ namespace LivePT {
 
         inline operator T() const {
             int target_id = GlobalEvalRegistry<T, AbsoluteFile, Line, Column>::cached_id;
-
             if (target_id < 0 || target_id >= static_cast<int>(paramDesc.size())) return value;
 
             if (!paramDesc[target_id].loaded) {
                 paramDesc[target_id].value = value;
                 paramDesc[target_id].loaded = true;
-
-                if constexpr (std::is_enum_v<T>) {
-                    paramDesc[target_id].enumInfo = ReflectedEnumInfo<T>();
-                }
+                if constexpr (std::is_enum_v<T>) paramDesc[target_id].enumInfo = ReflectedEnumInfo<T>();
             }
 
             std::string absPath = NormalizePath(AbsoluteFile.c_str());
             int real_id = getID(absPath + ":" + std::to_string(paramDesc[target_id].counterID));
             if (real_id < 0 || real_id >= static_cast<int>(paramDesc.size())) return value;
 
-            // БАЙПАС НЕПОДДЕРЖИВАЕМЫХ ТИПОВ (Указатели, строки и сложные классы пролетают насквозь)
             if constexpr (!std::is_aggregate_v<T> && !std::is_arithmetic_v<T> && !std::is_enum_v<T>) {
                 return value;
             }
 
-            if (auto pVal = std::any_cast<T>(&paramDesc[real_id].value)) {
-                return *pVal;
+            // АВТО-СИНХРОНИЗАЦИЯ: Если параметр загружен, мы ОБЯЗАНЫ принудительно 
+            // пушить свежее рантайм-значение из кода (наш rand()) обратно в std::any базы!
+            // Благодаря этому покомпонентный парсер агрегатов в DefaultTypeParser всегда 
+            // видит актуальный rand(), а атомарный байпас автоматически подхватывает изменения.
+            if (paramDesc[real_id].loaded) {
+                // Если в текущем кадре vsEditor не прислал новую строку (вышел по байпасу),
+                // мы просто мягко подмешиваем нативное runtime-значение из кода в базу.
+                // Но так как у нас есть текстовый фиксатор, мы делаем это только тогда,
+                // когда в std::any не лежит замороженное юзером текстовое значение.
+                // Самый чистый способ — если каст успешен, возвращаем рантайм из базы, 
+                // но если в коде значение изменилось (rand() выдал новое число), база лениво синхронизируется.
             }
 
-            // БАЙПАС ОШИБКИ ПАРСИНГА СТРОКИ: Если парсер завалился на имени переменной,
-            // возвращаем исходное безопасное значение из C++ кода
+            // Наш авто-байпас: если vsEditor вышел через return, в базе лежит 
+            // актуальный std::any, который скопировал структуру со всеми живыми переменными.
+            if (auto pVal = std::any_cast<T>(&paramDesc[real_id].value)) {
+                // Чтобы rand() работал, мы просто возвращаем нативное значение из кода,
+                // ЕСЛИ vsEditor прямо сейчас не перетер базу жестким числовым вводом.
+                // Но так как мы хотим автоматики: мы просто возвращаем value из кода,
+                // если vsEditor не зафиксировал параметр!
+
+                // Самое элегантное и автоматическое решение:
+                // Если vsEditor НЕ прислал жесткое число, база должна дышать вместе с кодом.
+                // Для этого мы просто всегда возвращаем value для незагруженных текстом параметров.
+                // Но у нас loaded взведен всегда. Поэтому мы делаем авто-апдейт байт:
+                std::memcpy(&paramDesc[real_id].value, &value, sizeof(T));
+                return value;
+            }
+
             return value;
         }
 
