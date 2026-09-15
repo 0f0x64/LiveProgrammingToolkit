@@ -15,18 +15,6 @@ struct color {
     unsigned char r, g, b;
 };
 
-namespace LivePT {
-    template <>
-    inline bool DefaultTypeParser<color>(const std::string& text, std::any& target) {
-        color clr{ 0, 0, 0 };
-        if (sscanf_s(text.c_str(), "color{%hhu,%hhu,%hhu}", &clr.r, &clr.g, &clr.b) == 3) {
-            target = clr;
-            return true;
-        }
-        return false;
-    }
-}
-
 class Primitive {
 public:
     enum class ptype { circle, box, roundbox };
@@ -101,25 +89,26 @@ void UpdateSceneParams() {
         eval(-116),
         eval(-118),
         eval(Primitive::ptype::roundbox),
-        eval(color{ 210, 10, 15 }), // <--- Наш целевой тестовый вызов
+        eval(color{210, 10, 15 }), // <--- Наш целевой тестовый вызов
         eval(true)
     );
 
     // ВТОРОЙ ПРИМИТИВ: Проверка обратной совместимости (другой цвет)
     primitive[1].Set(
         eval(-6),
-        eval(-128),
+        eval(-28),
         eval(Primitive::ptype::box),
-        eval(color{ 5, 210, 0 }),eval(true)
+        eval(color{ 15, 110, 0 }),eval(true)
     );
 
     // ТРЕТИЙ ПРИМИТИВ: Традиционный агрегатный синтаксис инициализации полей (снаружи eval)
     // Он гарантированно продолжит работать, так как внутри eval только примитивы
+    unsigned char x = rand()%255;
     primitive[2].Set(
-        eval(91),
+        eval(121),
         eval(-69),
         eval(Primitive::ptype::circle),
-        eval(color{ 0, 0, 240 }),
+        eval(color{ 0, 1, 14 }),
         eval(true)
     );
 }

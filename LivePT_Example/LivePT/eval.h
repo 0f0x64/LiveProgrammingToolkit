@@ -43,7 +43,7 @@ namespace LivePT {
     };
 
     struct ref {
-        std::any value;
+        std::any value; // Наше новое универсальное хранилище
         bool loaded = false;
         std::string fileName;
         unsigned int counterID;
@@ -53,6 +53,7 @@ namespace LivePT {
         bool isEnum = false;
         bool (*parseFromString)(const std::string& text, std::any& target) = nullptr;
     };
+
 
     inline std::vector<ref>& getParamDesc() {
         static std::vector<ref> instance;
@@ -77,13 +78,26 @@ namespace LivePT {
 
 namespace LivePT {
 
-    // Универсальный парсер по умолчанию (безопасный для чисел, булов и текстовых энамов)
+    // Вспомогательный метод разбиения строки аргументов "color{10,20,30}" -> ["10","20","30"]
+    inline std::vector<std::string> SplitArgsFromText(const std::string& text) {
+        std::vector<std::string> tokens;
+        size_t start = text.find('{');
+        size_t end = text.find_last_of('}');
+        if (start == std::string::npos || end == std::string::npos || end <= start) return tokens;
+
+        std::stringstream ss(text.substr(start + 1, end - start - 1));
+        std::string token;
+        while (std::getline(ss, token, ',')) {
+            if (!token.empty() && (token.back() == 'f' || token.back() == 'F')) token.pop_back();
+            tokens.push_back(token);
+        }
+        return tokens;
+    }
+
+    // Универсальный парсер по умолчанию (безопасный для чисел, булов, текстовых энамов и любых агрегатов)
     template <typename T>
     inline bool DefaultTypeParser(const std::string& text, std::any& target) {
         if constexpr (std::is_enum_v<T>) {
-            // Енамы мы больше не парсим через стрим! Мы найдем их в базе данных.
-            // Но так как внутри этого статического шаблона у нас нет доступа к конкретному id параметра,
-            // мы можем распарсить строку, если она пришла как число "0", "1", "2" (для обратной совместимости)
             std::stringstream ss(text);
             int parsedValue;
             if (ss >> parsedValue) {
@@ -93,22 +107,13 @@ namespace LivePT {
             return false;
         }
         else if constexpr (std::is_same_v<T, bool>) {
-            // Нативная поддержка текстовых булов true/false/1/0
             std::string str = text;
             std::transform(str.begin(), str.end(), str.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-
-            if (str == "true" || str == "1") {
-                target = true;
-                return true;
-            }
-            else if (str == "false" || str == "0") {
-                target = false;
-                return true;
-            }
+            if (str == "true" || str == "1") { target = true; return true; }
+            if (str == "false" || str == "0") { target = false; return true; }
             return false;
         }
-        else {
-            // Обычная логика для стандартных чисел int, float, double
+        else if constexpr (std::is_arithmetic_v<T>) {
             std::stringstream ss(text);
             T parsedValue;
             if (ss >> parsedValue) {
@@ -117,7 +122,47 @@ namespace LivePT {
             }
             return false;
         }
+        else if constexpr (std::is_aggregate_v<T>) {
+            auto tokens = SplitArgsFromText(text);
+            if (tokens.empty()) return false;
+
+            T obj{};
+            size_t tokenIdx = 0;
+            bool success = true;
+
+            unsigned char* bytePtr = reinterpret_cast<unsigned char*>(&obj);
+            size_t bytesPerComponent = sizeof(T) / tokens.size();
+
+            for (size_t i = 0; i < tokens.size(); ++i) {
+                std::stringstream ss(tokens[i]);
+                float val;
+                if (ss >> val) {
+                    if (bytesPerComponent == 1) { // 1-байтовые поля (наш color из unsigned char)
+                        bytePtr[i] = static_cast<unsigned char>(val);
+                    }
+                    else if (bytesPerComponent == 4) { // 4-байтовые поля (int / float)
+                        std::memcpy(bytePtr + (i * 4), &val, 4);
+                    }
+                    else if (bytesPerComponent == 8) { // 8-байтовые поля (double)
+                        double dVal = val;
+                        std::memcpy(bytePtr + (i * 8), &dVal, 8);
+                    }
+                }
+                else {
+                    success = false;
+                    break;
+                }
+            }
+
+            if (success) {
+                target = obj;
+                return true;
+            }
+            return false;
+        }
+        return false;
     }
+
 
 
     
@@ -342,12 +387,10 @@ namespace LivePT {
 
             if (target_id < 0 || target_id >= static_cast<int>(paramDesc.size())) return value;
 
-            // Первая ленивая загрузка параметра в рантайме
             if (!paramDesc[target_id].loaded) {
                 paramDesc[target_id].value = value;
                 paramDesc[target_id].loaded = true;
 
-                // ВОТ ЗДЕСЬ: Безопасный рантайм-вызов для энамов
                 if constexpr (std::is_enum_v<T>) {
                     paramDesc[target_id].enumInfo = ReflectedEnumInfo<T>();
                 }
@@ -357,12 +400,20 @@ namespace LivePT {
             int real_id = getID(absPath + ":" + std::to_string(paramDesc[target_id].counterID));
             if (real_id < 0 || real_id >= static_cast<int>(paramDesc.size())) return value;
 
+            // БАЙПАС НЕПОДДЕРЖИВАЕМЫХ ТИПОВ (Указатели, строки и сложные классы пролетают насквозь)
+            if constexpr (!std::is_aggregate_v<T> && !std::is_arithmetic_v<T> && !std::is_enum_v<T>) {
+                return value;
+            }
+
             if (auto pVal = std::any_cast<T>(&paramDesc[real_id].value)) {
                 return *pVal;
             }
 
+            // БАЙПАС ОШИБКИ ПАРСИНГА СТРОКИ: Если парсер завалился на имени переменной,
+            // возвращаем исходное безопасное значение из C++ кода
             return value;
         }
+
     };
 
 }

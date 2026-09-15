@@ -413,29 +413,182 @@ namespace LivePT {
         return false;
     }
 
+    bool isMouseDragging();
+
+    // Быстрый хелпер: проверяет, является ли токен чистым целым числом
+    inline bool IsWholeNumeric(const std::string& str) {
+        if (str.empty()) return false;
+        size_t start = (!str.empty() && str[0] == '-') ? 1 : 0;
+        if (start == str.length()) return false;
+
+        for (size_t i = start; i < str.length(); ++i) {
+            // Прямая проверка ASCII-кода без вызова библиотек Си
+            if (str[i] < '0' || str[i] > '9') return false;
+        }
+        return true;
+    }
 
 
+    // Быстрый хелпер: проверяет, является ли токен валидным вещественным числом (float/double)
+    inline bool IsFloatNumeric(std::string str) {
+        if (str.empty()) return false;
+        if (str.back() == 'f' || str.back() == 'F') str.pop_back();
+        double dummy;
+        auto [ptr, ec] = std::from_chars(str.data(), str.data() + str.size(), dummy);
+        // Возвращает true только если строка успешно распарсилась как число (нет букв переменных)
+        return ec == std::errc() && ptr == (str.data() + str.size());
+    }
 
-    inline void ParseAndStoreParamValue(const std::wstring & fileText, const std::string & currentActiveFile, long line, size_t evalIdxInLine, size_t targetEvalAbsolutePos) {
-            int counterID = GetParamIndexByTextOrder(fileText, currentActiveFile, line, evalIdxInLine);
-            if (counterID == -1) return;
+    // Вспомогательный метод разбиения строки аргументов "color{10,20,30}" -> ["10","20","30"]
+    inline std::vector<std::string> SplitArgs(const std::string& text) {
+        std::vector<std::string> tokens;
+        size_t start = text.find('{');
+        size_t end = text.find_last_of('}');
+        if (start == std::string::npos || end == std::string::npos || end <= start) return tokens;
+        std::stringstream ss(text.substr(start + 1, end - start - 1));
+        std::string token;
+        while (std::getline(ss, token, ',')) {
+            token.erase(0, token.find_first_not_of(" \t\r\n"));
+            token.erase(token.find_last_not_of(" \t\r\n") + 1);
+            tokens.push_back(token);
+        }
+        return tokens;
+    }
 
-            std::string vsLookupKey = currentActiveFile + ":" + std::to_string(counterID);
-            int targetId = getID(vsLookupKey);
-            if (targetId == -1) return;
+    // Проверяет, что строка содержит ТОЛЬКО символы, из которых строятся числа и латинские переменные
+    inline bool IsLptNumericTextSecure(const std::string& str) {
+        if (str.empty()) return false;
+        for (char c : str) {
+            unsigned char uc = static_cast<unsigned char>(c);
 
-            size_t openBracket = fileText.find(L'(', targetEvalAbsolutePos);
-            size_t closeBracket = FindCloseBracket(fileText, openBracket);
-            if (openBracket != std::wstring::npos && closeBracket != std::wstring::npos) {
-                std::wstring innerValueW = fileText.substr(openBracket + 1, closeBracket - openBracket - 1);
-                std::string innerValueA = ConvertWStringToUtf8(innerValueW);
-                innerValueA.erase(0, innerValueA.find_first_not_of(" \t\r\n"));
-                innerValueA.erase(innerValueA.find_last_not_of(" \t\r\n") + 1);
-                UpdateParamValue(targetId, innerValueA);
+            // Если вышли за ASCII (русские буквы в числах, булах и енамах)
+            if (uc > 127) return false;
+
+            // Разрешенные символы для конвейера чисел
+            bool isValidChar = (uc >= '0' && uc <= '9') ||
+                (uc >= 'a' && uc <= 'z') ||
+                (uc >= 'A' && uc <= 'Z') ||
+                uc == '_' || uc == '.' || uc == '-' ||
+                uc == ',' || uc == ':' || uc == '{' || uc == '}';
+            if (!isValidChar) return false;
+        }
+        return true;
+    }
+
+
+    inline void ParseAndStoreParamValue(const std::wstring& fileText, const std::string& currentActiveFile, long line, size_t evalIdxInLine, size_t targetEvalAbsolutePos) {
+        int counterID = GetParamIndexByTextOrder(fileText, currentActiveFile, line, evalIdxInLine);
+        if (counterID == -1) return;
+
+        std::string vsLookupKey = currentActiveFile + ":" + std::to_string(counterID);
+        int targetId = getID(vsLookupKey);
+        if (targetId == -1) return;
+
+        size_t openBracket = fileText.find(L'(', targetEvalAbsolutePos);
+        size_t closeBracket = FindCloseBracket(fileText, openBracket);
+        if (openBracket == std::wstring::npos || closeBracket == std::wstring::npos) return;
+
+        std::wstring innerValueW = fileText.substr(openBracket + 1, closeBracket - openBracket - 1);
+        std::string innerValueA = ConvertWStringToUtf8(innerValueW);
+        innerValueA.erase(0, innerValueA.find_first_not_of(" \t\r\n"));
+        innerValueA.erase(innerValueA.find_last_not_of(" \t\r\n") + 1);
+
+        std::string cleanQuery = innerValueA;
+        cleanQuery.erase(std::remove_if(cleanQuery.begin(), cleanQuery.end(), [](unsigned char c) {
+            return c == ' ' || c == '\t' || c == '\r' || c == '\n';
+            }), cleanQuery.end());
+
+        // ===================================================================
+        // 🛡️ УМНАЯ МОНОЛИТНАЯ ЗАЩИТА: ПРОПУСКАЕМ СТРИНГИ, ФИЛЬТРУЕМ ЧИСЛА 🛡️
+        // ===================================================================
+        std::string tName = paramDesc[targetId].typeName;
+        bool isString = (tName.find("string") != std::string::npos || tName.find("char*") != std::string::npos);
+
+        if (!isString) {
+            // Если это число, бул, енам или агрегат, жестко проверяем на мусор и кириллицу
+            if (!IsLptNumericTextSecure(cleanQuery)) {
+                return; // Нашли невалидный мусор или кириллицу -> Полный БАЙПАС
+            }
+        }
+        // ===================================================================
+
+        if (paramDesc[targetId].isEnum) {
+            // Энамы пропускаем как есть, их UpdateParamValue разрулит по именам элементов
+        }
+        else if (cleanQuery.find('{') != std::string::npos) {
+            // АГРЕГАТЫ (Сборка без хардкода строк "color")
+            auto tokens = SplitArgs(cleanQuery);
+            if (!tokens.empty()) {
+                size_t bytesPerComponent = sizeof(paramDesc[targetId].value) / tokens.size();
+                bool isVar = false;
+
+                for (size_t i = 0; i < tokens.size(); ++i) {
+                    if (!IsWholeNumeric(tokens[i]) && !IsFloatNumeric(tokens[i])) { isVar = true; break; }
+
+                    if (bytesPerComponent == 1) {
+                        long long val = std::strtoll(tokens[i].c_str(), nullptr, 10);
+                        if (val < 0) val = 0; if (val > 255) val = 255;
+                        tokens[i] = std::to_string(val);
+                    }
+                    else if (bytesPerComponent == 4) {
+                        if (tokens[i].find('.') != std::string::npos || tokens[i].back() == 'f' || tokens[i].back() == 'F') {
+                            double val = std::strtod(tokens[i].c_str(), nullptr);
+                            if (val > (std::numeric_limits<float>::max)()) val = (std::numeric_limits<float>::max)();
+                            if (val < -(std::numeric_limits<float>::max)()) val = -(std::numeric_limits<float>::max)();
+                            tokens[i] = std::to_string(val) + "f";
+                        }
+                        else {
+                            long long val = std::strtoll(tokens[i].c_str(), nullptr, 10);
+                            if (val > INT_MAX) val = INT_MAX; if (val < INT_MIN) val = INT_MIN;
+                            tokens[i] = std::to_string(val);
+                        }
+                    }
+                }
+
+                if (isVar) return; // Уперлись в переменную -> Полный БАЙПАС агрегата
+
+                // ДИНАМИЧЕСКАЯ СБОРКА СТРОКИ: Вырезаем оригинальное имя типа до скобки {
+                std::string reconstructed = "";
+                size_t firstBrace = cleanQuery.find('{');
+                if (firstBrace != std::string::npos) {
+                    reconstructed = cleanQuery.substr(0, firstBrace + 1);
+                }
+
+                for (size_t i = 0; i < tokens.size(); ++i) {
+                    reconstructed += tokens[i] + (i == tokens.size() - 1 ? "}" : ",");
+                }
+                innerValueA = reconstructed;
+            }
+        }
+        else {
+            // АТОМАРНЫЕ ТИПЫ (int, float, double, bool)
+            if (paramDesc[targetId].typeName == "bool") {
+                // Булы пропускаем без числовых валидаций, так как мусор (trуе) уже отсечен на входе
+            }
+            else {
+                if (!IsWholeNumeric(cleanQuery) && !IsFloatNumeric(cleanQuery)) {
+                    return; // Имя переменной -> БАЙПАС
+                }
+
+                if (cleanQuery.find('.') != std::string::npos || cleanQuery.back() == 'f' || cleanQuery.back() == 'F') {
+                    double val = std::strtod(cleanQuery.c_str(), nullptr);
+                    if (val > (std::numeric_limits<float>::max)() || _isnan(val)) innerValueA = std::to_string((std::numeric_limits<float>::max)()) + "f";
+                    else innerValueA = cleanQuery;
+                }
+                else {
+                    long long val = std::strtoll(cleanQuery.c_str(), nullptr, 10);
+                    if (val > INT_MAX) innerValueA = std::to_string(INT_MAX);
+                    else if (val < INT_MIN) innerValueA = std::to_string(INT_MIN);
+                    else innerValueA = cleanQuery;
+                }
             }
         }
 
-    bool isMouseDragging();
+        UpdateParamValue(targetId, innerValueA);
+    }
+
+
+
 
     void vsEditor() {
 

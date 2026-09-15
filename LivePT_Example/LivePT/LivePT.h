@@ -12,6 +12,8 @@
 #include <cctype>
 #include <string_view>
 #include <array>
+#include <charconv>
+#include <limits>
 
 #include <atlbase.h>
 #include <tlhelp32.h>
