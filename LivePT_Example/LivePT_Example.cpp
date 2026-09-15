@@ -118,7 +118,7 @@ void UpdateSceneParams() {
         eval(x),
         eval(-59),
         eval(Primitive::ptype::circle),
-        eval(color{ 222, g, 21, color::tt::on }),
+        eval(color{ 222, 222, 222, color::tt::off }),
         eval(true)
     );
 }
