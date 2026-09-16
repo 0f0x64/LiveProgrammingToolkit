@@ -96,29 +96,29 @@ void UpdateSceneParams() {
     // ПЕРВЫЙ ПРИМИТИВ: Тестируем кастомный агрегат цвета в одном eval
     primitive[0].Set(
         eval(-116.2f),
-        eval(-18),
+        eval(-118),
         eval(Primitive::ptype::roundbox),
-        eval(color{210, 10, 15 }), // <--- Наш целевой тестовый вызов
+        eval(color{210, 10, 15 , color::tt::on }), // <--- Наш целевой тестовый вызов
         eval(true)
     );
 
     // ВТОРОЙ ПРИМИТИВ: Проверка обратной совместимости (другой цвет)
     primitive[1].Set(
-        eval(-6),
+        eval(-16),
         eval(-28),
         eval(Primitive::ptype::box),
-        eval(color{ 15, 110, 0 }),eval(true)
+        eval(color{ 215, 10, 0, color::tt::on }),eval(true)
     );
 
     // ТРЕТИЙ ПРИМИТИВ: Традиционный агрегатный синтаксис инициализации полей (снаружи eval)
     // Он гарантированно продолжит работать, так как внутри eval только примитивы
     unsigned char g = rand()%255;
-    int x = eval(110)+rand() % 25;
+    int x = eval(210)+rand() % 25;
     primitive[2].Set(
         eval(x),
-        eval(-59),
+        eval(-19),
         eval(Primitive::ptype::circle),
-        eval(color{ 222, 222, 222, color::tt::off }),
+        eval(color{ 22, 22, 222, color::tt::on }),
         eval(true)
     );
 }

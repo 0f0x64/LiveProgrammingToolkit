@@ -94,57 +94,135 @@ namespace LivePT {
         return tokens;
     }
 
-    // Универсальный парсер по умолчанию (безопасный для чисел, булов, текстовых энамов и любых агрегатов)
-    template <typename T>
-    inline bool DefaultTypeParser(const std::string& text, std::any& target) {
-        // Логика булов и энамов остается тривиальной
-        if constexpr (std::is_enum_v<T>) {
-            std::string cleanQuery = text;
-            // Отрезаем пространство имен энама, если оно прилетело ("Primitive::ptype::box" -> "box")
-            size_t lastCols = cleanQuery.rfind("::");
-            if (lastCols != std::string::npos) {
-                cleanQuery = cleanQuery.substr(lastCols + 2);
+    // 1. Конвейер одного токена под точный тип поля F
+    template <typename F>
+    inline void ProcessSingleField(const std::string& token, const F& liveValue, F& outField) {
+        if constexpr (std::is_enum_v<F>) {
+            std::string cleanEnum = token;
+            size_t lastCols = cleanEnum.rfind("::");
+            if (lastCols != std::string::npos) cleanEnum = cleanEnum.substr(lastCols + 2);
+
+            auto enumDesc = ReflectedEnumInfo<F>();
+            for (const auto& elem : enumDesc.elements) {
+                if (elem.name == cleanEnum) {
+                    outField = static_cast<F>(elem.value);
+                    return;
+                }
+            }
+            int val;
+            if (std::from_chars(token.data(), token.data() + token.size(), val).ec == std::errc()) {
+                outField = static_cast<F>(val); return;
+            }
+            outField = liveValue;
+        }
+        else if constexpr (std::is_same_v<F, bool>) {
+            if (token == "true" || token == "1") { outField = true; return; }
+            if (token == "false" || token == "0") { outField = false; return; }
+            outField = liveValue;
+        }
+        else if constexpr (std::is_arithmetic_v<F>) {
+            std::string parseStr = token;
+            if constexpr (std::is_floating_point_v<F>) {
+                if (!parseStr.empty() && (parseStr.back() == 'f' || parseStr.back() == 'F')) parseStr.pop_back();
             }
 
-            // Генерируем compile-time карту имен для этого типа энама T
-            auto enumDesc = ReflectedEnumInfo<T>();
+            F val;
+            auto [ptr, ec] = std::from_chars(parseStr.data(), parseStr.data() + parseStr.size(), val);
+            if (ec == std::errc::invalid_argument) {
+                outField = liveValue;
+                return;
+            }
+            if (ec == std::errc::result_out_of_range) {
+                val = (parseStr == "-") ? (std::numeric_limits<F>::min)() : (std::numeric_limits<F>::max)();
+            }
+            outField = val;
+        }
+    }
 
-            // Ищем текстовое совпадение по элементам
-            for (const auto& elem : enumDesc.elements) {
-                if (elem.name == cleanQuery) {
-                    target = static_cast<T>(elem.value);
-                    return true;
+    // УНИВЕРСАЛЬНЫЕ ГЛОБАЛЬНЫЕ ТИПЫ ДЛЯ ЧЕСТНОЙ COMPILE-TIME ИНСПЕКЦИИ АГРЕГАТОВ
+    struct AnyField { template <typename U> operator U() const; };
+
+    // Глобальный, плоский compile-time счетчик количества полей без вложенных лямбд и requires!
+    // Полностью устраняет ошибки C2951 и C1506 в MSVC
+    template <typename T, size_t... Is>
+    constexpr auto IsAssignableImpl(std::index_sequence<Is...>) -> decltype(T{ (Is, AnyField{})..., AnyField{} }, std::true_type{}) { return {}; }
+
+    template <typename T, size_t... Is>
+    constexpr std::false_type IsAssignableImpl(...) { return {}; }
+
+    template <typename T, size_t N = 0>
+    constexpr size_t DetectFieldsCount() {
+        if constexpr (decltype(IsAssignableImpl<T>(std::make_index_sequence<N>{}))::value) {
+            return DetectFieldsCount<T, N + 1>();
+        }
+        else {
+            return N;
+        }
+    }
+
+    // Вспомогательный прокси-насос полей, вынесенный на уровень namespace
+    template <typename T>
+    struct AggregateFieldPumper {
+        size_t idx;
+        const std::vector<std::string>& tks;
+        const unsigned char* livePtr;
+        mutable size_t byteOffset;
+
+        template <typename F>
+        operator F() const {
+            F result{};
+
+            // alignof(F) идеально находит скрытые padding-байты MSVC!
+            size_t alignment = alignof(F);
+            byteOffset = (byteOffset + alignment - 1) & ~(alignment - 1);
+
+            if (idx < tks.size() && byteOffset + sizeof(F) <= sizeof(T)) {
+                F liveFieldValue;
+                std::memcpy(&liveFieldValue, livePtr + byteOffset, sizeof(F));
+
+                ProcessSingleField(tks[idx], liveFieldValue, result);
+            }
+            else {
+                if (byteOffset + sizeof(F) <= sizeof(T)) {
+                    std::memcpy(&result, livePtr + byteOffset, sizeof(F));
                 }
             }
 
-            // Фоллбэк: если пользователь в VS ввел энам чистой цифрой (например, "1")
-            std::stringstream ss(cleanQuery);
-            int parsedValue;
-            if (ss >> parsedValue) {
-                target = static_cast<T>(parsedValue);
-                return true;
+            byteOffset += sizeof(F);
+            return result;
+        }
+    };
+
+    // Универсальный распаковщик структуры на базе index_sequence
+    template <typename T, size_t... Is>
+    inline T ReconstructAggregate(const std::vector<std::string>& tokens, const unsigned char* liveBytesPtr, std::index_sequence<Is...>) {
+        size_t offsetTracker = 0;
+        return T{ AggregateFieldPumper<T>{ Is, tokens, liveBytesPtr, offsetTracker }... };
+    }
+
+    // Главный, полностью обобщенный DefaultTypeParser
+    template <typename T>
+    inline bool DefaultTypeParser(const std::string& text, std::any& target) {
+        if constexpr (std::is_enum_v<T>) {
+            std::string cleanQuery = text;
+            size_t lastCols = cleanQuery.rfind("::");
+            if (lastCols != std::string::npos) cleanQuery = cleanQuery.substr(lastCols + 2);
+
+            auto enumDesc = ReflectedEnumInfo<T>();
+            for (const auto& elem : enumDesc.elements) {
+                if (elem.name == cleanQuery) { target = static_cast<T>(elem.value); return true; }
             }
+            std::stringstream ss(cleanQuery); int parsedValue;
+            if (ss >> parsedValue) { target = static_cast<T>(parsedValue); return true; }
             return false;
         }
         else if constexpr (std::is_same_v<T, bool>) {
             std::string str = text;
             std::transform(str.begin(), str.end(), str.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-
-            if (str == "true" || str == "1") {
-                target = true;
-                return true;
-            }
-            if (str == "false" || str == "0") {
-                target = false;
-                return true;
-            }
-
-            // ЖЕЛЕЗОБЕТОННАЯ ЗАЩИТА: Если в буле написано что-то другое (опечатка, мусор, любые буквы),
-            // мы ПРИНУДИТЕЛЬНО гасим параметр в false и возвращаем true, чтобы заблокировать байпас!
-            target = false;
-            return true;
+            if (str == "true" || str == "1") { target = true; return true; }
+            if (str == "false" || str == "0") { target = false; return true; }
+            target = false; return true;
         }
-        // 1. АВТО-БАЙПАС АТОМАРНЫХ ЧИСЕЛ (int, float, double)
         else if constexpr (std::is_arithmetic_v<T>) {
             std::string parseStr = text;
             if constexpr (std::is_floating_point_v<T>) {
@@ -153,78 +231,29 @@ namespace LivePT {
 
             T val;
             auto [ptr, ec] = std::from_chars(parseStr.data(), parseStr.data() + parseStr.size(), val);
-
-            if (ec == std::errc::invalid_argument) return false; // Буквы переменной -> Полный БАЙПАС (вернем живое значение)
+            if (ec == std::errc::invalid_argument) return false;
             if (ec == std::errc::result_out_of_range) {
-                val = (parseStr[0] == '-') ? (std::numeric_limits<T>::min)() : (std::numeric_limits<T>::max)();
+                val = (parseStr == "-") ? (std::numeric_limits<T>::min)() : (std::numeric_limits<T>::max)();
             }
             target = val;
             return true;
         }
-        // 2. АВТО-БАЙПАС СТРУКТУР ЛЮБОГО РАЗМЕРА (color, Vec3, Matrix)
         else if constexpr (std::is_aggregate_v<T>) {
             auto tokens = SplitArgsFromText(text);
             if (tokens.empty()) return false;
 
-            T obj = std::any_cast<T>(target);
-            unsigned char* bytePtr = reinterpret_cast<unsigned char*>(&obj);
+            T liveObj = std::any_cast<T>(target);
+            const unsigned char* liveBytesPtr = reinterpret_cast<const unsigned char*>(&liveObj);
 
-            // Задаем базовый шаг смещения по умолчанию на основе пропорций структуры
-            size_t defaultStep = (sizeof(T) / tokens.size() == 0) ? 1 : (sizeof(T) / tokens.size());
-            size_t currentOffset = 0;
-            bool success = true;
+            // Идеальный плоский compile-time счетчик полей без requires
+            constexpr size_t fieldsCount = DetectFieldsCount<T>();
 
-            for (size_t i = 0; i < tokens.size() && currentOffset < sizeof(T); ++i) {
-                std::string t = tokens[i];
-
-                // 1. ОПРЕДЕЛЯЕМ ТИП КОМПОНЕНТА ПО СИНТАКСИСУ СТРОКИ И СМЕЩАЕМ БАЙТЫ ДИНАМИЧЕСКИ
-                if (t.find('.') != std::string::npos || t.back() == 'f' || t.back() == 'F') {
-                    // Это гарантированно float поле (4 байта)
-                    if (currentOffset + 4 <= sizeof(T)) {
-                        if (!t.empty() && (t.back() == 'f' || t.back() == 'F')) t.pop_back();
-                        float val;
-                        auto [ptr, ec] = std::from_chars(t.data(), t.data() + t.size(), val);
-                        if (ec == std::errc()) {
-                            if (ec == std::errc::result_out_of_range) val = (t == "-") ? -(std::numeric_limits<float>::max)() : (std::numeric_limits<float>::max)();
-                            std::memcpy(bytePtr + currentOffset, &val, 4);
-                        }
-                    }
-                    currentOffset += 4; // Шагаем на размер float
-                }
-                else {
-                    // Это либо целое число (int/char), либо вложенный энам/переменная (color::tt::on)
-                    int val;
-                    auto [ptr, ec] = std::from_chars(t.data(), t.data() + t.size(), val);
-
-                    if (ec == std::errc()) {
-                        // Токен успешно распарсился как число! Смотрим, куда его положить
-                        if (defaultStep == 1 && currentOffset + 1 <= sizeof(T)) {
-                            if (val < 0) val = 0; if (val > 255) val = 255;
-                            bytePtr[currentOffset] = static_cast<unsigned char>(val);
-                        }
-                        else if (defaultStep == 4 && currentOffset + 4 <= sizeof(T)) {
-                            if (ec == std::errc::result_out_of_range) val = (t == "-") ? INT_MIN : INT_MAX;
-                            std::memcpy(bytePtr + currentOffset, &val, 4);
-                        }
-                        currentOffset += defaultStep;
-                    }
-                    else {
-                        // УМНЫЙ БАЙПАС ДЛЯ ВЛОЖЕННЫХ ЭНАМОВ И ПЕРЕМЕННЫХ (color::tt::on или g):
-                        // std::from_chars выдал ошибку invalid_argument. Мы просто пропускаем этот кусок памяти,
-                        // сохраняя в нем нативное значение из С++ кода игры, и смещаем указатель дальше!
-                        currentOffset += defaultStep;
-                    }
-                }
-            }
-
-            target = obj;
+            target = ReconstructAggregate<T>(tokens, liveBytesPtr, std::make_index_sequence<fieldsCount>{});
             return true;
         }
         return false;
     }
 
-
-    
 }
 namespace LivePT {
 
@@ -293,10 +322,17 @@ namespace LivePT {
             return EnumTypeDesc{ false };
         }
         else {
-            EnumTypeDesc desc;
-            desc.isEnum = true;
-            ExpandEnumIndices<E>(desc, std::make_integer_sequence<int, MAX_SCAN_RANGE>{});
-            return desc;
+            // МАГИЯ СТАТИЧЕСКОГО КЭША: Вычисляется ровно ОДИН раз за всю жизнь программы!
+            // В последующих кадрах процессор просто мгновенно возвращает готовую ссылку,
+            // снижая нагрузку на CPU до абсолютного нуля (0% оверхеда в игровом цикле).
+            static const EnumTypeDesc cachedDesc = []() {
+                EnumTypeDesc desc;
+                desc.isEnum = true;
+                ExpandEnumIndices<E>(desc, std::make_integer_sequence<int, MAX_SCAN_RANGE>{});
+                return desc;
+                }();
+
+            return cachedDesc;
         }
     }
 }
@@ -458,7 +494,6 @@ namespace LivePT {
 
 }
 
-// Вариативный макрос, корректно собирающий __VA_ARGS__ при наличии запятых во входящем выражении
 #define eval(...) ( \
     LivePT::EvalSyntaxShield< \
         decltype(__VA_ARGS__), \
