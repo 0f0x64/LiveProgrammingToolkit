@@ -98,7 +98,11 @@ void UpdateSceneParams() {
         eval(-116.2f),
         eval(-118),
         eval(Primitive::ptype::roundbox),
-        eval(color{210, 10, 15 , color::tt::on }), // <--- Наш целевой тестовый вызов
+        eval(color{
+            .r = 210, 
+            .g = 10,
+            .b = 15 ,
+            .ttt  = color::tt::on }), // <--- Наш целевой тестовый вызов
         eval(true)
     );
 
@@ -107,7 +111,7 @@ void UpdateSceneParams() {
         eval(-16),
         eval(-28),
         eval(Primitive::ptype::box),
-        eval(color{ 215, 10, 0, color::tt::on }),eval(true)
+        eval(color{ 225, 10, 0, color::tt::on }),eval(true)
     );
 
     // ТРЕТИЙ ПРИМИТИВ: Традиционный агрегатный синтаксис инициализации полей (снаружи eval)

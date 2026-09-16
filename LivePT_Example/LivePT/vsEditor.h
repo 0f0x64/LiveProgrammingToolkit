@@ -374,44 +374,77 @@ namespace LivePT {
             return static_cast<long>(visualCol) + 1;
         }
 
-    inline bool CheckCursorInsideEval(const std::wstring& fileText, long line, long column, size_t& outEvalIdxInLine, size_t& outTargetEvalAbsolutePos) {
+    // Изменено: long& line (передаем по ссылке, чтобы вернуть строку начала макроса!)
+    inline bool CheckCursorInsideEval(const std::wstring& fileText, long& line, long column, size_t& outEvalIdxInLine, size_t& outTargetEvalAbsolutePos) 
+    {
+
         size_t lineStartOffset = GetLineStartOffset(fileText, line);
         size_t lineEndOffset = fileText.find(L'\n', lineStartOffset);
         if (lineEndOffset == std::wstring::npos) lineEndOffset = fileText.length();
 
-        std::wstring wholeLineText = fileText.substr(lineStartOffset, lineEndOffset - lineStartOffset);
-
-        // Переводим 1-based физический LineCharOffset в 0-based индекс строки
         long currentCursorCharIdx = column - 1;
+        size_t absoluteCursorPos = lineStartOffset + currentCursorCharIdx;
 
-        size_t posInLine = 0;
-        size_t validEvalCount = 0;
+        // ИСПРАВЛЕНО: Бежим по файлу НАЗАД от позиции курсора в поисках ближайшего слова "eval",
+        // которое открыло текущий многострочный макрос!
+        size_t searchPos = absoluteCursorPos;
+        if (searchPos >= fileText.length()) searchPos = fileText.length() - 1;
 
-        size_t bestEvalPos = std::wstring::npos;
-        size_t bestEvalIdx = std::wstring::npos;
+        while (searchPos > 0) {
+            searchPos = fileText.rfind(L"eval", searchPos);
+            if (searchPos == std::wstring::npos) break;
 
-        while ((posInLine = wholeLineText.find(L"eval", posInLine)) != std::wstring::npos) {
-            bool validLeft = (posInLine == 0 || !iswalnum(wholeLineText[posInLine - 1]) && wholeLineText[posInLine - 1] != L'_');
-            bool validRight = (posInLine + 4 >= wholeLineText.length() || !iswalnum(wholeLineText[posInLine + 4]) && wholeLineText[posInLine + 4] != L'_');
+            // Проверяем честные границы слова "eval"
+            bool validLeft = (searchPos == 0 || !iswalnum(fileText[searchPos - 1]) && fileText[searchPos - 1] != L'_');
+            bool validRight = (searchPos + 4 >= fileText.length() || !iswalnum(fileText[searchPos + 4]) && fileText[searchPos + 4] != L'_');
 
             if (validLeft && validRight) {
-                // Если начало слова "eval" находится левее или прямо под курсором
-                if (static_cast<long>(posInLine) <= currentCursorCharIdx) {
-                    bestEvalPos = posInLine;
-                    bestEvalIdx = validEvalCount;
-                }
-                validEvalCount++;
-            }
-            posInLine += 4;
-        }
+                // Нашли потенциальный родительский eval! Проверяем, закрылся ли он до курсора.
+                size_t openBracket = fileText.find(L'(', searchPos);
+                if (openBracket != std::wstring::npos && openBracket < absoluteCursorPos) {
+                    size_t closeBracket = FindCloseBracket(fileText, openBracket);
 
-        if (bestEvalPos != std::wstring::npos) {
-            outEvalIdxInLine = bestEvalIdx;
-            outTargetEvalAbsolutePos = lineStartOffset + bestEvalPos;
-            return true;
+                    // Если закрывающая скобка находится ДАЛЬШЕ курсора (или еще не поставлена),
+                    // значит курсор гарантированно находится ВНУТРИ этого многострочного макроса!
+                    if (closeBracket == std::wstring::npos || closeBracket >= absoluteCursorPos) {
+
+                        // Вычисляем порядковый индекс этого макроса на его родной строке для GetParamIndexByTextOrder
+                        size_t evalLineStart = GetLineStartOffset(fileText, line); // Для простоты сбросим на строку макроса
+                        long evalLineIdx = 1;
+                        size_t tOffset = 0;
+                        while (tOffset < searchPos) {
+                            size_t nextNL = fileText.find(L'\n', tOffset);
+                            if (nextNL != std::wstring::npos && nextNL < searchPos) { tOffset = nextNL + 1; evalLineIdx++; }
+                            else break;
+                        }
+
+                        size_t posInLine = 0;
+                        size_t evalCount = 0;
+                        std::wstring evalLineText = fileText.substr(tOffset, fileText.find(L'\n', tOffset) - tOffset);
+                        while ((posInLine = evalLineText.find(L"eval", posInLine)) != std::wstring::npos) {
+                            if (tOffset + posInLine == searchPos) {
+                                outEvalIdxInLine = evalCount;
+                                break;
+                            }
+                            evalCount++;
+                            posInLine += 4;
+                        }
+
+                        outTargetEvalAbsolutePos = searchPos;
+
+                        // ИСПРАВЛЕНО: Прямо перезаписываем входящую переменную line строкой фактического начала макроса!
+                        line = evalLineIdx;
+                        return true;
+                    }
+                }
+            }
+
+            if (searchPos == 0) break;
+            searchPos--;
         }
         return false;
     }
+
 
     bool isMouseDragging();
 
@@ -460,20 +493,19 @@ namespace LivePT {
         if (str.empty()) return false;
         for (char c : str) {
             unsigned char uc = static_cast<unsigned char>(c);
-
-            // Если вышли за ASCII (русские буквы в числах, булах и енамах)
             if (uc > 127) return false;
 
-            // Разрешенные символы для конвейера чисел
+            // ИСПРАВЛЕНО: Добавлен знак '=' в белый список для поддержки назначенных инициализаторов C++20
             bool isValidChar = (uc >= '0' && uc <= '9') ||
                 (uc >= 'a' && uc <= 'z') ||
                 (uc >= 'A' && uc <= 'Z') ||
                 uc == '_' || uc == '.' || uc == '-' ||
-                uc == ',' || uc == ':' || uc == '{' || uc == '}';
+                uc == ',' || uc == ':' || uc == '{' || uc == '}' || uc == '=';
             if (!isValidChar) return false;
         }
         return true;
     }
+
 
 
     inline void ParseAndStoreParamValue(const std::wstring& fileText, const std::string& currentActiveFile, long line, size_t evalIdxInLine, size_t targetEvalAbsolutePos) {

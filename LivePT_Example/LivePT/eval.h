@@ -78,7 +78,6 @@ namespace LivePT {
 
 namespace LivePT {
 
-    // Вспомогательный метод разбиения строки аргументов "color{10,20,30}" -> ["10","20","30"]
     inline std::vector<std::string> SplitArgsFromText(const std::string& text) {
         std::vector<std::string> tokens;
         size_t start = text.find('{');
@@ -88,11 +87,29 @@ namespace LivePT {
         std::stringstream ss(text.substr(start + 1, end - start - 1));
         std::string token;
         while (std::getline(ss, token, ',')) {
+            // Очищаем токен от мусора и пробелов по краям
+            token.erase(0, token.find_first_not_of(" \t\r\n"));
+            if (!token.empty()) token.erase(token.find_last_not_of(" \t\r\n") + 1);
+
+            // ПОЛНАЯ ПОДДЕРЖКА НАЗНАЧЕННЫХ ИНИЦИАЛИЗАТОРОВ C++20 (.r = 210 или .g=10)
+            // Если внутри токена есть знак равенства '=', значит перед ним 100% сидит имя поля!
+            size_t eqPos = token.find('=');
+            if (eqPos != std::string::npos) {
+                // Отрезаем всё, что находится левее знака '=' включительно, оставляя только голое значение!
+                token = token.substr(eqPos + 1);
+
+                // Финально зачищаем оставшееся числовое или энам-значение от пробелов
+                token.erase(0, token.find_first_not_of(" \t\r\n"));
+                if (!token.empty()) token.erase(token.find_last_not_of(" \t\r\n") + 1);
+            }
+
             if (!token.empty() && (token.back() == 'f' || token.back() == 'F')) token.pop_back();
             tokens.push_back(token);
         }
         return tokens;
     }
+
+
 
     // 1. Конвейер одного токена под точный тип поля F
     template <typename F>
