@@ -508,7 +508,6 @@ namespace LivePT {
     
 
     inline void ParseAndStoreParamValue(const std::wstring& fileText, const std::string& currentActiveFile, long line, size_t evalIdxInLine, size_t targetEvalAbsolutePos) {
-        // Передаем строго чистый, точный targetEvalAbsolutePos начала макроса
         int counterID = GetParamIndexByAbsoluteOffset(fileText, targetEvalAbsolutePos);
         if (counterID == -1) return;
 
@@ -525,6 +524,7 @@ namespace LivePT {
             innerValueA.erase(0, innerValueA.find_first_not_of(" \t\r\n"));
             innerValueA.erase(innerValueA.find_last_not_of(" \t\r\n") + 1);
 
+            // АВТОМАТИЧЕСКАЯ РАСПАКОВКА СТРУКТУР И АГРЕГАТОВ {...}
             size_t openBrace = innerValueA.find('{');
             if (openBrace != std::string::npos) {
                 size_t closeBrace = innerValueA.rfind('}');
@@ -535,8 +535,14 @@ namespace LivePT {
                     while (std::getline(ss, token, ',')) {
                         size_t eqPos = token.find('=');
                         std::string rawValue = (eqPos != std::string::npos) ? token.substr(eqPos + 1) : token;
+
+                        // Чистим литерал поля от мусора
                         rawValue.erase(0, rawValue.find_first_not_of(" \t\r\n"));
                         rawValue.erase(rawValue.find_last_not_of(" \t\r\n") + 1);
+
+                        // Удаляем префиксы областей видимости типа "Primitive::ptype::" внутри полей
+                        size_t tokenCols = rawValue.rfind("::");
+                        if (tokenCols != std::string::npos) rawValue = rawValue.substr(tokenCols + 2);
 
                         if (!rawValue.empty()) {
                             if (!cleanValuesStr.empty()) cleanValuesStr += " ";
@@ -548,6 +554,12 @@ namespace LivePT {
                 }
             }
 
+            // ОЧИСТКА БАЗОВЫХ ТИПОВ: Удаляем префиксы "::" (превращаем "Primitive::ptype::box" -> "box")
+            size_t lastCols = innerValueA.rfind("::");
+            if (lastCols != std::string::npos) {
+                innerValueA = innerValueA.substr(lastCols + 2);
+            }
+
             UpdateParamValue(targetId, innerValueA);
         }
     }
@@ -555,7 +567,6 @@ namespace LivePT {
     bool isMouseDragging();
 
     void vsEditor() {
-        //if (isMouseDragging()) return;
         if (!initVsEditor()) return;
 
         VARIANT vtActiveDoc; VariantInit(&vtActiveDoc);
@@ -569,36 +580,26 @@ namespace LivePT {
 
         long absoluteCharOffset1Based = 0;
         if (!GetCursorAbsoluteOffset(pActiveDoc, absoluteCharOffset1Based)) { VariantClear(&vtActiveDoc); return; }
-
-        // Переводим в 0-based логический индекс символа Visual Studio
         size_t cursorAbsoluteOffset = static_cast<size_t>(absoluteCharOffset1Based) - 1;
 
         std::wstring rawFileText = DownloadDocumentText(pActiveDoc);
         if (rawFileText.empty()) { VariantClear(&vtActiveDoc); return; }
 
-        // СИНХРОНИЗАЦИЯ СМЕЩЕНИЙ: Очищаем сырой текст от \r, приводя его к логической длине буфера DTE.
-        // Теперь каждый перевод строки — это строго 1 символ, и индексы std::wstring совпадут с DTE идеально!
-        std::wstring fileText = L"";
-        fileText.reserve(rawFileText.length());
-        for (wchar_t ch : rawFileText) {
-            if (ch != L'\r') fileText.push_back(ch);
-        }
+        // СИНХРОНИЗАЦИЯ: убираем \r, чтобы AbsoluteCharOffset из DTE совпал с индексами std::wstring
+        std::wstring fileText = L""; fileText.reserve(rawFileText.length());
+        for (wchar_t ch : rawFileText) { if (ch != L'\r') fileText.push_back(ch); }
 
-        size_t evalIdxInLine = 0;
-        size_t targetEvalAbsolutePos = std::wstring::npos;
-        long line = 0;
+        size_t evalIdxInLine = 0; size_t targetEvalAbsolutePos = std::wstring::npos; long line = 0;
 
-        // Вызываем пуленепробиваемый лексер на идеально синхронизированных смещениях
+        // Передаем управление вашему отлаженному лексеру на смещениях
         if (!IsOffsetInsideEval(fileText, cursorAbsoluteOffset, evalIdxInLine, targetEvalAbsolutePos, line)) {
-            VariantClear(&vtActiveDoc);
-            return;
+            VariantClear(&vtActiveDoc); return;
         }
 
-        // Передаем очищенный буфер и точный targetEvalAbsolutePos в сборщик параметров
         ParseAndStoreParamValue(fileText, currentActiveFile, line, evalIdxInLine, targetEvalAbsolutePos);
-
         VariantClear(&vtActiveDoc);
     }
+
 
     
 }
