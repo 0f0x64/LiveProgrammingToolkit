@@ -12,6 +12,8 @@
 #include <cctype>
 #include <string_view>
 #include <array>
+#include <any>
+#include <functional>
 
 #include <atlbase.h>
 #include <tlhelp32.h>
@@ -26,7 +28,9 @@ namespace LivePT {
 
     #include "eval.h"
     #include "vsEditor.h"
+#if LivePT_WheelEditMode
     #include "liveWheelEdit.h"
+#endif
 
 namespace LivePT {
 

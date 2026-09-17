@@ -423,7 +423,7 @@ namespace LivePT {
     bool isMouseDragging();
 
     void vsEditor() {
-            if (isMouseDragging()) return;
+            //if (isMouseDragging()) return;
             if (!initVsEditor()) return;
 
 
