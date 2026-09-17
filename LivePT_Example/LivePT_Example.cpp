@@ -9,64 +9,52 @@
 #define TIMER_ID 1
 
 //simple class for demo purposes
+#pragma once
+#include <windows.h>
+
 class Primitive {
 public:
     enum class ptype { circle, box, roundbox };
 
-    // Вложенная структура цвета, спроектированная как чистый агрегат для авто-парсинга
+    // АДСКАЯ ПЕРЕМЕШКА ТИПОВ ДЛЯ ПРОВЕРКИ ВЫРАВНИВАНИЯ MSVC:
     struct Color4 {
-        enum class show_type { none, solid, gradient };
+        enum class show_type : int { none = 0, solid = 1, gradient = 2 };
+        enum class blending_type : int { normal = 0, additive = 1 };
 
-        show_type show = show_type::solid;
-        int r = 0;
-        int g = 0;
-        int b = 0;
+        unsigned char r = 0;       // 1 байт
+        show_type show = show_type::solid; // 4 байта (MSVC вставит 3 байта padding ПЕРЕД show!)
+        unsigned char g = 0;       // 1 байт
+        blending_type blend = blending_type::normal; // 4 байта (MSVC вставит 3 байта padding ПЕРЕД blend!)
+        unsigned char b = 0;       // 1 байт
+        // В конце MSVC докинет еще 3 байта padding, чтобы весь размер Color4 делился на 4!
     };
 
     int x = 0;
     int y = 0;
     ptype type = ptype::circle;
     bool show = true;
-    Color4 color; // Добавленное поле пользовательского агрегатного типа
+    Color4 color; // Наша перемешанная структура
 
-    // Унифицированные сеттеры, расширенные поддержкой структуры Color4
     void Set(int xPos, int yPos, ptype form, bool showObj, Color4 col) {
         *this = { xPos, yPos, form, showObj, col };
     }
     void Set(const Primitive& in) { *this = in; }
 
-    // Полностью инкапсулированный метод рендеринга с учетом кастомных цветов GDI
     template <size_t N>
     static void DrawScene(HWND hwnd, HDC hdc, const Primitive(&arr)[N]) {
-        RECT r;
-        GetClientRect(hwnd, &r);
+        RECT r; GetClientRect(hwnd, &r);
         int w = r.right - r.left, h = r.bottom - r.top;
-
-        // Инициализация двойной буферизации
         HDC memDC = CreateCompatibleDC(hdc);
         HBITMAP memBM = CreateCompatibleBitmap(hdc, w, h);
         HBITMAP oldBM = (HBITMAP)SelectObject(memDC, memBM);
-
-        // Очистка фона
         FillRect(memDC, &r, (HBRUSH)(COLOR_WINDOW + 1));
 
-        // Цикл рендеринга всех примитивов в массиве
         for (const auto& p : arr) {
             if (!p.show) continue;
-
-            int posX = (w / 2) + p.x;
-            int posY = (h / 2) + p.y;
-            int size = 20; // Радиус фигуры
-
-            // Динамическое создание кисти на основе полей вложенной структуры Color4
+            int posX = (w / 2) + p.x; int posY = (h / 2) + p.y; int size = 20;
             HBRUSH hBrush = nullptr;
-            if (p.color.show == Color4::show_type::none) {
-                hBrush = (HBRUSH)GetStockObject(NULL_BRUSH);
-            }
-            else {
-                // Для solid и gradient (в качестве базового цвета) берем пользовательские RGB
-                hBrush = CreateSolidBrush(RGB(p.color.r, p.color.g, p.color.b));
-            }
+            if (p.color.show == Color4::show_type::none) hBrush = (HBRUSH)GetStockObject(NULL_BRUSH);
+            else hBrush = CreateSolidBrush(RGB(p.color.r, p.color.g, p.color.b));
             HBRUSH hOldBrush = (HBRUSH)SelectObject(memDC, hBrush);
 
             switch (p.type) {
@@ -74,46 +62,53 @@ public:
             case ptype::box:      Rectangle(memDC, posX - size, posY - size, posX + size, posY + size); break;
             case ptype::roundbox: RoundRect(memDC, posX - size, posY - size, posX + size, posY + size, 25, 25); break;
             }
-
-            SelectObject(memDC, hOldBrush);
-            if (p.color.show != Color4::show_type::none) {
-                DeleteObject(hBrush);
-            }
+            SelectObject(memDC, hOldBrush); if (p.color.show != Color4::show_type::none) DeleteObject(hBrush);
         }
-
-        // Вывод буфера на экран и освобождение ресурсов GDI
         BitBlt(hdc, 0, 0, w, h, memDC, 0, 0, SRCCOPY);
-        SelectObject(memDC, oldBM);
-        DeleteObject(memBM);
-        DeleteDC(memDC);
+        SelectObject(memDC, oldBM); DeleteObject(memBM); DeleteDC(memDC);
     }
 };
 
-// Глобальный массив экземпляров примитивов
-Primitive primitive[3];
+inline Primitive primitive[3];
+
 
 // =================== USER SPACE ===================
 
 void UpdateSceneParams() {
 
-    // 1. Плоский вызов скаляров (базовый тест)
-    primitive[0].Set(eval(-116), eval(-118), eval(Primitive::ptype::box), eval(true), eval(Primitive::Color4{ Primitive::Color4::show_type::solid, 220, 220, 25 }));
+    // Сценарий 1: Навешивание eval на отдельные скалярные аргументы
+    primitive[0].Set(
+        eval(-215),
+        eval(-100),
+        eval(Primitive::ptype::box),
+        eval(true),
+        eval(Primitive::Color4{ 220, Primitive::Color4::show_type::solid, 0, Primitive::Color4::blending_type::normal, 0 })
+    );
 
-    // 2. Тест с плавающей точкой
-    primitive[1].Set(eval(-116), eval(-28), eval(Primitive::ptype::roundbox), eval(true), eval(Primitive::Color4{ Primitive::Color4::show_type::solid, 0, 20, 15 }));
+    // Сценарий 2: Тест с вещественными суффиксами и неявным кастингом типов на стороне хоста
+    primitive[1].Set(
+        eval(-110.45f),
+        eval(-10.99f),
+        eval(Primitive::ptype::roundbox),
+        eval(true),
+        eval(Primitive::Color4{ 0, Primitive::Color4::show_type::solid, 220, Primitive::Color4::blending_type::normal, 30 })
+    );
 
-    // 3. Агрегатная инициализация всего примитива И вложенного цвета под раздельными eval!
+    // Сценарий 3: Агрегатная инициализация всего разнородного примитива 
+    // И вложенного асимметричного цвета под раздельными макросами eval
     primitive[2].Set(Primitive{
-        .x = eval(-191),
-        .y = eval(36),
+        .x = eval(0),
+        .y = eval(100),
         .type = eval(Primitive::ptype::circle),
         .show = eval(true),
-        // ЗАГОНЯЕМ ВЕСЬ ЦВЕТ ПОД СВОЙ EVAL — ТЕПЕРЬ ЭТО НЕЗАВИСИМЫЙ АГРЕГАТНЫЙ ПАРАМЕТР!
+        // ЦВЕТ ПОЛНОСТЬЮ ПОД СВОИМ EVAL: MSVC рассчитает размеры и типы полей,
+        // а рекурсивный AutoMapper в eval.h разложит токены, полностью проигнорировав пустые байты выравнивания!
         .color = eval(Primitive::Color4{
+            .r = 0,
             .show = Primitive::Color4::show_type::solid,
-            .r = 225,
-            .g = 20,
-            .b = 0
+            .g = 0,
+            .blend = Primitive::Color4::blending_type::normal,
+            .b = 220
         })
         });
 }
