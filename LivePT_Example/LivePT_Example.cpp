@@ -21,8 +21,15 @@ public:
     ptype type = ptype::circle;
     bool show = true;
 
+    // ОТДЕЛЬНЫЕ КОМПОНЕНТЫ ЦВЕТА (По умолчанию — наш красивый синий: 0, 120, 215)
+    unsigned char r = 0;
+    unsigned char g = 120;
+    unsigned char b = 215;
+
     // Unified setters using C++20 aggregate initialization rules
-    void Set(int xPos, int yPos, ptype form, bool showObj) { *this = { xPos, yPos, form, showObj }; }
+    void Set(int xPos, int yPos, ptype form, bool showObj, unsigned char red = 0, unsigned char green = 120, unsigned char blue = 215) {
+        *this = { xPos, yPos, form, showObj, red, green, blue };
+    }
     void Set(const Primitive& in) { *this = in; }
 
     // Fully encapsulated rendering method (accepts any array size)
@@ -37,10 +44,8 @@ public:
         HBITMAP memBM = CreateCompatibleBitmap(hdc, w, h);
         HBITMAP oldBM = (HBITMAP)SelectObject(memDC, memBM);
 
-        // Clear background and prepare brushes
+        // Clear background
         FillRect(memDC, &r, (HBRUSH)(COLOR_WINDOW + 1));
-        HBRUSH hBrush = CreateSolidBrush(RGB(0, 120, 215));
-        HBRUSH hOldBrush = (HBRUSH)SelectObject(memDC, hBrush);
 
         // Render loop for all visible primitives in the array
         for (const auto& p : arr) {
@@ -50,22 +55,29 @@ public:
             int posY = (h / 2) + p.y;
             int size = 20; // shape radius
 
+            // ДИНАМИЧЕСКИЙ ЦВЕТ: Передаем раздельные байты r, g, b в системный макрос Win32
+            HBRUSH hBrush = CreateSolidBrush(RGB(p.r, p.g, p.b));
+            HBRUSH hOldBrush = (HBRUSH)SelectObject(memDC, hBrush);
+
             switch (p.type) {
             case ptype::circle:   Ellipse(memDC, posX - size, posY - size, posX + size, posY + size); break;
             case ptype::box:      Rectangle(memDC, posX - size, posY - size, posX + size, posY + size); break;
             case ptype::roundbox: RoundRect(memDC, posX - size, posY - size, posX + size, posY + size, 25, 25); break;
             }
+
+            // Освобождаем ресурсы GDI сразу после отрисовки фигуры
+            SelectObject(memDC, hOldBrush);
+            DeleteObject(hBrush);
         }
 
         // Blit buffer to screen and release GDI resources
         BitBlt(hdc, 0, 0, w, h, memDC, 0, 0, SRCCOPY);
-        SelectObject(memDC, hOldBrush);
-        DeleteObject(hBrush);
         SelectObject(memDC, oldBM);
         DeleteObject(memBM);
         DeleteDC(memDC);
     }
 };
+
 
 // Global instance array of primitives
 Primitive primitive[3];
@@ -81,11 +93,14 @@ void UpdateSceneParams() {
     primitive[1].Set(eval(-229.988f), eval(-36.7f), eval(Primitive::ptype::box), eval(true));
 
     // aggregate init alternative
-    primitive[2].Set({
-        .x = eval(-92),
-        .y = eval(-240),
+    primitive[2].Set(Primitive{
+        .x = eval(-94),
+        .y = eval(-221),
         .type = eval(Primitive::ptype::roundbox),
-        .show = eval(true)
+        .show = eval(true),
+        .r = (unsigned char)eval(249),
+        .g = (unsigned char)eval(18),
+        .b = (unsigned char)eval(10)
         });
 }
 

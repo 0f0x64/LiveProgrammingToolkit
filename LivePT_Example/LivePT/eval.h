@@ -73,7 +73,16 @@ namespace LivePT {
     }
 
     struct ref {
-        using typeVariant = std::variant<int, float, bool>;
+        using typeVariant = std::variant<
+            bool,
+            char, unsigned char, signed char,
+            char16_t, wchar_t,                  // <--- ДОБАВИЛИ 16-БИТНЫЕ СИМВОЛЬНЫЕ ТИПЫ
+            short, unsigned short,
+            int, unsigned int,
+            long, unsigned long,
+            long long, unsigned long long,
+            float, double
+        >;
         typeVariant value;
         bool loaded = false;
         std::string fileName;
@@ -103,6 +112,7 @@ namespace LivePT {
     inline void UpdateParamValue(int id, const std::string& newValue) {
         if (newValue.empty() || id < 0 || id >= static_cast<int>(paramDesc.size())) return;
 
+        // Защита от нетекстовых символов в буфере
         for (char c : newValue) {
             if (static_cast<unsigned char>(c) > 127) {
                 return;
@@ -112,9 +122,9 @@ namespace LivePT {
         std::visit([&newValue, id](auto& activeValue) {
             using T = std::decay_t<decltype(activeValue)>;
 
+            // ВЕТКА А: Обработка перечислений (Enum)
             if (paramDesc[id].enumInfo.isEnum) {
                 std::string cleanQuery = newValue;
-
                 cleanQuery.erase(std::remove_if(cleanQuery.begin(), cleanQuery.end(), ::isspace), cleanQuery.end());
 
                 size_t lastCols = cleanQuery.rfind("::");
@@ -137,6 +147,7 @@ namespace LivePT {
                 return;
             }
 
+            // ВЕТКА Б: Обработка булевых флагов (bool)
             if constexpr (std::is_same_v<T, bool>) {
                 std::string str = newValue;
                 std::transform(str.begin(), str.end(), str.begin(), [](unsigned char c) {
@@ -150,15 +161,33 @@ namespace LivePT {
                     activeValue = false;
                 }
             }
+            // ВЕТКА В: Обработка числовых литералов (Все стандартные типы C++)
             else {
-                std::stringstream ss(newValue);
-                T parsedValue;
-                if (ss >> parsedValue) {
-                    activeValue = parsedValue;
+                // ЖЕСТКИЙ ФИКС ДЛЯ ВСЕХ СИМВОЛЬНЫХ ТИПОВ (8-бит и 16-бит):
+                // std::stringstream считает char, wchar_t и char16_t за текстовые буквы.
+                // Чтобы строка "120" превратилась в число 120, а не в символ 'x',
+                // мы принудительно парсим текст через промежуточный int.
+                if constexpr (std::is_same_v<T, char> || std::is_same_v<T, unsigned char> || std::is_same_v<T, signed char> ||
+                    std::is_same_v<T, char16_t> || std::is_same_v<T, wchar_t>)
+                {
+                    std::stringstream ss(newValue);
+                    int parsedInt;
+                    if (ss >> parsedInt) {
+                        activeValue = static_cast<T>(parsedInt);
+                    }
+                }
+                // Для всех остальных типов (int, short, long, float, double) парсим нативно
+                else {
+                    std::stringstream ss(newValue);
+                    T parsedValue;
+                    if (ss >> parsedValue) {
+                        activeValue = parsedValue;
+                    }
                 }
             }
             }, paramDesc[id].value);
     }
+
 
     inline std::string NormalizePath(const char* fullPath) {
         std::string path(fullPath);
