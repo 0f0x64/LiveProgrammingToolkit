@@ -2,6 +2,9 @@
 
 namespace LivePT {
 
+    inline void HandleMouseDrag(const POINT& pt, bool ctrl, bool shift);
+    inline void HandleMouseUp();
+
     struct DragState {
         bool isDragging = false;
         int targetParamId = -1;
@@ -21,6 +24,71 @@ namespace LivePT {
     };
 
     static DragState g_dragState;
+    static HWND g_hShieldWnd = NULL;
+    static DWORD g_vsThreadId = 0; // Запоминаем поток VS для отмены склейки
+
+    // Процедура обработки сообщений невидимого окна-щита
+    inline LRESULT CALLBACK ShieldWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+        if (uMsg == WM_LBUTTONUP) {
+            ReleaseCapture();
+            DestroyWindow(hwnd);
+            g_hShieldWnd = NULL;
+            return 0;
+        }
+        return DefWindowProcA(hwnd, uMsg, wParam, lParam);
+    }
+
+    // Функция создания легкого окна-перехватчика со склейкой ввода ОС
+    inline void CreateDragShield(const POINT& pt) {
+        if (g_hShieldWnd) return;
+
+        // 1. Находим хэндл активного окна Visual Studio через DTE
+        CComVariant vtMainWindow;
+        if (FAILED(AutoWrap(DISPATCH_PROPERTYGET, &vtMainWindow, pDTE, L"MainWindow", 0)) || !vtMainWindow.pdispVal) return;
+        CComVariant vtHWnd;
+        if (FAILED(AutoWrap(DISPATCH_PROPERTYGET, &vtHWnd, vtMainWindow.pdispVal, L"HWnd", 0))) return;
+        HWND hVSMainWnd = reinterpret_cast<HWND>(static_cast<LONG_PTR>(vtHWnd.lVal));
+        if (!hVSMainWnd) return;
+
+        // 2. Находим окно конкретного текстового редактора под курсором
+        HWND hEditorWnd = ::WindowFromPoint(pt);
+        if (!hEditorWnd) hEditorWnd = hVSMainWnd;
+
+        // 3. СКЛЕИВАЕМ ОЧЕРЕДИ ВВОДА: Привязываем поток нашей игры к потоку Visual Studio
+        DWORD currentThreadId = ::GetCurrentThreadId();
+        g_vsThreadId = ::GetWindowThreadProcessId(hEditorWnd, NULL);
+        if (g_vsThreadId != currentThreadId) {
+            ::AttachThreadInput(currentThreadId, g_vsThreadId, TRUE);
+        }
+
+        HINSTANCE hInst = GetModuleHandleA(NULL);
+        const char* className = "LPT_DragShieldWindow";
+
+        static bool registered = [hInst, className]() {
+            WNDCLASSEXA wc = { sizeof(WNDCLASSEXA) };
+            wc.lpfnWndProc = ShieldWndProc;
+            wc.hInstance = hInst;
+            wc.lpszClassName = className;
+            return RegisterClassExA(&wc) != 0;
+            }();
+
+        // 4. Создаем окно 1x1 пиксель прямо под курсором мыши
+        g_hShieldWnd = CreateWindowExA(
+            WS_EX_LAYERED | WS_EX_TOPMOST,
+            className, "LPT_DragShield", WS_POPUP,
+            pt.x, pt.y, 1, 1,
+            NULL, NULL, hInst, NULL
+        );
+
+        if (g_hShieldWnd) {
+            SetLayeredWindowAttributes(g_hShieldWnd, 0, 1, LWA_ALPHA);
+            ShowWindow(g_hShieldWnd, SW_SHOW);
+
+            // Теперь, когда потоки склеены, SetCapture заберет ЛКМ из Visual Studio НАПРАМУЮ!
+            ::SetCapture(g_hShieldWnd);
+        }
+    }
+
 
     inline bool isMouseDragging() { return g_dragState.isDragging; }
 
@@ -230,13 +298,15 @@ namespace LivePT {
         g_dragState.lastValue = g_dragState.oldValue;
     }
 
-    inline void HandleMouseDown(const POINT& pt) {
-        if (!initVsEditor()) return;
+    inline bool HandleMouseDown(const POINT& pt) {
+        if (!initVsEditor()) return false;
 
         VARIANT vtActiveDoc;
         std::string currentFile;
         long line = 0, column = 0;
         std::wstring fileText;
+
+        bool clickedInsideEval = false;
 
         if (GetActiveVSContext(vtActiveDoc, currentFile, line, column, fileText)) {
             size_t evalIdxInLine = 0, targetEvalAbsolutePos = 0;
@@ -250,6 +320,7 @@ namespace LivePT {
 
                     if (id != -1 && ParseMacroValueBoundaries(fileText, line, targetEvalAbsolutePos)) {
                         g_dragState.oldMouseY = pt.y;
+                        clickedInsideEval = true;
 
                         if (std::holds_alternative<bool>(paramDesc[id].value)) {
                             g_dragState.isDragging = false;
@@ -278,7 +349,9 @@ namespace LivePT {
             }
             VariantClear(&vtActiveDoc);
         }
+        return clickedInsideEval;
     }
+
 
     inline void DragNumericValue(int id, const POINT& pt, bool ctrl, bool shift) {
         int scale = 1;
@@ -385,11 +458,18 @@ namespace LivePT {
     }
 
     inline void HandleMouseDrag(const POINT& pt, bool ctrl, bool shift) {
-
         if (!g_dragState.isDragging || g_dragState.targetParamId == -1) return;
+
+        // Создаем шилд со склейкой потоков строго в момент НАЧАЛА движения
+        if (!g_hShieldWnd) {
+            CreateDragShield(pt);
+        }
 
         DragNumericValue(g_dragState.targetParamId, pt, ctrl, shift);
     }
+
+
+
 
     inline void HandleMouseUp() {
         if (g_dragState.targetParamId == -1) return;
@@ -453,7 +533,22 @@ namespace LivePT {
 
         g_dragState.isDragging = false;
         g_dragState.targetParamId = -1;
+
+        // Освобождаем мышь и уничтожаем окно
+        if (g_hShieldWnd) {
+            ReleaseCapture();
+            DestroyWindow(g_hShieldWnd);
+            g_hShieldWnd = NULL;
+        }
+
+        // РАСКЛЕИВАЕМ ОЧЕРЕДИ ВВОДА обратно, восстанавливая изоляцию процессов
+        if (g_vsThreadId != 0) {
+            ::AttachThreadInput(::GetCurrentThreadId(), g_vsThreadId, FALSE);
+            g_vsThreadId = 0;
+        }
     }
+    
+
 
     inline bool IsCursorOverActiveVSWindow() {
         if (!pDTE) return false;
@@ -493,29 +588,41 @@ namespace LivePT {
         POINT pt;
         GetCursorPos(&pt);
 
-        bool mButtonDown = (GetAsyncKeyState(VK_MBUTTON) & 0x8000) != 0;
+        bool lButtonDown = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
         bool ctrl = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
         bool shift = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
 
-        static bool s_PrevMButtonDown = false;
+        static bool s_PrevLButtonDown = false;
 
-        if (mButtonDown) {
-            if (!s_PrevMButtonDown && !g_dragState.isDragging) {
+        if (lButtonDown) {
+            if (!s_PrevLButtonDown && !g_dragState.isDragging) {
                 if (IsCursorOverActiveVSWindow()) {
+                    // Обычный клик каретки пролетает в VS без создания окон
                     HandleMouseDown(pt);
                 }
             }
             if (g_dragState.isDragging) {
                 HandleMouseDrag(pt, ctrl, shift);
             }
-        } else {
-            if (s_PrevMButtonDown) {
+        }
+        else {
+            if (s_PrevLButtonDown && g_dragState.isDragging) {
                 HandleMouseUp();
             }
         }
 
-        s_PrevMButtonDown = mButtonDown;
+        // Прокачиваем очередь сообщений шилда для отлова WM_LBUTTONUP
+        if (g_hShieldWnd) {
+            MSG msg;
+            while (PeekMessageA(&msg, g_hShieldWnd, 0, 0, PM_REMOVE)) {
+                TranslateMessage(&msg);
+                DispatchMessageA(&msg);
+            }
+        }
+
+        s_PrevLButtonDown = lButtonDown;
     }
+
 
 
 } 

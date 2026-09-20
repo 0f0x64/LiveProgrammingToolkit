@@ -74,15 +74,15 @@ Primitive primitive[3];
 void UpdateSceneParams() {
 
     // drag numbers by pressing&move mButton inside eval, click mButton for switch / context menu
-    primitive[0].Set(eval(-126), eval(-118), eval(Primitive::ptype::roundbox), eval(true));
+    primitive[0].Set(eval(-147), eval(-114), eval(Primitive::ptype::roundbox), eval(true));
 
     // floating point numbers allowed (will be casted to int in this case, but you can modify class to use native floats)
-    primitive[1].Set(eval(-196.069f), eval(-28.6f), eval(Primitive::ptype::box), eval(true));
+    primitive[1].Set(eval(-209.069f), eval(-41.6f), eval(Primitive::ptype::box), eval(true));
 
     // aggregate init alternative
     primitive[2].Set({
-        .x = eval(-68),
-        .y = eval(4),
+        .x = eval(-31),
+        .y = eval(-145),
         .type = eval(Primitive::ptype::circle),
         .show = eval(true)
         });
