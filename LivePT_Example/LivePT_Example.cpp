@@ -98,9 +98,9 @@ void UpdateSceneParams() {
         .y = eval(-254),
         .type = eval(Primitive::ptype::roundbox),
         .show = eval(true),
-        .r = (unsigned char)eval(255),
-        .g = (unsigned char)eval(18),
-        .b = (unsigned char)eval(10)
+        .r = eval(114),
+        .g = eval(18),
+        .b = eval(10)
         });
 }
 
