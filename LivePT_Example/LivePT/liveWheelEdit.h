@@ -21,7 +21,12 @@ namespace LivePT {
         size_t currentTextLength = 0;
 
         long initialCursorAnchorOffset = 0;
+
+        // ВСПЛЫВАЮЩИЕ ПЕРЕМЕННЫЕ ДЛЯ ДАБЛКЛИКА
+        DWORD lastClickTime = 0;
+        POINT lastClickPt = { 0, 0 };
     };
+
 
     static DragState g_dragState;
     static HWND g_hShieldWnd = NULL;
@@ -322,19 +327,85 @@ namespace LivePT {
                         g_dragState.oldMouseY = pt.y;
                         clickedInsideEval = true;
 
+                        DWORD currentTime = GetTickCount();
+                        DWORD doubleClickTime = GetDoubleClickTime();
+
+                        // Проверяем: уложился ли клик в системный интервал даблклика 
+                        // и не улетела ли мышка слишком далеко (в пределах 4 пикселей)
+                        bool isDoubleClick = (currentTime - g_dragState.lastClickTime <= doubleClickTime) &&
+                            (std::abs(pt.x - g_dragState.lastClickPt.x) < 4) &&
+                            (std::abs(pt.y - g_dragState.lastClickPt.y) < 4);
+
+                        g_dragState.lastClickTime = currentTime;
+                        g_dragState.lastClickPt = pt;
+
                         if (std::holds_alternative<bool>(paramDesc[id].value)) {
-                            g_dragState.isDragging = false;
+                            // Булы крутить не нужно. Если это даблклик — мгновенно инвертируем значение
+                            if (isDoubleClick) {
+                                bool currentBool = std::get<bool>(paramDesc[id].value);
+                                bool newBool = !currentBool;
+
+                                std::string newValueStr = newBool ? "true" : "false";
+                                long newCursorPhysicalCol = g_dragState.dragStartCol + static_cast<long>(newValueStr.length());
+
+                                StartUndoTransaction(L"LiveWheel Toggle Bool");
+                                ReplaceTextInActiveVS(g_dragState.dragLine, g_dragState.dragStartCol, g_dragState.dragStartCol + static_cast<long>(g_dragState.currentTextLength), newValueStr, newCursorPhysicalCol);
+                                EndUndoTransaction();
+
+                                paramDesc[id].value = newBool;
+                                UpdateParamValue(id, newValueStr);
+                                SaveActiveDocument();
+
+                                g_dragState.currentTextLength = newValueStr.length();
+                            }
+                            // Сбрасываем ID, чтобы ЛКМ-драг для булов случайно не активировался
+                            g_dragState.targetParamId = -1;
+                            clickedInsideEval = false;
                         }
                         else if (paramDesc[id].enumInfo.isEnum) {
                             int totalElements = static_cast<int>(paramDesc[id].enumInfo.elements.size());
-                            if (totalElements > 2) {
-                                InitMultiEnumSelection(id);
+
+                            // Если это бинарный енам (2 элемента) и зафиксирован ДАБЛКЛИК — свитчим его на лету
+                            if (totalElements == 2) {
+                                if (isDoubleClick) {
+                                    int currentVal = std::get<int>(paramDesc[id].value);
+                                    int currentIndex = (paramDesc[id].enumInfo.elements[0].value == currentVal) ? 0 : 1;
+                                    int newIndex = 1 - currentIndex;
+
+                                    int targetEnumValue = paramDesc[id].enumInfo.elements[newIndex].value;
+                                    std::string pureName = paramDesc[id].enumInfo.elements[newIndex].name;
+                                    std::string newValueStr = pureName;
+
+                                    size_t lastCols = g_dragState.startTextValue.rfind("::");
+                                    if (lastCols != std::string::npos) {
+                                        std::string prefix = g_dragState.startTextValue.substr(0, lastCols + 2);
+                                        newValueStr = prefix + pureName;
+                                    }
+
+                                    long newCursorRelPos = static_cast<long>(newValueStr.length()) - g_dragState.initialCursorAnchorOffset;
+                                    if (newCursorRelPos < 0) newCursorRelPos = 0;
+                                    long newCursorPhysicalCol = g_dragState.dragStartCol + newCursorRelPos;
+
+                                    StartUndoTransaction(L"LiveWheel Change Enum Click");
+                                    ReplaceTextInActiveVS(g_dragState.dragLine, g_dragState.dragStartCol, g_dragState.dragStartCol + static_cast<long>(g_dragState.currentTextLength), newValueStr, newCursorPhysicalCol);
+                                    EndUndoTransaction();
+
+                                    g_dragState.currentTextLength = newValueStr.length();
+                                    paramDesc[id].value = targetEnumValue;
+                                    UpdateParamValue(id, pureName);
+                                    SaveActiveDocument();
+                                }
+                                g_dragState.targetParamId = -1;
+                                clickedInsideEval = false;
                             }
-                            else {
-                                g_dragState.isDragging = false;
+                            else if (totalElements > 2) {
+                                // Для больших енамов открываем стандартный список (работает по первому клику)
+                                InitMultiEnumSelection(id);
+                                clickedInsideEval = false;
                             }
                         }
                         else {
+                            // Для обычных чисел инициализируем драг как обычно
                             size_t lineStartOffset = 0; long currentLineIdx = 1;
                             while (currentLineIdx < line) { lineStartOffset = fileText.find(L'\n', lineStartOffset) + 1; currentLineIdx++; }
 
@@ -351,6 +422,7 @@ namespace LivePT {
         }
         return clickedInsideEval;
     }
+
 
 
     inline void DragNumericValue(int id, const POINT& pt, bool ctrl, bool shift) {
@@ -472,61 +544,22 @@ namespace LivePT {
 
 
     inline void HandleMouseUp() {
-        if (g_dragState.targetParamId == -1) return;
-
-        int id = g_dragState.targetParamId;
-
-        if (std::holds_alternative<bool>(paramDesc[id].value)) {
-            bool currentBool = std::get<bool>(paramDesc[id].value);
-            bool newBool = !currentBool;
-
-            std::string newValueStr = newBool ? "true" : "false";
-            long newCursorPhysicalCol = g_dragState.dragStartCol + static_cast<long>(newValueStr.length());
-
-            StartUndoTransaction(L"LiveWheel Toggle Bool");
-            ReplaceTextInActiveVS(g_dragState.dragLine, g_dragState.dragStartCol, g_dragState.dragStartCol + static_cast<long>(g_dragState.currentTextLength), newValueStr, newCursorPhysicalCol);
-            EndUndoTransaction();
-
-            paramDesc[id].value = newBool;
-            UpdateParamValue(id, newValueStr);
-
-            SaveActiveDocument();
-        }
-        else if (paramDesc[id].enumInfo.isEnum) {
-
-            int totalElements = static_cast<int>(paramDesc[id].enumInfo.elements.size());
-            if (totalElements == 2) {
-                int currentVal = std::get<int>(paramDesc[id].value);
-
-                int currentIndex = (paramDesc[id].enumInfo.elements[0].value == currentVal) ? 0 : 1;
-                int newIndex = 1 - currentIndex;
-
-                int targetEnumValue = paramDesc[id].enumInfo.elements[newIndex].value;
-                std::string pureName = paramDesc[id].enumInfo.elements[newIndex].name;
-                std::string newValueStr = pureName;
-
-                size_t lastCols = g_dragState.startTextValue.rfind("::");
-                if (lastCols != std::string::npos) {
-                    std::string prefix = g_dragState.startTextValue.substr(0, lastCols + 2);
-                    newValueStr = prefix + pureName;
-                }
-
-                long newCursorRelPos = static_cast<long>(newValueStr.length()) - g_dragState.initialCursorAnchorOffset;
-                if (newCursorRelPos < 0) newCursorRelPos = 0;
-                long newCursorPhysicalCol = g_dragState.dragStartCol + newCursorRelPos;
-
-                StartUndoTransaction(L"LiveWheel Change Enum Click");
-                ReplaceTextInActiveVS(g_dragState.dragLine, g_dragState.dragStartCol, g_dragState.dragStartCol + static_cast<long>(g_dragState.currentTextLength), newValueStr, newCursorPhysicalCol);
-                EndUndoTransaction();
-
-                g_dragState.currentTextLength = newValueStr.length();
-                paramDesc[id].value = targetEnumValue;
-                UpdateParamValue(id, pureName);
-
-                SaveActiveDocument();
+        if (g_dragState.targetParamId == -1) {
+            // Если это был клик по булу/енаму, сбрасываем окно, если оно успело создаться
+            if (g_hShieldWnd) {
+                ReleaseCapture();
+                DestroyWindow(g_hShieldWnd);
+                g_hShieldWnd = NULL;
             }
+            if (g_vsThreadId != 0) {
+                ::AttachThreadInput(::GetCurrentThreadId(), g_vsThreadId, FALSE);
+                g_vsThreadId = 0;
+            }
+            return;
         }
-        else if (g_dragState.isDragging) {
+
+        // Этот блок теперь обрабатывает СТРОГО числовой драг числовых литералов
+        if (g_dragState.isDragging) {
             EndUndoTransaction();
             SaveActiveDocument();
         }
@@ -534,19 +567,18 @@ namespace LivePT {
         g_dragState.isDragging = false;
         g_dragState.targetParamId = -1;
 
-        // Освобождаем мышь и уничтожаем окно
         if (g_hShieldWnd) {
             ReleaseCapture();
             DestroyWindow(g_hShieldWnd);
             g_hShieldWnd = NULL;
         }
 
-        // РАСКЛЕИВАЕМ ОЧЕРЕДИ ВВОДА обратно, восстанавливая изоляцию процессов
         if (g_vsThreadId != 0) {
             ::AttachThreadInput(::GetCurrentThreadId(), g_vsThreadId, FALSE);
             g_vsThreadId = 0;
         }
     }
+
     
 
 
