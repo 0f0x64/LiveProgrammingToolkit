@@ -76,19 +76,26 @@ namespace LivePT {
         using typeVariant = std::variant<
             bool,
             char, unsigned char, signed char,
-            char16_t, wchar_t,                  // <--- ДОБАВИЛИ 16-БИТНЫЕ СИМВОЛЬНЫЕ ТИПЫ
+            char16_t, wchar_t,
             short, unsigned short,
             int, unsigned int,
             long, unsigned long,
             long long, unsigned long long,
             float, double
         >;
+
         typeVariant value;
         bool loaded = false;
         std::string fileName;
         unsigned int counterID;
         EnumTypeDesc enumInfo;
+
+        // ЖЕЛЕЗНЫЕ ЛИМИТЫ ТИПА: Заполняются один раз компилятором при старте,
+        // чтобы DragNumericValue мгновенно зажимал мышку без хардкода логики
+        long long typeMinBound = 0;
+        long long typeMaxBound = 0;
     };
+
 
     inline std::vector<ref>& getParamDesc() {
         static std::vector<ref> instance;
@@ -223,7 +230,9 @@ namespace LivePT {
             .loaded = false,
             .fileName = absolutePath,
             .counterID = 0,
-            .enumInfo = enumDesc
+            .enumInfo = enumDesc,
+            .typeMinBound = 0, // Инициализируем нулями, щит сам перезапишет их под нужный тип
+            .typeMaxBound = 0
             });
 
         fileMap[key] = paramID;
@@ -264,50 +273,123 @@ namespace LivePT {
             }();
     };
 
-    template <typename T, FixedString<260> AbsoluteFile, int Line, int Column>
+    // 1. Главный синтаксический щит, который работает в рантайме 60 FPS.
+// Теперь он полностью шаблонный по TargetType (типу поля структуры, а не литерала!)
+    template <typename TargetType, FixedString<260> AbsoluteFile, int Line, int Column>
     struct EvalSyntaxShield {
-        T value;
-        constexpr EvalSyntaxShield(T val) : value(val) {}
+        inline static TargetType Get(int literalValue) {
+            // Регистрируем параметр в глобальной базе данных под ИСТИННЫМ типом TargetType
+            int target_id = GlobalEvalRegistry<TargetType, AbsoluteFile, Line, Column>::cached_id;
 
-        inline operator T() const {
-            int target_id = GlobalEvalRegistry<T, AbsoluteFile, Line, Column>::cached_id;
+            if (target_id < 0 || target_id >= static_cast<int>(paramDesc.size())) {
+                return static_cast<TargetType>(literalValue);
+            }
 
-            if (target_id < 0 || target_id >= static_cast<int>(paramDesc.size())) return value;
-
+            // Кадр 1: Инициализируем variant ИСТИННЫМ типом
             if (!paramDesc[target_id].loaded) {
-                if constexpr (std::is_enum_v<T>) {
-                    paramDesc[target_id].value = static_cast<int>(value);
+                if constexpr (std::is_enum_v<TargetType>) {
+                    paramDesc[target_id].value = static_cast<int>(literalValue);
                 }
                 else {
-                    paramDesc[target_id].value = value;
+                    paramDesc[target_id].value = static_cast<TargetType>(literalValue);
                 }
+
+                // СИСТЕМНЫЙ ЗАЖИМ: Поскольку TargetType нам точно известен,
+                // мы пишем в базу абсолютно верные аппаратные лимиты (например, [0; 255] для unsigned char)
+                if constexpr (std::integral<TargetType> || std::floating_point<TargetType>) {
+                    long long minB = static_cast<long long>((std::numeric_limits<TargetType>::min)());
+                    long long maxB = static_cast<long long>((std::numeric_limits<TargetType>::max)());
+                    if constexpr (std::floating_point<TargetType>) {
+                        minB = static_cast<long long>(-(std::numeric_limits<TargetType>::max)());
+                    }
+                    paramDesc[target_id].typeMinBound = minB;
+                    paramDesc[target_id].typeMaxBound = maxB;
+                }
+
                 paramDesc[target_id].loaded = true;
             }
 
             std::string absPath = NormalizePath(AbsoluteFile.c_str());
             int real_id = getID(absPath + ":" + std::to_string(paramDesc[target_id].counterID));
-            if (real_id < 0 || real_id >= static_cast<int>(paramDesc.size())) return value;
+            if (real_id < 0 || real_id >= static_cast<int>(paramDesc.size())) {
+                return static_cast<TargetType>(literalValue);
+            }
 
-            if constexpr (std::is_enum_v<T>) {
+            // Извлекаем измененные мышкой данные из variant
+            if constexpr (std::is_enum_v<TargetType>) {
                 if (auto pVal = std::get_if<int>(&paramDesc[real_id].value)) {
-                    return static_cast<T>(*pVal);
+                    return static_cast<TargetType>(*pVal);
                 }
             }
             else {
-                if (auto pVal = std::get_if<T>(&paramDesc[real_id].value)) return *pVal;
+                if (auto pVal = std::get_if<TargetType>(&paramDesc[real_id].value)) {
+                    return *pVal;
+                }
             }
 
-            return value;
+            return static_cast<TargetType>(literalValue);
+        }
+    };
+
+    // 2. Легкая фабрика-болванка, которая перехватывает тип левой части (Type Deduction)
+        // 2. Универсальная фабрика-болванка с шаблонным конструктором
+    template <FixedString<260> AbsoluteFile, int Line, int Column>
+    struct LazyTypeDetector {
+
+        // Делаем тип сохраняемого значения полностью шаблонным (универсальный контейнер)
+        template <typename TValue>
+        struct Container {
+            TValue value;
+            constexpr Container(TValue val) : value(val) {}
+        };
+
+        // Мы храним внутри variant только те базовые типы, которые могут прилететь из макроса eval
+        std::variant<int, float, bool, long long, double> rawValue;
+        int enumOrCharFallback = 0; // Спец-запас для хранения бинарных значений енамов/чаров
+
+        // Шаблонный конструктор: теперь он с радостью сожрёт и int, и float, и bool, и enum class!
+        template <typename TValue>
+        constexpr LazyTypeDetector(TValue val) {
+            if constexpr (std::is_enum_v<TValue>) {
+                // Если прилетел enum class — безопасно кастим его к int и сохраняем в fallback
+                enumOrCharFallback = static_cast<int>(val);
+            }
+            else if constexpr (std::is_integral_v<TValue> || std::is_floating_point_v<TValue>) {
+                // Все стандартные примитивы раскладываем по полочкам
+                if constexpr (std::is_same_v<TValue, bool>) rawValue = static_cast<bool>(val);
+                else if constexpr (std::is_floating_point_v<TValue>) rawValue = static_cast<double>(val);
+                else enumOrCharFallback = static_cast<int>(val);
+            }
+        }
+
+        // Магический C++20 оператор автоматического вывода левой части
+        template <typename TargetType>
+        inline operator TargetType() const {
+
+            // Восстанавливаем исходное числовое значение, которое передал пользователь
+            int finalLiteralValue = enumOrCharFallback;
+
+            if (std::holds_alternative<bool>(rawValue)) {
+                finalLiteralValue = std::get<bool>(rawValue) ? 1 : 0;
+            }
+            else if (std::holds_alternative<double>(rawValue)) {
+                // Для float временно кастим к int для передачи через get (внутри EvalSyntaxShield всё восстановится)
+                finalLiteralValue = static_cast<int>(std::get<double>(rawValue));
+            }
+
+            // Передаем управление в рантайм-щит под ИСТИННЫМ типом поля структуры!
+            return EvalSyntaxShield<TargetType, AbsoluteFile, Line, Column>::Get(finalLiteralValue);
         }
     };
 
 }
 
-#define eval(value) ( \
-    LivePT::EvalSyntaxShield< \
-        decltype(value), \
+// 3. Ультра-чистый макрос eval без фиксации decltype(value).
+// Он просто создает болванку, а тип протащится сам в момент присвоения!
+#define eval(value) \
+    LivePT::LazyTypeDetector< \
         LivePT::FixedString<260>{__FILE__}, \
         static_cast<int>(__LINE__), \
         static_cast<int>(__builtin_COLUMN()) \
-    >(value) \
-)
+    >(value)
+    

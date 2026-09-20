@@ -449,7 +449,20 @@ namespace LivePT {
         if (shift) scale *= 10;
 
         int delta = -(pt.y - g_dragState.oldMouseY) * scale / 2;
-        g_dragState.newValue = g_dragState.oldValue + delta;
+
+        // Потенциальное новое значение
+        long long targetValue = static_cast<long long>(g_dragState.oldValue) + delta;
+
+        // Извлекаем железные лимиты, которые компилятор сам посчитал для unsigned char / float / short
+        long long typeMin = paramDesc[id].typeMinBound;
+        long long typeMax = paramDesc[id].typeMaxBound;
+
+        if (typeMin != 0 || typeMax != 0) {
+            if (targetValue < typeMin) targetValue = typeMin;
+            if (targetValue > typeMax) targetValue = typeMax;
+        }
+
+        g_dragState.newValue = static_cast<int>(targetValue);
 
         if (g_dragState.newValue != g_dragState.lastValue) {
             size_t dotPos = g_dragState.startTextValue.find('.');
