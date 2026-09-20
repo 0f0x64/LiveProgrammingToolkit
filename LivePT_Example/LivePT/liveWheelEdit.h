@@ -1,3 +1,9 @@
+#if LPT_TRIGGER_BUTTON == VK_LBUTTON
+#define LPT_WM_BUTTONUP   WM_LBUTTONUP
+#elif LPT_TRIGGER_BUTTON == VK_MBUTTON
+#define LPT_WM_BUTTONUP   WM_MBUTTONUP
+#endif
+
 #include "enumMenu.h"
 
 namespace LivePT {
@@ -34,7 +40,7 @@ namespace LivePT {
 
     // Процедура обработки сообщений невидимого окна-щита
     inline LRESULT CALLBACK ShieldWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
-        if (uMsg == WM_LBUTTONUP) {
+        if (uMsg == LPT_WM_BUTTONUP) {
             ReleaseCapture();
             DestroyWindow(hwnd);
             g_hShieldWnd = NULL;
@@ -629,13 +635,13 @@ namespace LivePT {
         POINT pt;
         GetCursorPos(&pt);
 
-        bool lButtonDown = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
+        bool buttonDown = (GetAsyncKeyState(LPT_TRIGGER_BUTTON) & 0x8000) != 0;
         bool ctrl = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
         bool shift = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
 
         static bool s_PrevLButtonDown = false;
 
-        if (lButtonDown) {
+        if (buttonDown) {
             if (!s_PrevLButtonDown && !g_dragState.isDragging) {
                 if (IsCursorOverActiveVSWindow()) {
                     // Обычный клик каретки пролетает в VS без создания окон
@@ -661,7 +667,7 @@ namespace LivePT {
             }
         }
 
-        s_PrevLButtonDown = lButtonDown;
+        s_PrevLButtonDown = buttonDown;
     }
 
 
