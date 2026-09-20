@@ -79,8 +79,8 @@ void UpdateSceneParams() {
 
     // aggregate init alternative
     primitive[2].Set({
-        .x = eval(-191),
-        .y = eval(36),
+        .x = eval(-185),
+        .y = eval(53),
         .type = eval(Primitive::ptype::circle),
         .show = eval(true)
         });

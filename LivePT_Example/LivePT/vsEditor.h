@@ -66,8 +66,8 @@ namespace LivePT {
 
     DWORD GetStudioProcessId() {
         DWORD currentPid = GetCurrentProcessId();
-        DWORD parentPid = 0;
-        std::wstring parentName = L"";
+        DWORD searchPid = currentPid;
+        DWORD studioPid = 0;
 
         HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
         if (hSnapshot == INVALID_HANDLE_VALUE) return 0;
@@ -75,35 +75,53 @@ namespace LivePT {
         PROCESSENTRY32W pe32;
         pe32.dwSize = sizeof(PROCESSENTRY32W);
 
-        if (Process32FirstW(hSnapshot, &pe32)) {
-            do {
-                if (pe32.th32ProcessID == currentPid) {
-                    parentPid = pe32.th32ParentProcessID;
-                    break;
-                }
-            } while (Process32NextW(hSnapshot, &pe32));
-        }
+        // Будем подниматься вверх по дереву процессов, пока не найдем студию
+        while (searchPid != 0) {
+            DWORD parentPid = 0;
+            std::wstring parentName = L"";
+            bool found = false;
 
-        if (parentPid != 0) {
             if (Process32FirstW(hSnapshot, &pe32)) {
                 do {
-                    if (pe32.th32ProcessID == parentPid) {
+                    if (pe32.th32ProcessID == searchPid) {
+                        parentPid = pe32.th32ParentProcessID;
                         parentName = ToLower(pe32.szExeFile);
-
-                        if (parentName.find(L"msvsmon") != std::wstring::npos) {
-                            DWORD studioPid = pe32.th32ParentProcessID;
-                            CloseHandle(hSnapshot);
-                            return studioPid;
-                        }
+                        found = true;
                         break;
                     }
                 } while (Process32NextW(hSnapshot, &pe32));
             }
+
+            // Если процесс не найден в дереве или дошли до системного корня (PID 0)
+            if (!found || parentPid == 0 || parentPid == searchPid) {
+                break;
+            }
+
+            // Проверяем имя процесса. Если это сама студия или ее сетевой отладчик
+            if (parentName.find(L"devenv") != std::wstring::npos ||
+                parentName.find(L"msvsmon") != std::wstring::npos) {
+                studioPid = parentPid; // Нашли!
+                break;
+            }
+
+            // Если это промежуточная консоль отладки, не сдаемся, 
+            // а берем её PID и на следующей итерации будем искать её родителя
+            if (parentName.find(L"vsdebugconsole") != std::wstring::npos) {
+                searchPid = parentPid;
+                continue;
+            }
+
+            // Если это какой-то сторонний лаунчер, на всякий случай продолжаем подъем
+            searchPid = parentPid;
         }
 
         CloseHandle(hSnapshot);
-        return parentPid;
+
+        // Если каскадный поиск нашел devenv/msvsmon — возвращаем его. 
+        // Если ничего не нашли, возвращаем 0, чтобы initVsEditor() выдал ошибку.
+        return studioPid;
     }
+
 
     IDispatch* GetDTEByPid(DWORD targetPid) {
             IRunningObjectTable* pROT = nullptr;
