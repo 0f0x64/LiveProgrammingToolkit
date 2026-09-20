@@ -439,40 +439,137 @@ namespace LivePT {
         }
 
 
-    void vsEditor() {
+    inline std::wstring DownloadCurrentLineText(IDispatch* pActiveDoc) {
+        std::wstring lineText = L"";
+        VARIANT vtSelection; VariantInit(&vtSelection);
+        if (FAILED(AutoWrap(DISPATCH_PROPERTYGET, &vtSelection, pActiveDoc, L"Selection", 0)) || !vtSelection.pdispVal) return L"";
 
+        VARIANT vtActivePoint; VariantInit(&vtActivePoint);
+        if (SUCCEEDED(AutoWrap(DISPATCH_PROPERTYGET, &vtActivePoint, vtSelection.pdispVal, L"ActivePoint", 0)) && vtActivePoint.pdispVal) {
+
+            CComVariant pEditStart;
+            AutoWrap(DISPATCH_METHOD, &pEditStart, vtActivePoint.pdispVal, L"CreateEditPoint", 0);
+
+            if (pEditStart.vt == VT_DISPATCH && pEditStart.pdispVal) {
+                // Двигаем виртуальную точку в начало текущей строки текста
+                AutoWrap(DISPATCH_METHOD, NULL, pEditStart.pdispVal, L"StartOfLine", 0);
+
+                CComVariant pEditEnd;
+                AutoWrap(DISPATCH_METHOD, &pEditEnd, vtActivePoint.pdispVal, L"CreateEditPoint", 0);
+                AutoWrap(DISPATCH_METHOD, NULL, pEditEnd.pdispVal, L"EndOfLine", 0);
+
+                if (pEditEnd.vt == VT_DISPATCH && pEditEnd.pdispVal) {
+                    VARIANT vtLineText; VariantInit(&vtLineText);
+                    // Выкачиваем из COM-буфера VS СТРОГО одну строку кода вместо всего файла!
+                    if (SUCCEEDED(AutoWrap(DISPATCH_METHOD, &vtLineText, pEditStart.pdispVal, L"GetText", 1, pEditEnd))) {
+                        if (vtLineText.vt == VT_BSTR && vtLineText.bstrVal) {
+                            lineText = vtLineText.bstrVal;
+                        }
+                        VariantClear(&vtLineText);
+                    }
+                }
+            }
+        }
+        VariantClear(&vtActivePoint); VariantClear(&vtSelection);
+        return lineText;
+    }
+
+    // Хранилище для оптимизации
+    static DWORD g_lastVsTickTime = 0;
+    static std::wstring g_lastLineTextBuffer = L"";
+    static long g_lastLine = -1;
+    static long g_lastCol = -1;
+
+    void vsEditor() {
+        // Защита 60 FPS: Если прямо сейчас идет интерактивный драг ползунка —
+        // фоновый опрос отключается, чтобы не спамить COM-командами во время подмены памяти.
+        
+
+        // Ленивый таймер: опрашиваем буфер VS не покадрово, а раз в 250 мс.
+        // Для процессора оверхед падает до нуля, а ручные правки подхватываются мгновенно.
+        DWORD currentTime = GetTickCount();
+        if (currentTime - g_lastVsTickTime < 250) return;
+        g_lastVsTickTime = currentTime;
+
+        // Инициализируем COM-соединение с Visual Studio
         if (!initVsEditor()) return;
 
+        VARIANT vtActiveDoc; VariantInit(&vtActiveDoc);
+        HRESULT hr = pDTE ? AutoWrap(DISPATCH_PROPERTYGET, &vtActiveDoc, pDTE, L"ActiveDocument", 0) : E_FAIL;
 
-            VARIANT vtActiveDoc; VariantInit(&vtActiveDoc);
-            HRESULT hr = pDTE ? AutoWrap(DISPATCH_PROPERTYGET, &vtActiveDoc, pDTE, L"ActiveDocument", 0) : E_FAIL;
-            if (hr == CO_E_OBJNOTCONNECTED || hr == RPC_E_DISCONNECTED || hr == E_ACCESSDENIED) { ResetDTEConnection(); return; }
-            if (hr == RPC_E_CALL_REJECTED || hr == 0x8001010A || FAILED(hr) || !vtActiveDoc.pdispVal) { VariantClear(&vtActiveDoc); return; }
-
-            IDispatch* pActiveDoc = vtActiveDoc.pdispVal;
-
-            std::string currentActiveFile = GetActiveDocumentPath(pActiveDoc);
-            if (currentActiveFile.empty()) { VariantClear(&vtActiveDoc); return; }
-
-            long line = 0, column = 0;
-            if (!GetCursorCoordinates(pActiveDoc, line, column)) { VariantClear(&vtActiveDoc); return; }
-
-            std::wstring fileText = DownloadDocumentText(pActiveDoc);
-            if (fileText.empty()) { VariantClear(&vtActiveDoc); return; }
-
-            size_t evalIdxInLine = 0;
-            size_t targetEvalAbsolutePos = 0;
-
-            if (!CheckCursorInsideEval(fileText, line, column, evalIdxInLine, targetEvalAbsolutePos)) {
-                VariantClear(&vtActiveDoc);
-                return;
-            }
-
-            ParseAndStoreParamValue(fileText, currentActiveFile, line, evalIdxInLine, targetEvalAbsolutePos);
-
-            VariantClear(&vtActiveDoc);
-
+        // Если студия закрылась или отвалился RPC-канал — безопасно сбрасываем коннект
+        if (hr == CO_E_OBJNOTCONNECTED || hr == RPC_E_DISCONNECTED || hr == E_ACCESSDENIED) {
+            ResetDTEConnection();
+            return;
         }
+        if (FAILED(hr) || !vtActiveDoc.pdispVal) {
+            VariantClear(&vtActiveDoc);
+            return;
+        }
+
+        IDispatch* pActiveDoc = vtActiveDoc.pdispVal;
+
+        std::string currentActiveFile = GetActiveDocumentPath(pActiveDoc);
+        if (currentActiveFile.empty()) {
+            VariantClear(&vtActiveDoc);
+            return;
+        }
+
+        // Получаем физические координаты текстовой каретки в редакторе (Line, Column)
+        long line = 0, column = 0;
+        if (!GetCursorCoordinates(pActiveDoc, line, column)) {
+            VariantClear(&vtActiveDoc);
+            return;
+        }
+
+        // ОПТИМИЗАЦИЯ 1: Выкачиваем текст только ОДНОЙ текущей строки, где стоит каретка
+        std::wstring currentLineText = DownloadCurrentLineText(pActiveDoc);
+
+        // Если каретка стоит на той же строке и текст этой строки не изменился — 
+        // ручного ввода не было. Выходим мгновенно без тяжелых запросов.
+        if (line == g_lastLine && currentLineText == g_lastLineTextBuffer) {
+            g_lastCol = column;
+            VariantClear(&vtActiveDoc);
+            return;
+        }
+
+        // Если каретка сместилась на новую строку, но текст старой строки совпадает, 
+        // мы просто обновляем позицию, не насилуя буфер.
+        if (currentLineText == g_lastLineTextBuffer && line != g_lastLine) {
+            g_lastLine = line;
+            g_lastCol = column;
+            VariantClear(&vtActiveDoc);
+            return;
+        }
+
+        // Обновляем кэш состояния текстовой строки
+        g_lastLineTextBuffer = currentLineText;
+        g_lastLine = line;
+        g_lastCol = column;
+
+        // ОПТИМИЗАЦИЯ 2: Только если строка физически изменилась под руками программиста,
+        // мы запрашиваем полный текст файла, чтобы пересчитать глобальный GetParamIndexByTextOrder
+        std::wstring fileText = DownloadDocumentText(pActiveDoc);
+        if (fileText.empty()) {
+            VariantClear(&vtActiveDoc);
+            return;
+        }
+
+        size_t evalIdxInLine = 0;
+        size_t targetEvalAbsolutePos = 0;
+
+        // Проверяем, находится ли каретка внутри макроса eval
+        if (!CheckCursorInsideEval(fileText, line, column, evalIdxInLine, targetEvalAbsolutePos)) {
+            VariantClear(&vtActiveDoc);
+            return;
+        }
+
+        // Синхронизируем ручной ввод из редактора VS прямо в живую память процесса игры!
+        ParseAndStoreParamValue(fileText, currentActiveFile, line, evalIdxInLine, targetEvalAbsolutePos);
+
+        VariantClear(&vtActiveDoc);
+    }
+
 
     
 }

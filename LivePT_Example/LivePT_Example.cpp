@@ -78,13 +78,13 @@ void UpdateSceneParams() {
     primitive[0].Set(eval(-80), eval(-59), eval(Primitive::ptype::roundbox), eval(true));
 
     // floating point numbers allowed (will be casted to int in this case, but you can modify class to use native floats)
-    primitive[1].Set(eval(-228.988f), eval(-36.7f), eval(Primitive::ptype::box), eval(true));
+    primitive[1].Set(eval(-229.988f), eval(-36.7f), eval(Primitive::ptype::box), eval(true));
 
     // aggregate init alternative
     primitive[2].Set({
-        .x = eval(-84),
-        .y = eval(-175),
-        .type = eval(Primitive::ptype::circle),
+        .x = eval(-92),
+        .y = eval(-240),
+        .type = eval(Primitive::ptype::roundbox),
         .show = eval(true)
         });
 }
