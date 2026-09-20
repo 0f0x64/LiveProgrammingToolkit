@@ -330,17 +330,27 @@ namespace LivePT {
                         DWORD currentTime = GetTickCount();
                         DWORD doubleClickTime = GetDoubleClickTime();
 
-                        // Проверяем: уложился ли клик в системный интервал даблклика 
-                        // и не улетела ли мышка слишком далеко (в пределах 4 пикселей)
-                        bool isDoubleClick = (currentTime - g_dragState.lastClickTime <= doubleClickTime) &&
+                        // Проверяем системный интервал даблклика и радиус смещения мыши
+                        bool isDoubleClick = (g_dragState.lastClickTime != 0) &&
+                            (currentTime - g_dragState.lastClickTime <= doubleClickTime) &&
                             (std::abs(pt.x - g_dragState.lastClickPt.x) < 4) &&
                             (std::abs(pt.y - g_dragState.lastClickPt.y) < 4);
 
-                        g_dragState.lastClickTime = currentTime;
+                        // МАТЕМАТИЧЕСКИЙ ФИКС: 
+                        // Если даблклик сработал — обнуляем время, чтобы следующий клик начинал цепочку заново.
+                        // Если не сработал — записываем текущее время как начало потенциального даблклика.
+                        if (isDoubleClick) {
+                            g_dragState.lastClickTime = 0;
+                        }
+                        else {
+                            g_dragState.lastClickTime = currentTime;
+                        }
+
                         g_dragState.lastClickPt = pt;
 
+
                         if (std::holds_alternative<bool>(paramDesc[id].value)) {
-                            // Булы крутить не нужно. Если это даблклик — мгновенно инвертируем значение
+                            // Булы: переключение только по даблклику
                             if (isDoubleClick) {
                                 bool currentBool = std::get<bool>(paramDesc[id].value);
                                 bool newBool = !currentBool;
@@ -358,14 +368,13 @@ namespace LivePT {
 
                                 g_dragState.currentTextLength = newValueStr.length();
                             }
-                            // Сбрасываем ID, чтобы ЛКМ-драг для булов случайно не активировался
                             g_dragState.targetParamId = -1;
                             clickedInsideEval = false;
                         }
                         else if (paramDesc[id].enumInfo.isEnum) {
                             int totalElements = static_cast<int>(paramDesc[id].enumInfo.elements.size());
 
-                            // Если это бинарный енам (2 элемента) и зафиксирован ДАБЛКЛИК — свитчим его на лету
+                            // Бинарные енамы (2 элемента): свитч только по даблклику
                             if (totalElements == 2) {
                                 if (isDoubleClick) {
                                     int currentVal = std::get<int>(paramDesc[id].value);
@@ -398,14 +407,17 @@ namespace LivePT {
                                 g_dragState.targetParamId = -1;
                                 clickedInsideEval = false;
                             }
+                            // БОЛЬШИЕ ЕНАМЫ (больше 2 элементов): теперь ТОЖЕ вызываем меню строго по даблклику!
                             else if (totalElements > 2) {
-                                // Для больших енамов открываем стандартный список (работает по первому клику)
-                                InitMultiEnumSelection(id);
+                                if (isDoubleClick) {
+                                    InitMultiEnumSelection(id);
+                                }
+                                g_dragState.targetParamId = -1;
                                 clickedInsideEval = false;
                             }
                         }
                         else {
-                            // Для обычных чисел инициализируем драг как обычно
+                            // Обычные числа: инициализируем драг как обычно
                             size_t lineStartOffset = 0; long currentLineIdx = 1;
                             while (currentLineIdx < line) { lineStartOffset = fileText.find(L'\n', lineStartOffset) + 1; currentLineIdx++; }
 
@@ -461,41 +473,38 @@ namespace LivePT {
                     long long currentIntVal = std::stoll(intPartStr);
                     long long currentFracVal = fracPartStr.empty() ? 0 : std::stoll(fracPartStr);
 
-                    bool isNegative = (!intPartStr.empty() && intPartStr[0] == '-');
-
+                    // Переводим ВСЁ число в единые плоские микро-единицы с учетом знака
                     long long totalUnits = currentIntVal * fracLimit;
-
-                    if (isNegative) {
-
-                        if (currentIntVal == 0) {
-                            totalUnits = -currentFracVal;
-                        }
-                        else {
-                            totalUnits -= currentFracVal;
-                        }
+                    if (currentIntVal < 0 || intPartStr[0] == '-') {
+                        totalUnits -= currentFracVal;
                     }
                     else {
                         totalUnits += currentFracVal;
                     }
 
+                    // Применяем дельту к плоским единицам (переходы через точку и через ноль теперь автоматические!)
                     totalUnits += delta;
 
+                    // Извлекаем новые значения целой и дробной частей
                     long long newIntVal = totalUnits / fracLimit;
                     long long newFracVal = std::abs(totalUnits % fracLimit);
 
                     std::string newIntStr = std::to_string(newIntVal);
 
+                    // Корректно обрабатываем знак минус для случая, когда целая часть равна 0, но общее число отрицательное
                     if (totalUnits < 0 && newIntVal == 0) {
                         newIntStr = "-" + newIntStr;
                     }
 
                     std::string newFracStr = std::to_string(newFracVal);
+                    // Железно сохраняем разрядность (ведущие нули), чтобы .01 не превращалось в .1
                     if (newFracStr.length() < precision) {
                         newFracStr.insert(0, precision - newFracStr.length(), '0');
                     }
 
                     newValueStr = newIntStr + "." + newFracStr + suffix;
                 }
+
                 else {
                     char modified[100];
                     _itoa_s(g_dragState.newValue, modified, sizeof(modified), 10);
