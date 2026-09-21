@@ -1,12 +1,5 @@
 namespace LivePT {
 
-    constexpr int MAX_SCAN_RANGE = 1024;
-
-    template <typename E, E V>
-    inline std::string_view GetEnumNameRaw() {
-        return __FUNCSIG__;
-    }
-
     struct EnumElementDesc {
         int value;
         std::string name;
@@ -14,63 +7,8 @@ namespace LivePT {
 
     struct EnumTypeDesc {
         bool isEnum = false;
-        std::vector<EnumElementDesc> elements;
+        std::vector<EnumElementDesc> elements; // ОСТАВЛЯЕМ КАК КЭШ ДЛЯ DIA
     };
-
-    inline void ParseSignature(std::string_view rawSigView, int V, EnumTypeDesc& desc) {
-        std::string rawSig(rawSigView);
-
-        std::string anchor = "GetEnumNameRaw<";
-        size_t anchorPos = rawSig.find(anchor);
-        if (anchorPos == std::string::npos) return;
-
-        size_t startTemplate = anchorPos + anchor.length();
-        size_t endTemplate = rawSig.find('>', startTemplate);
-        if (endTemplate == std::string::npos) return;
-
-        std::string paramsStr = rawSig.substr(startTemplate, endTemplate - startTemplate);
-        size_t commaPos = paramsStr.rfind(',');
-        if (commaPos == std::string::npos) return;
-
-        std::string valueStr = paramsStr.substr(commaPos + 1);
-
-        if (valueStr.find('(') != std::string::npos) return;
-
-        valueStr.erase(0, valueStr.find_first_not_of(" \t"));
-        valueStr.erase(valueStr.find_last_not_of(" \t") + 1);
-
-        size_t lastCols = valueStr.rfind("::");
-        if (lastCols != std::string::npos) {
-            valueStr = valueStr.substr(lastCols + 2);
-        }
-
-        if (!valueStr.empty()) {
-            desc.elements.push_back({ V, valueStr });
-        }
-    }
-
-    template <typename E, int I>
-    inline void ProcessSingleIndex(EnumTypeDesc& desc) {
-        ParseSignature(GetEnumNameRaw<E, static_cast<E>(I)>(), I, desc);
-    }
-
-    template <typename E, int... Is>
-    inline void ExpandEnumIndices(EnumTypeDesc& desc, std::integer_sequence<int, Is...>) {
-        (ProcessSingleIndex<E, Is>(desc), ...);
-    }
-
-    template <typename E>
-    inline EnumTypeDesc ReflectedEnumInfo() {
-        if constexpr (!std::is_enum_v<E>) {
-            return EnumTypeDesc{ false };
-        }
-        else {
-            EnumTypeDesc desc;
-            desc.isEnum = true;
-            ExpandEnumIndices<E>(desc, std::make_integer_sequence<int, MAX_SCAN_RANGE>{});
-            return desc;
-        }
-    }
 
     struct ref {
         using typeVariant = std::variant<
@@ -94,6 +32,9 @@ namespace LivePT {
         // чтобы DragNumericValue мгновенно зажимал мышку без хардкода логики
         long long typeMinBound = 0;
         long long typeMaxBound = 0;
+
+        int line = 0;
+        int column = 0;
     };
 
 
@@ -131,26 +72,6 @@ namespace LivePT {
 
             // ВЕТКА А: Обработка перечислений (Enum)
             if (paramDesc[id].enumInfo.isEnum) {
-                std::string cleanQuery = newValue;
-                cleanQuery.erase(std::remove_if(cleanQuery.begin(), cleanQuery.end(), ::isspace), cleanQuery.end());
-
-                size_t lastCols = cleanQuery.rfind("::");
-                if (lastCols != std::string::npos) {
-                    cleanQuery = cleanQuery.substr(lastCols + 2);
-                }
-
-                for (const auto& elem : paramDesc[id].enumInfo.elements) {
-                    if (elem.name == cleanQuery) {
-                        activeValue = elem.value;
-                        return;
-                    }
-                }
-
-                std::stringstream ss(cleanQuery);
-                int parsedInt;
-                if (ss >> parsedInt) {
-                    activeValue = parsedInt;
-                }
                 return;
             }
 
@@ -232,7 +153,9 @@ namespace LivePT {
             .counterID = 0,
             .enumInfo = enumDesc,
             .typeMinBound = 0, // Инициализируем нулями, щит сам перезапишет их под нужный тип
-            .typeMaxBound = 0
+            .typeMaxBound = 0,
+            .line = line,
+            .column = column    
             });
 
         fileMap[key] = paramID;
@@ -264,14 +187,16 @@ namespace LivePT {
     struct GlobalEvalRegistry {
         static inline const int cached_id = []() {
             if constexpr (std::is_enum_v<T>) {
-                auto enumMetadata = ReflectedEnumInfo<T>();
-                return RegisterEvalPreMain(AbsoluteFile.c_str(), ref::typeVariant{ static_cast<int>(T{}) }, Line, Column, enumMetadata);
+                // ТОЧЕЧНЫЙ ФИКС: Убрали вызов ReflectedEnumInfo. Передаем пустую структуру 
+                // с флагом isEnum = true. Координаты Line и Column передаются без изменений.
+                return RegisterEvalPreMain(AbsoluteFile.c_str(), ref::typeVariant{ static_cast<int>(T{}) }, Line, Column, EnumTypeDesc{ .isEnum = true });
             }
             else {
                 return RegisterEvalPreMain(AbsoluteFile.c_str(), ref::typeVariant{ T{} }, Line, Column, EnumTypeDesc{ false });
             }
             }();
     };
+
 
         // 1. Рантайм-щит теперь принимает два типа: TargetType (для базы данных и лимитов) 
         // и TLiteral (для сохранения точности исходного значения)
