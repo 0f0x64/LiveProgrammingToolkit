@@ -1,13 +1,3 @@
-#pragma once
-
-#include <windows.h>
-#include <iostream>
-#include <vector>
-#include <string>
-
-#pragma comment(lib, "dbghelp.lib")
-#include <dbghelp.h>
-
 inline std::string DbgHelpWideToUtf8(const wchar_t* wstr) {
     if (!wstr) return "";
     int size = WideCharToMultiByte(CP_UTF8, 0, wstr, -1, nullptr, 0, nullptr, nullptr);

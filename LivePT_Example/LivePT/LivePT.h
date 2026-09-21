@@ -18,6 +18,9 @@
 #include <atlbase.h>
 #include <tlhelp32.h>
 
+#pragma comment(lib, "dbghelp.lib")
+#include <dbghelp.h>
+
 namespace LivePT {
 
     inline void Log(const std::string& text, bool nl = true) {
