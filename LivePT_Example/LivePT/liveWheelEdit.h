@@ -259,10 +259,76 @@ namespace LivePT {
 
     inline void InitMultiEnumSelection(int id) {
         g_dragState.isDragging = false;
-        int totalElements = static_cast<int>(paramDesc[id].enumInfo.elements.size());
 
+        // Он-деманд загрузка из PDB строго один раз при первом клике
+        if (paramDesc[id].enumInfo.elements.empty()) {
+            std::wstring wEnumName = L"";
+            size_t lastCols = g_dragState.startTextValue.rfind("::");
+            if (lastCols != std::string::npos) {
+                std::string pureTypeName = g_dragState.startTextValue.substr(0, lastCols);
+                wEnumName = std::wstring(pureTypeName.begin(), pureTypeName.end());
+            }
+            else {
+                wEnumName = std::wstring(g_dragState.startTextValue.begin(), g_dragState.startTextValue.end());
+            }
+
+            if (!wEnumName.empty()) {
+                std::vector<std::string> parsedNames;
+                std::vector<int> parsedValues;
+                if (LoadEnumMetadataDirect(wEnumName.c_str(), parsedNames, parsedValues)) {
+                    for (size_t i = 0; i < parsedNames.size(); ++i) {
+                        EnumElementDesc gameElem{ parsedValues[i], parsedNames[i] };
+                        paramDesc[id].enumInfo.elements.push_back(gameElem);
+                    }
+                }
+            }
+        }
+
+        int totalElements = static_cast<int>(paramDesc[id].enumInfo.elements.size());
+        if (totalElements == 0) {
+            g_dragState.targetParamId = -1;
+            return;
+        }
+
+        // САМ РЕШАЕТ: Если элементов ровно 2 — берем противоположный и выходим!
+        if (totalElements == 2) {
+            int currentVal = std::get<int>(paramDesc[id].value);
+            // ПРАВИЛЬНЫЙ ИСПРАВЛЕННЫЙ ИНДЕКС: ищем текущее значение в векторе
+            int currentIndex = (paramDesc[id].enumInfo.elements[0].value == currentVal) ? 0 : 1;
+            int newIndex = 1 - currentIndex;
+
+            int targetEnumValue = paramDesc[id].enumInfo.elements[newIndex].value;
+            std::string pureName = paramDesc[id].enumInfo.elements[newIndex].name;
+            std::string newValueStr = pureName;
+
+            size_t lastCols = g_dragState.startTextValue.rfind("::");
+            if (lastCols != std::string::npos) {
+                std::string prefix = g_dragState.startTextValue.substr(0, lastCols + 2);
+                newValueStr = prefix + pureName;
+            }
+
+            long newCursorRelPos = static_cast<long>(newValueStr.length()) - g_dragState.initialCursorAnchorOffset;
+            if (newCursorRelPos < 0) newCursorRelPos = 0;
+            long newCursorPhysicalCol = g_dragState.dragStartCol + newCursorRelPos;
+
+            StartUndoTransaction(L"LiveWheel Change Enum");
+            ReplaceTextInActiveVS(g_dragState.dragLine, g_dragState.dragStartCol, g_dragState.dragStartCol + static_cast<long>(g_dragState.currentTextLength), newValueStr, newCursorPhysicalCol);
+            EndUndoTransaction();
+
+            g_dragState.currentTextLength = newValueStr.length();
+            paramDesc[id].value = targetEnumValue;
+            UpdateParamValue(id, pureName);
+
+            SaveActiveDocument();
+            g_dragState.targetParamId = -1;
+            return; // Мгновенный выход, меню не создается!
+        }
+
+        // Если элементов больше 2 — спокойно строим и выводим меню
         std::vector<std::string> enumMenu;
-        for (int i = 0; i < totalElements; i++) enumMenu.push_back(paramDesc[id].enumInfo.elements[i].name);
+        for (int i = 0; i < totalElements; i++) {
+            enumMenu.push_back(paramDesc[id].enumInfo.elements[i].name);
+        }
 
         int newIndex = showEnum(enumMenu);
 
@@ -293,6 +359,9 @@ namespace LivePT {
         }
         g_dragState.targetParamId = -1;
     }
+
+
+
 
     inline void InitNumericDragState(size_t cursorIdxInRaw, const std::string& cleanText) {
         g_dragState.isDragging = true;
@@ -336,15 +405,11 @@ namespace LivePT {
                         DWORD currentTime = GetTickCount();
                         DWORD doubleClickTime = GetDoubleClickTime();
 
-                        // Проверяем системный интервал даблклика и радиус смещения мыши
                         bool isDoubleClick = (g_dragState.lastClickTime != 0) &&
                             (currentTime - g_dragState.lastClickTime <= doubleClickTime) &&
                             (std::abs(pt.x - g_dragState.lastClickPt.x) < 4) &&
                             (std::abs(pt.y - g_dragState.lastClickPt.y) < 4);
 
-                        // МАТЕМАТИЧЕСКИЙ ФИКС: 
-                        // Если даблклик сработал — обнуляем время, чтобы следующий клик начинал цепочку заново.
-                        // Если не сработал — записываем текущее время как начало потенциального даблклика.
                         if (isDoubleClick) {
                             g_dragState.lastClickTime = 0;
                         }
@@ -354,9 +419,7 @@ namespace LivePT {
 
                         g_dragState.lastClickPt = pt;
 
-
                         if (std::holds_alternative<bool>(paramDesc[id].value)) {
-                            // Булы: переключение только по даблклику
                             if (isDoubleClick) {
                                 bool currentBool = std::get<bool>(paramDesc[id].value);
                                 bool newBool = !currentBool;
@@ -377,53 +440,19 @@ namespace LivePT {
                             g_dragState.targetParamId = -1;
                             clickedInsideEval = false;
                         }
+                        // ============================================================================
+                        // ЧИСТАЯ ЛОГИКА ДЛЯ ЕНАМОВ: ВСЕГДА ПЕРЕДАЕМ УПРАВЛЕНИЕ В ОДНУ ТОЧКУ ВХОДА
+                        // ============================================================================
                         else if (paramDesc[id].enumInfo.isEnum) {
-                            int totalElements = static_cast<int>(paramDesc[id].enumInfo.elements.size());
-
-                            // Бинарные енамы (2 элемента): свитч только по даблклику
-                            if (totalElements == 2) {
-                                if (isDoubleClick) {
-                                    int currentVal = std::get<int>(paramDesc[id].value);
-                                    int currentIndex = (paramDesc[id].enumInfo.elements[0].value == currentVal) ? 0 : 1;
-                                    int newIndex = 1 - currentIndex;
-
-                                    int targetEnumValue = paramDesc[id].enumInfo.elements[newIndex].value;
-                                    std::string pureName = paramDesc[id].enumInfo.elements[newIndex].name;
-                                    std::string newValueStr = pureName;
-
-                                    size_t lastCols = g_dragState.startTextValue.rfind("::");
-                                    if (lastCols != std::string::npos) {
-                                        std::string prefix = g_dragState.startTextValue.substr(0, lastCols + 2);
-                                        newValueStr = prefix + pureName;
-                                    }
-
-                                    long newCursorRelPos = static_cast<long>(newValueStr.length()) - g_dragState.initialCursorAnchorOffset;
-                                    if (newCursorRelPos < 0) newCursorRelPos = 0;
-                                    long newCursorPhysicalCol = g_dragState.dragStartCol + newCursorRelPos;
-
-                                    StartUndoTransaction(L"LiveWheel Change Enum Click");
-                                    ReplaceTextInActiveVS(g_dragState.dragLine, g_dragState.dragStartCol, g_dragState.dragStartCol + static_cast<long>(g_dragState.currentTextLength), newValueStr, newCursorPhysicalCol);
-                                    EndUndoTransaction();
-
-                                    g_dragState.currentTextLength = newValueStr.length();
-                                    paramDesc[id].value = targetEnumValue;
-                                    UpdateParamValue(id, pureName);
-                                    SaveActiveDocument();
-                                }
-                                g_dragState.targetParamId = -1;
-                                clickedInsideEval = false;
+                            if (isDoubleClick) {
+                                InitMultiEnumSelection(id);
                             }
-                            // БОЛЬШИЕ ЕНАМЫ (больше 2 элементов): теперь ТОЖЕ вызываем меню строго по даблклику!
-                            else if (totalElements > 2) {
-                                if (isDoubleClick) {
-                                    InitMultiEnumSelection(id);
-                                }
-                                g_dragState.targetParamId = -1;
-                                clickedInsideEval = false;
-                            }
+                            g_dragState.targetParamId = -1;
+                            clickedInsideEval = false;
                         }
+
+                        // ============================================================================
                         else {
-                            // Обычные числа: инициализируем драг как обычно
                             size_t lineStartOffset = 0; long currentLineIdx = 1;
                             while (currentLineIdx < line) { lineStartOffset = fileText.find(L'\n', lineStartOffset) + 1; currentLineIdx++; }
 
@@ -440,6 +469,8 @@ namespace LivePT {
         }
         return clickedInsideEval;
     }
+
+
 
 
 

@@ -72,6 +72,21 @@ namespace LivePT {
 
             // ВЕТКА А: Обработка перечислений (Enum)
             if (paramDesc[id].enumInfo.isEnum) {
+                std::string cleanName = newValue;
+
+                // Если прилетела полная строка вида "Primitive::ptype::box", отрезаем всё до самого имени элемента
+                size_t lastCols = cleanName.rfind("::");
+                if (lastCols != std::string::npos) {
+                    cleanName = cleanName.substr(lastCols + 2);
+                }
+
+                // Бежим по нашему PDB-кэшу элементов и ищем числовое значение для введённых букв
+                for (const auto& elem : paramDesc[id].enumInfo.elements) {
+                    if (elem.name == cleanName) {
+                        activeValue = elem.value; // Обновляем живое числовое значение в памяти игры!
+                        return;
+                    }
+                }
                 return;
             }
 

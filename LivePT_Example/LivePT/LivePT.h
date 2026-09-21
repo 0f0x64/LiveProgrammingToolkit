@@ -26,6 +26,7 @@ namespace LivePT {
     }
 }
 
+#include "DbgHelpRef.h"
 #include "eval.h"
 #include "vsEditor.h"
 #if LivePT_WheelEditMode

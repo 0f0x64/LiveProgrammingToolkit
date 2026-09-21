@@ -15,11 +15,11 @@
 class Primitive {
 public:
     enum class ptype { circle, box, roundbox };
-
+    enum class show_t { on, off };
     int x = 0;
     int y = 0;
     ptype type = ptype::circle;
-    bool show = true;
+    show_t show;
 
     // ОТДЕЛЬНЫЕ КОМПОНЕНТЫ ЦВЕТА (По умолчанию — наш красивый синий: 0, 120, 215)
     unsigned char r = 0;
@@ -27,7 +27,7 @@ public:
     unsigned char b = 215;
 
     // Unified setters using C++20 aggregate initialization rules
-    void Set(int xPos, int yPos, ptype form, bool showObj, unsigned char red = 0, unsigned char green = 120, unsigned char blue = 215) {
+    void Set(int xPos, int yPos, ptype form, show_t showObj, unsigned char red = 0, unsigned char green = 120, unsigned char blue = 215) {
         *this = { xPos, yPos, form, showObj, red, green, blue };
     }
     void Set(const Primitive& in) { *this = in; }
@@ -49,7 +49,7 @@ public:
 
         // Render loop for all visible primitives in the array
         for (const auto& p : arr) {
-            if (!p.show) continue;
+            if (p.show == show_t::off) continue;
 
             int posX = (w / 2) + p.x;
             int posY = (h / 2) + p.y;
@@ -87,18 +87,18 @@ Primitive primitive[3];
 void UpdateSceneParams() {
 
     // drag numbers by pressing&move mButton inside eval, click mButton for switch / context menu
-    primitive[0].Set(eval(-88), eval(-101), eval(Primitive::ptype::roundbox), eval(true));
+    primitive[0].Set(eval(-98), eval(-114), eval(Primitive::ptype::roundbox), eval(Primitive::show_t::on));
 
     // floating point numbers allowed (will be casted to int in this case, but you can modify class to use native floats)
-    primitive[1].Set(eval(-201.965), eval(-32.7f), eval(Primitive::ptype::box), eval(true));
+    primitive[1].Set(eval(-206.965), eval(-32.7f), eval(Primitive::ptype::circle), eval(Primitive::show_t::on));
 
     // aggregate init alternative
     primitive[2].Set(Primitive{
-        .x = eval(80)*2,
-        .y = eval(-265),
-        .type = eval(Primitive::ptype::circle),
-        .show = eval(true),
-        .r = (unsigned char)(eval(140) * 2), 
+        .x = eval(41)*2,
+        .y = eval(-261),
+        .type = eval(Primitive::ptype::box),
+        .show = eval(Primitive::show_t::on),
+        .r = (unsigned char)(eval(113) * 2), 
         .g = eval(0),
         .b = eval(0)
         });
