@@ -94,11 +94,11 @@ void UpdateSceneParams() {
 
     // aggregate init alternative
     primitive[2].Set(Primitive{
-        .x = eval(70)*2,
-        .y = eval(-194),
+        .x = eval(81)*2,
+        .y = eval(-220),
         .type = eval(Primitive::ptype::circle),
         .show = eval(true),
-        .r = eval(255),
+        .r = (unsigned char)(eval(255) * 2), 
         .g = eval(0),
         .b = eval(10)
         });
