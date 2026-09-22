@@ -414,9 +414,6 @@ namespace LivePT {
 
         if (GetActiveVSContext(vtActiveDoc, currentFile, line, column, fileText)) {
 
-            // ============================================================================
-            // ТОЧЕЧНЫЙ ФИКС: ВЫЧИСЛЯЕМ ФЛАГ ДАБЛКЛИКА НА САМОМ ВЕРХУ МЕТОДА
-            // ============================================================================
             DWORD currentTime = GetTickCount();
             DWORD doubleClickTime = GetDoubleClickTime();
 
@@ -433,12 +430,12 @@ namespace LivePT {
             }
 
             g_dragState.lastClickPt = pt;
-            // ============================================================================
 
             size_t evalIdxInLine = 0;
             size_t targetEvalAbsolutePos = 0;
+            g_dragState.targetParamId = -1; // По умолчанию -1 (число вне eval)
 
-            // 1. Вычисляем ID параметра ОДИН РАЗ при клике по честным координатам Студии
+            // 1. Проверяем, лежит ли курсор внутри eval СТУДИИ
             if (CheckCursorInsideEval(fileText, line, column, evalIdxInLine, targetEvalAbsolutePos)) {
                 int counterID = GetParamIndexByTextOrder(fileText, currentFile, line, evalIdxInLine);
                 if (counterID != -1) {
@@ -449,7 +446,7 @@ namespace LivePT {
 
             int id = g_dragState.targetParamId;
 
-            // 2. ОБРАБОТКА ЕНАМОВ ПО ДАБЛКЛИКУ (isDoubleClick теперь полностью определен!)
+            // 2. ОБРАБОТКА ЕНАМОВ ПО ДАБЛКЛИКУ (Остается изолированной, требует валидный id)
             if (id != -1 && paramDesc[id].enumInfo.isEnum) {
                 if (isDoubleClick) {
                     ParseMacroValueBoundaries(fileText, line, targetEvalAbsolutePos);
@@ -460,36 +457,40 @@ namespace LivePT {
                 return false;
             }
 
-            // 3. Если параметр валиден и это НЕ енам — инициализируем текстовые границы числа для драга
-            if (id != -1 && ParseMacroValueBoundaries(fileText, line, targetEvalAbsolutePos)) {
-                std::wstring lineText = DownloadCurrentLineText(vtActiveDoc.pdispVal);
-                long cursorColIdx = column - 1;
+            // 3. УНИВЕРСАЛЬНЫЙ ЗАХВАТ ГРАНИЦ ЧИСЛА (Работает для любого числа в коде)
+            std::wstring lineText = DownloadCurrentLineText(vtActiveDoc.pdispVal);
+            long cursorColIdx = column - 1;
 
-                if (cursorColIdx >= 0 && cursorColIdx < static_cast<long>(lineText.length())) {
-                    long startCol = cursorColIdx;
-                    long endCol = cursorColIdx;
+            if (cursorColIdx >= 0 && cursorColIdx < static_cast<long>(lineText.length())) {
+                long startCol = cursorColIdx;
+                long endCol = cursorColIdx;
 
-                    while (startCol > 0 && (iswdigit(lineText[startCol - 1]) || lineText[startCol - 1] == L'.' || lineText[startCol - 1] == L'-' || lineText[startCol - 1] == L'f' || lineText[startCol - 1] == L'F')) {
-                        startCol--;
+                while (startCol > 0 && (iswdigit(lineText[startCol - 1]) || lineText[startCol - 1] == L'.' || lineText[startCol - 1] == L'-' || lineText[startCol - 1] == L'f' || lineText[startCol - 1] == L'F')) {
+                    startCol--;
+                }
+                while (endCol < static_cast<long>(lineText.length()) && (iswdigit(lineText[endCol]) || lineText[endCol] == L'.' || lineText[endCol] == L'-' || lineText[endCol] == L'f' || lineText[endCol] == L'F')) {
+                    endCol++;
+                }
+
+                if (startCol < endCol) {
+                    std::wstring numW = lineText.substr(startCol, endCol - startCol);
+                    std::string cleanText(numW.begin(), numW.end());
+
+                    // Важно: ParseMacroValueBoundaries вызываем только если крутим честный eval-параметр,
+                    // чтобы инициализировать макрос-границы структуры для покадровой сборки строк
+                    if (id != -1) {
+                        ParseMacroValueBoundaries(fileText, line, targetEvalAbsolutePos);
                     }
-                    while (endCol < static_cast<long>(lineText.length()) && (iswdigit(lineText[endCol]) || lineText[endCol] == L'.' || lineText[endCol] == L'-' || lineText[endCol] == L'f' || lineText[endCol] == L'F')) {
-                        endCol++;
-                    }
 
-                    if (startCol < endCol) {
-                        std::wstring numW = lineText.substr(startCol, endCol - startCol);
-                        std::string cleanText(numW.begin(), numW.end());
+                    g_dragState.dragLine = line;
+                    g_dragState.dragStartCol = startCol + 1;
+                    g_dragState.currentTextLength = cleanText.length();
+                    g_dragState.oldMouseY = pt.y;
 
-                        g_dragState.dragLine = line;
-                        g_dragState.dragStartCol = startCol + 1;
-                        g_dragState.currentTextLength = cleanText.length();
-                        g_dragState.oldMouseY = pt.y;
+                    size_t relativeCursorIdx = cursorColIdx - startCol;
+                    InitNumericDragState(relativeCursorIdx, cleanText);
 
-                        size_t relativeCursorIdx = cursorColIdx - startCol;
-                        InitNumericDragState(relativeCursorIdx, cleanText);
-
-                        clickedInsideNumber = true;
-                    }
+                    clickedInsideNumber = true;
                 }
             }
             VariantClear(&vtActiveDoc);
@@ -497,18 +498,14 @@ namespace LivePT {
         return clickedInsideNumber;
     }
 
-
-
-    inline void DragNumericValue(int id, const POINT& pt, bool ctrl, bool shift) {
+    inline void DragNumericValue(int /*dummy*/, const POINT& pt, bool ctrl, bool shift) {
         int scale = 1;
         if (ctrl)  scale *= 100;
         if (shift) scale *= 10;
 
         int delta = -(pt.y - g_dragState.oldMouseY) * scale / 2;
 
-        // Новое значение вычисляем свободно, без жестких лимитов paramDesc
         long long targetValue = static_cast<long long>(g_dragState.oldValue) + delta;
-
         g_dragState.newValue = static_cast<int>(targetValue);
 
         if (g_dragState.newValue != g_dragState.lastValue) {
@@ -521,7 +518,6 @@ namespace LivePT {
                 newValueStr = modified;
             }
             else {
-                // ... (Весь ваш ОРИГИНАЛЬНЫЙ и красивый математический код разбора целой/дробной частей с сохранением precision остается НЕИЗМЕННЫМ) ...
                 std::string intPartStr = g_dragState.startTextValue.substr(0, dotPos);
                 std::string fracPartStr = g_dragState.startTextValue.substr(dotPos + 1);
                 std::string suffix = "";
@@ -566,20 +562,18 @@ namespace LivePT {
             newCursorRelPos = std::clamp(newCursorRelPos, 0L, static_cast<long>(newValueStr.length()));
             long newCursorPhysicalCol = g_dragState.dragStartCol + newCursorRelPos;
 
+            // Шлем изменения в VS
             ReplaceTextInActiveVS(g_dragState.dragLine, g_dragState.dragStartCol, g_dragState.dragStartCol + static_cast<long>(g_dragState.currentTextLength), newValueStr, newCursorPhysicalCol);
 
             g_dragState.currentTextLength = newValueStr.length();
 
-            // ============================================================================
-            // ЧИСТЫЙ ОПТИМИЗИРОВАННЫЙ ПОКАДРОВЫЙ АПДЕЙТ ИЗ ОЗУ
-            // ============================================================================
+            // ПРЯМАЯ ИГРОВАЯ СИНХРОНИЗАЦИЯ С ПАМЯТЬЮ (Только если у числа есть ID макроса eval)
             int targetId = g_dragState.targetParamId;
             if (targetId != -1) {
                 size_t openBrace = g_dragState.startTextValue.find('{');
                 size_t closeBrace = g_dragState.startTextValue.rfind('}');
 
                 if (openBrace != std::string::npos && closeBrace != std::string::npos && closeBrace > openBrace) {
-                    // А. КРУТИМ ЧИСЛО ВНУТРИ АГРЕГАТА/СТРУКТУРЫ
                     std::string typePrefix = g_dragState.startTextValue.substr(0, openBrace + 1);
                     std::string innerArgs = g_dragState.startTextValue.substr(openBrace + 1, closeBrace - openBrace - 1);
 
@@ -595,7 +589,6 @@ namespace LivePT {
                         cleanToken.erase(0, cleanToken.find_first_not_of(" \t\r\n"));
                         cleanToken.erase(cleanToken.find_last_not_of(" \t\r\n") + 1);
 
-                        // Сравниваем со скользящим значением предыдущего кадра мыши
                         if (!replaced && cleanToken == g_dragState.lastValueStr) {
                             size_t leadingSpaces = token.find_first_not_of(" \t\r\n");
                             std::string prefix = (leadingSpaces != std::string::npos) ? token.substr(0, leadingSpaces) : "";
@@ -608,25 +601,19 @@ namespace LivePT {
                     }
 
                     std::string finalStructString = typePrefix + rebuiltArgs + "}";
-
-                    // Сохраняем собранную структуру обратно в буфер макроса для следующего кадра драга
                     g_dragState.startTextValue = finalStructString;
                     g_dragState.lastValueStr = newValueStr;
 
-                    // Укол в память игры — летит полная, валидная строка структуры!
                     UpdateParamValue(targetId, finalStructString);
                 }
-                else {
-                    // Б. КРУТИМ ОБЫЧНОЕ ОДИНОЧНОЕ ЧИСЛО
-                    UpdateParamValue(targetId, newValueStr);
-                    g_dragState.lastValueStr = newValueStr;
+                else { 
+                    UpdateParamValue(targetId, newValueStr); 
+                    g_dragState.lastValueStr = newValueStr; 
                 }
             }
-            // ============================================================================
-
             g_dragState.lastValue = g_dragState.newValue;
         }
-    }
+}
 
 
 

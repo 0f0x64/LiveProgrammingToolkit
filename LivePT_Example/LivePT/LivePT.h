@@ -78,55 +78,42 @@ namespace LivePT {
 #if LivePT_EditMode
 
 #if LivePT_WindowManagement
-        GetWindowManager().Tick();
+        GetWindowManager().Tick(); // [2]
 #endif
 
 #if LivePT_WheelEditMode
-        // 1. Сначала всегда обрабатываем мышь, чтобы выставить флаг драга
-        Update();
+        // 1. Всегда обрабатываем координаты мыши и драг
+        Update(); // [2]
 #endif
 
-        HWND hForeground = ::GetForegroundWindow();
-        bool shouldProcessEditor = true;
+        HWND hForeground = ::GetForegroundWindow(); // [2]
+        bool shouldProcessEditor = true; // [2]
 
-#if LivePT_WheelEditMode
-        // Если идет драг или открыто окно-щит — полностью пропускаем фоновый опрос,
-        // чтобы vsEditor() не конфликтовал с живым изменением текста ползунком
-        if (hForeground == g_hShieldWnd) {
-            shouldProcessEditor = false;
-        }
-#endif
+        if (hForeground != NULL) { // [2]
+            DWORD activeProcessId = 0; // [2]
+            ::GetWindowThreadProcessId(hForeground, &activeProcessId); // [2]
 
-        if (shouldProcessEditor) {
-            if (hForeground != NULL) {
-                // ПУЛЕНЕПРОБИВАЕМЫЙ ЧЕК ПРОЦЕССА СТУДИИ:
-                // Узнаем, какому конкретно Process ID принадлежит активное окно
-                DWORD activeProcessId = 0;
-                ::GetWindowThreadProcessId(hForeground, &activeProcessId);
+            DWORD targetStudioPid = GetStudioProcessId(); // [2]
 
-                // Получаем истинный PID Visual Studio, который мы нашли при старте (GetStudioProcessId)
-                DWORD targetStudioPid = GetStudioProcessId();
-
-                // Если активное окно принадлежит НЕ Visual Studio (например, ты переключился на игру) —
-                // полностью отключаем фоновый опрос буфера, освобождая 100% CPU в игровом цикле.
-                if (activeProcessId != targetStudioPid) {
-                    shouldProcessEditor = false;
-                }
-            }
-            else {
-                // Если активного окна вообще нет (фокус потерян в ОС) — тоже отключаем опрос
-                shouldProcessEditor = false;
+            // Если ушли из Студии (например, в игру) — глушим опрос, чтобы освободить CPU
+            if (activeProcessId != targetStudioPid) { // [2]
+                shouldProcessEditor = false; // [2]
             }
         }
-
-        // Вызываем фоновый инспектор ручного ввода с клавиатуры 
-        // ТОЛЬКО когда фокус гарантированно внутри процесса Visual Studio
-        if (shouldProcessEditor) {
-            vsEditor();
+        else {
+            shouldProcessEditor = false; // [2]
         }
+
+        // БЛОКИРОВКА НА ВРЕМЯ ДРАГА ПОЛНОСТЬЮ ВЫРЕЗАНА!
+        // Вызываем фоновый инспектор vsEditor() параллельно с драгом, 
+        // пока фокус гарантированно внутри процесса Студии.
+        //if (shouldProcessEditor) {
+            vsEditor(); // [2]
+        //}
 
 #endif
     }
+
 
 
 }
