@@ -31,6 +31,7 @@ namespace LivePT {
         // ВСПЛЫВАЮЩИЕ ПЕРЕМЕННЫЕ ДЛЯ ДАБЛКЛИКА
         DWORD lastClickTime = 0;
         POINT lastClickPt = { 0, 0 };
+        std::string oldValueStr;
     };
 
 
@@ -368,7 +369,12 @@ namespace LivePT {
         g_dragState.isDragging = true;
         StartUndoTransaction(L"LiveWheel Live Edit");
 
+        // СОХРАНЯЕМ ИСХОДНУЮ СТРОКУ ЧИСЛА ДЛЯ ФИКСА СТРУКТУР
+        g_dragState.oldValueStr = cleanText;
+
         long relativeOffset = static_cast<long>(cursorIdxInRaw);
+        // ... (весь остальной ваш код метода InitNumericDragState остается прежним)
+
 
         size_t dotPos = cleanText.find('.');
         g_dragState.pointBefore = (dotPos != std::string::npos && relativeOffset > static_cast<long>(dotPos));
@@ -387,95 +393,62 @@ namespace LivePT {
         long line = 0, column = 0;
         std::wstring fileText;
 
-        bool clickedInsideEval = false;
+        bool clickedInsideNumber = false;
 
         if (GetActiveVSContext(vtActiveDoc, currentFile, line, column, fileText)) {
-            size_t evalIdxInLine = 0, targetEvalAbsolutePos = 0;
+            // 1. Получаем текст только одной текущей строки, чтобы всё летало
+            std::wstring lineText = DownloadCurrentLineText(vtActiveDoc.pdispVal);
+            long cursorColIdx = column - 1; // Переводим в 0-индексируемую координату
 
-            if (CheckCursorInsideEval(fileText, line, column, evalIdxInLine, targetEvalAbsolutePos)) {
-                int counterID = GetParamIndexByTextOrder(fileText, currentFile, line, evalIdxInLine);
-                if (counterID != -1) {
-                    std::string vsLookupKey = currentFile + ":" + std::to_string(counterID);
-                    g_dragState.targetParamId = getID(vsLookupKey);
-                    int id = g_dragState.targetParamId;
+            if (cursorColIdx >= 0 && cursorColIdx < static_cast<long>(lineText.length())) {
+                // 2. Ищем физические границы числа под курсором (влево и вправо)
+                long startCol = cursorColIdx;
+                long endCol = cursorColIdx;
 
-                    if (id != -1 && ParseMacroValueBoundaries(fileText, line, targetEvalAbsolutePos)) {
-                        g_dragState.oldMouseY = pt.y;
-                        clickedInsideEval = true;
+                // Двигаемся влево, пока видим цифры, точки, минусы или знаки 'f'
+                while (startCol > 0 && (iswdigit(lineText[startCol - 1]) || lineText[startCol - 1] == L'.' || lineText[startCol - 1] == L'-' || lineText[startCol - 1] == L'f' || lineText[startCol - 1] == L'F')) {
+                    startCol--;
+                }
+                // Двигаемся вправо
+                while (endCol < static_cast<long>(lineText.length()) && (iswdigit(lineText[endCol]) || lineText[endCol] == L'.' || lineText[endCol] == L'-' || lineText[endCol] == L'f' || lineText[endCol] == L'F')) {
+                    endCol++;
+                }
 
-                        DWORD currentTime = GetTickCount();
-                        DWORD doubleClickTime = GetDoubleClickTime();
+                // 3. Проверяем, нашли ли мы валидное число
+                if (startCol < endCol) {
+                    std::wstring numW = lineText.substr(startCol, endCol - startCol);
+                    std::string cleanText(numW.begin(), numW.end());
 
-                        bool isDoubleClick = (g_dragState.lastClickTime != 0) &&
-                            (currentTime - g_dragState.lastClickTime <= doubleClickTime) &&
-                            (std::abs(pt.x - g_dragState.lastClickPt.x) < 4) &&
-                            (std::abs(pt.y - g_dragState.lastClickPt.y) < 4);
+                    g_dragState.dragLine = line;
+                    g_dragState.dragStartCol = startCol + 1;
+                    g_dragState.currentTextLength = cleanText.length();
+                    g_dragState.startTextValue = cleanText;
+                    g_dragState.oldMouseY = pt.y;
 
-                        if (isDoubleClick) {
-                            g_dragState.lastClickTime = 0;
-                        }
-                        else {
-                            g_dragState.lastClickTime = currentTime;
-                        }
-
-                        g_dragState.lastClickPt = pt;
-
-                        // Проверяем тип внутри any через typeid
-                        if (paramDesc[id].value.type() == typeid(bool)) {
-                            if (isDoubleClick) {
-                                bool currentBool = std::any_cast<bool>(paramDesc[id].value);
-
-                                bool newBool = !currentBool;
-
-                                std::string newValueStr = newBool ? "true" : "false";
-                                long newCursorPhysicalCol = g_dragState.dragStartCol + static_cast<long>(newValueStr.length());
-
-                                StartUndoTransaction(L"LiveWheel Toggle Bool");
-                                ReplaceTextInActiveVS(g_dragState.dragLine, g_dragState.dragStartCol, g_dragState.dragStartCol + static_cast<long>(g_dragState.currentTextLength), newValueStr, newCursorPhysicalCol);
-                                EndUndoTransaction();
-
-                                paramDesc[id].value = newBool;
-                                UpdateParamValue(id, newValueStr);
-                                SaveActiveDocument();
-
-                                g_dragState.currentTextLength = newValueStr.length();
-                            }
-                            g_dragState.targetParamId = -1;
-                            clickedInsideEval = false;
-                        }
-                        // ============================================================================
-                        // ЧИСТАЯ ЛОГИКА ДЛЯ ЕНАМОВ: ВСЕГДА ПЕРЕДАЕМ УПРАВЛЕНИЕ В ОДНУ ТОЧКУ ВХОДА
-                        // ============================================================================
-                        else if (paramDesc[id].enumInfo.isEnum) {
-                            if (isDoubleClick) {
-                                InitMultiEnumSelection(id);
-                            }
-                            g_dragState.targetParamId = -1;
-                            clickedInsideEval = false;
-                        }
-
-                        // ============================================================================
-                        else {
-                            size_t lineStartOffset = 0; long currentLineIdx = 1;
-                            while (currentLineIdx < line) { lineStartOffset = fileText.find(L'\n', lineStartOffset) + 1; currentLineIdx++; }
-
-                            size_t openBracket = fileText.find(L'(', targetEvalAbsolutePos);
-                            size_t absoluteCursorPos = lineStartOffset + column - 1;
-                            size_t cursorIdxInRaw = (absoluteCursorPos > openBracket) ? (absoluteCursorPos - (openBracket + 1)) : 0;
-
-                            InitNumericDragState(cursorIdxInRaw, g_dragState.startTextValue);
+                    // === ТОЧЕЧНЫЙ ФИКС: Возвращаем сохранение targetParamId ===
+                    // Мы используем уже вычисленный в начале HandleMouseDown ID параметра
+                    // Для этого временно вернем вызов CheckCursorInsideEval СТРОГО в момент клика (тут он не заблокирован!)
+                    size_t evalIdxInLine = 0, targetEvalAbsolutePos = 0;
+                    if (CheckCursorInsideEval(fileText, line, column, evalIdxInLine, targetEvalAbsolutePos)) {
+                        int counterID = GetParamIndexByTextOrder(fileText, currentFile, line, evalIdxInLine);
+                        if (counterID != -1) {
+                            std::string vsLookupKey = currentFile + ":" + std::to_string(counterID);
+                            g_dragState.targetParamId = getID(vsLookupKey);
                         }
                     }
+                    // =========================================================
+
+                    size_t relativeCursorIdx = cursorColIdx - startCol;
+                    InitNumericDragState(relativeCursorIdx, cleanText);
+
+                    clickedInsideNumber = true;
                 }
+
             }
             VariantClear(&vtActiveDoc);
         }
-        return clickedInsideEval;
+        return clickedInsideNumber;
     }
-
-
-
-
 
     inline void DragNumericValue(int id, const POINT& pt, bool ctrl, bool shift) {
         int scale = 1;
@@ -484,80 +457,47 @@ namespace LivePT {
 
         int delta = -(pt.y - g_dragState.oldMouseY) * scale / 2;
 
-        // Потенциальное новое значение
+        // Новое значение вычисляем свободно, без жестких лимитов paramDesc
         long long targetValue = static_cast<long long>(g_dragState.oldValue) + delta;
-
-        // Извлекаем железные лимиты, которые компилятор сам посчитал для unsigned char / float / short
-        long long typeMin = paramDesc[id].typeMinBound;
-        long long typeMax = paramDesc[id].typeMaxBound;
-
-        if (typeMin != 0 || typeMax != 0) {
-            if (targetValue < typeMin) targetValue = typeMin;
-            if (targetValue > typeMax) targetValue = typeMax;
-        }
 
         g_dragState.newValue = static_cast<int>(targetValue);
 
         if (g_dragState.newValue != g_dragState.lastValue) {
             size_t dotPos = g_dragState.startTextValue.find('.');
-
             std::string newValueStr;
+
             if (dotPos == std::string::npos) {
                 char modified[100];
                 _itoa_s(g_dragState.newValue, modified, sizeof(modified), 10);
                 newValueStr = modified;
             }
             else {
+                // ... (Весь ваш ОРИГИНАЛЬНЫЙ и красивый математический код разбора целой/дробной частей с сохранением precision остается НЕИЗМЕННЫМ) ...
                 std::string intPartStr = g_dragState.startTextValue.substr(0, dotPos);
                 std::string fracPartStr = g_dragState.startTextValue.substr(dotPos + 1);
-
                 std::string suffix = "";
                 if (!fracPartStr.empty() && (fracPartStr.back() == 'f' || fracPartStr.back() == 'F')) {
                     suffix = fracPartStr.back();
                     fracPartStr.pop_back();
                 }
-
                 size_t precision = fracPartStr.length();
-
                 if (g_dragState.pointBefore) {
                     long long fracLimit = 1;
                     for (size_t i = 0; i < precision; ++i) fracLimit *= 10;
-
                     long long currentIntVal = std::stoll(intPartStr);
                     long long currentFracVal = fracPartStr.empty() ? 0 : std::stoll(fracPartStr);
-
-                    // Переводим ВСЁ число в единые плоские микро-единицы с учетом знака
                     long long totalUnits = currentIntVal * fracLimit;
-                    if (currentIntVal < 0 || intPartStr[0] == '-') {
-                        totalUnits -= currentFracVal;
-                    }
-                    else {
-                        totalUnits += currentFracVal;
-                    }
-
-                    // Применяем дельту к плоским единицам (переходы через точку и через ноль теперь автоматические!)
+                    if (currentIntVal < 0 || intPartStr[0] == '-') totalUnits -= currentFracVal;
+                    else totalUnits += currentFracVal;
                     totalUnits += delta;
-
-                    // Извлекаем новые значения целой и дробной частей
                     long long newIntVal = totalUnits / fracLimit;
                     long long newFracVal = std::abs(totalUnits % fracLimit);
-
                     std::string newIntStr = std::to_string(newIntVal);
-
-                    // Корректно обрабатываем знак минус для случая, когда целая часть равна 0, но общее число отрицательное
-                    if (totalUnits < 0 && newIntVal == 0) {
-                        newIntStr = "-" + newIntStr;
-                    }
-
+                    if (totalUnits < 0 && newIntVal == 0) newIntStr = "-" + newIntStr;
                     std::string newFracStr = std::to_string(newFracVal);
-                    // Железно сохраняем разрядность (ведущие нули), чтобы .01 не превращалось в .1
-                    if (newFracStr.length() < precision) {
-                        newFracStr.insert(0, precision - newFracStr.length(), '0');
-                    }
-
+                    if (newFracStr.length() < precision) newFracStr.insert(0, precision - newFracStr.length(), '0');
                     newValueStr = newIntStr + "." + newFracStr + suffix;
                 }
-
                 else {
                     char modified[100];
                     _itoa_s(g_dragState.newValue, modified, sizeof(modified), 10);
@@ -567,47 +507,84 @@ namespace LivePT {
 
             size_t newDotPos = newValueStr.find('.');
             long newCursorRelPos = 0;
-
-            if (newDotPos != std::string::npos)
-            {
-                if (g_dragState.pointBefore) {
-                    newCursorRelPos = static_cast<long>(newDotPos) + g_dragState.initialCursorAnchorOffset;
-                } else {
-                    newCursorRelPos = static_cast<long>(newDotPos) - g_dragState.initialCursorAnchorOffset;
-                }
-            } else {
+            if (newDotPos != std::string::npos) {
+                if (g_dragState.pointBefore) newCursorRelPos = static_cast<long>(newDotPos) + g_dragState.initialCursorAnchorOffset;
+                else newCursorRelPos = static_cast<long>(newDotPos) - g_dragState.initialCursorAnchorOffset;
+            }
+            else {
                 newCursorRelPos = static_cast<long>(newValueStr.length()) - g_dragState.initialCursorAnchorOffset;
             }
-
             newCursorRelPos = std::clamp(newCursorRelPos, 0L, static_cast<long>(newValueStr.length()));
-
             long newCursorPhysicalCol = g_dragState.dragStartCol + newCursorRelPos;
 
+            // 1. Выполняем физическую замену текста в Visual Studio (уже есть в коде)
             ReplaceTextInActiveVS(g_dragState.dragLine, g_dragState.dragStartCol, g_dragState.dragStartCol + static_cast<long>(g_dragState.currentTextLength), newValueStr, newCursorPhysicalCol);
 
             g_dragState.currentTextLength = newValueStr.length();
-            UpdateParamValue(g_dragState.targetParamId, newValueStr);
+
+            // ============================================================================
+            // ИСПРАВЛЕННЫЙ ТОЧЕЧНЫЙ ФИКС: ПОКАДРОВЫЙ ДРАГ СТРУКТУР И ЧИСЕЛ ИЗ СТРОКИ КОДА
+            // ============================================================================
+            int targetId = g_dragState.targetParamId;
+            if (targetId != -1) {
+                CComVariant vtActiveDoc;
+                if (SUCCEEDED(AutoWrap(DISPATCH_PROPERTYGET, &vtActiveDoc, pDTE, L"ActiveDocument", 0)) && vtActiveDoc.pdispVal) {
+
+                    // Выкачиваем текст ОДНОЙ текущей строки (этот метод работает покадрово и не блокируется!)
+                    std::wstring currentLineText = DownloadCurrentLineText(vtActiveDoc.pdispVal);
+                    std::string fullLineA(currentLineText.begin(), currentLineText.end());
+
+                    // Находим макрос eval на этой строке. Чтобы не ошибиться, ищем кусок строки, начиная от нашего числа
+                    size_t evalPos = fullLineA.find("eval");
+                    if (evalPos != std::string::npos) {
+                        std::string cleanLinePart = fullLineA.substr(evalPos);
+
+                        size_t openBracket = cleanLinePart.find('(');
+                        // Ищем закрывающую скобку макроса eval
+                        size_t closeBracket = cleanLinePart.rfind(')');
+
+                        if (openBracket != std::string::npos && closeBracket != std::string::npos && closeBracket > openBracket) {
+                            // Вырезаем абсолютно всё, что находится внутри eval(...)
+                            // Для структуры это будет актуальный "Primitive::color3{0, 0, 245}"
+                            // Для обычного числа это будет просто актуальный "43" или "44"
+                            std::string innerMacroText = cleanLinePart.substr(openBracket + 1, closeBracket - openBracket - 1);
+
+                            // Очищаем от пробелов по краям
+                            innerMacroText.erase(0, innerMacroText.find_first_not_of(" \t\r\n"));
+                            innerMacroText.erase(innerMacroText.find_last_not_of(" \t\r\n") + 1);
+
+                            // Прямой покадровый укол в память игры! Универсально работает и для чисел, и для структур
+                            UpdateParamValue(targetId, innerMacroText);
+                        }
+                    }
+                    VariantClear(&vtActiveDoc);
+                }
+            }
+            // ============================================================================
+
             g_dragState.lastValue = g_dragState.newValue;
         }
     }
 
+
+
     inline void HandleMouseDrag(const POINT& pt, bool ctrl, bool shift) {
-        if (!g_dragState.isDragging || g_dragState.targetParamId == -1) return;
+        // ИСПРАВЛЕНО: Проверяем только флаг драга, так как мышь теперь текстовая
+        if (!g_dragState.isDragging) return;
 
         // Создаем шилд со склейкой потоков строго в момент НАЧАЛА движения
         if (!g_hShieldWnd) {
             CreateDragShield(pt);
         }
 
-        DragNumericValue(g_dragState.targetParamId, pt, ctrl, shift);
+        // Передаем 0 вместо ID, так как внутри функции ID больше не используется
+        DragNumericValue(0, pt, ctrl, shift);
     }
 
 
-
-
     inline void HandleMouseUp() {
-        if (g_dragState.targetParamId == -1) {
-            // Если это был клик по булу/енаму, сбрасываем окно, если оно успело создаться
+        // ИСПРАВЛЕНО: Проверяем факт драга, а не ID параметра
+        if (!g_dragState.isDragging) {
             if (g_hShieldWnd) {
                 ReleaseCapture();
                 DestroyWindow(g_hShieldWnd);
@@ -620,11 +597,8 @@ namespace LivePT {
             return;
         }
 
-        // Этот блок теперь обрабатывает СТРОГО числовой драг числовых литералов
-        if (g_dragState.isDragging) {
-            EndUndoTransaction();
-            SaveActiveDocument();
-        }
+        EndUndoTransaction();
+        SaveActiveDocument();
 
         g_dragState.isDragging = false;
         g_dragState.targetParamId = -1;
@@ -691,14 +665,17 @@ namespace LivePT {
         if (buttonDown) {
             if (!s_PrevLButtonDown && !g_dragState.isDragging) {
                 if (IsCursorOverActiveVSWindow()) {
-                    // Обычный клик каретки пролетает в VS без создания окон
-                    HandleMouseDown(pt);
+                    // Если под курсором нашлось число — HandleMouseDown вернет true
+                    if (HandleMouseDown(pt)) {
+                        g_dragState.isDragging = true;
+                    }
                 }
             }
             if (g_dragState.isDragging) {
                 HandleMouseDrag(pt, ctrl, shift);
             }
         }
+
         else {
             if (s_PrevLButtonDown && g_dragState.isDragging) {
                 HandleMouseUp();

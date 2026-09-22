@@ -10,13 +10,29 @@ namespace LivePT {
         std::vector<EnumElementDesc> elements;
     };
 
+    // Описание одного конкретного поля структуры
+    struct StructMemberDesc {
+        std::string name;
+        DWORD offset;
+        DWORD size;
+        std::string typeName;
+    };
+
+    // Контейнер-кэш для хранения анатомии всей структуры
+    struct StructTypeDesc {
+        bool isStruct = false;
+        std::vector<StructMemberDesc> members; // Сюда осядет кэш из PDB один раз
+    };
+
     struct ref {
-        // УЛЬТИМАТИВНАЯ ВСЕЯДНОСТЬ: Храним любой тип (базовый, enum class или всю struct)
         std::any value;
         bool loaded = false;
         std::string fileName;
         unsigned int counterID;
         EnumTypeDesc enumInfo;
+
+        // ТОЧЕЧНЫЙ ДОБАВОК: Сюда макрос запишет флаг, а рантайм сохранит кэш полей
+        StructTypeDesc structInfo;
 
         long long typeMinBound = 0;
         long long typeMaxBound = 0;
@@ -24,11 +40,9 @@ namespace LivePT {
         int line = 0;
         int column = 0;
 
-        // СТАТИЧЕСКИЙ ХУК ОБНОВЛЕНИЯ: Генерируется один раз компилятором для известных типов.
-        // Если тип структуры нам пока не интересен для редактирования — тут будет nullptr,
-        // и движок просто пропустит её «как есть».
         void (*stringUpdater)(std::any& targetAny, const std::string& textValue) = nullptr;
     };
+
 
     inline std::vector<ref>& getParamDesc() {
         static std::vector<ref> instance;
@@ -181,6 +195,7 @@ namespace LivePT {
                 return static_cast<TargetType>(literalValue);
             }
 
+            // Инициализация при первом проходе (кадре)
             if (!paramDesc[target_id].loaded) {
                 if constexpr (std::is_enum_v<TargetType>) {
                     paramDesc[target_id].value = static_cast<int>(literalValue);
@@ -189,6 +204,7 @@ namespace LivePT {
                     paramDesc[target_id].value = static_cast<TargetType>(literalValue);
                 }
 
+                // ВЕТКА А: Генерация хука для булевых флагов
                 if constexpr (std::is_same_v<TargetType, bool>) {
                     paramDesc[target_id].stringUpdater = [](std::any& targetAny, const std::string& textValue) {
                         std::string str = textValue;
@@ -196,6 +212,7 @@ namespace LivePT {
                         targetAny = (str == "true" || str == "1");
                         };
                 }
+                // ВЕТКА Б: Генерация хука для базовых числовых типов C++ (int, float, double и т.д.)
                 else if constexpr (std::integral<TargetType> || std::floating_point<TargetType>) {
                     long long minB = static_cast<long long>((std::numeric_limits<TargetType>::min)());
                     long long maxB = static_cast<long long>((std::numeric_limits<TargetType>::max)());
@@ -213,9 +230,78 @@ namespace LivePT {
                         }
                         };
                 }
+                // ВЕТКА В: Автоматическая генерация текстового парсера для пользовательских STRUCT / CLASS
                 else {
-                    paramDesc[target_id].stringUpdater = nullptr;
+                    paramDesc[target_id].stringUpdater = [](std::any& targetAny, const std::string& textValue) {
+                        size_t openBrace = textValue.find('{');
+                        size_t closeBrace = textValue.find('}');
+                        if (openBrace == std::string::npos || closeBrace == std::string::npos || closeBrace <= openBrace) {
+                            return;
+                        }
+
+                        std::string innerArgs = textValue.substr(openBrace + 1, closeBrace - openBrace - 1);
+
+                        // ЛОКАЛЬНЫЙ СТАТИЧЕСКИЙ КЭШ ДЛЯ ТЕКУЩЕГО МАКРОСА:
+                        // Эти векторы заполнятся из PDB ровно ОДИН раз. Все последующие текстовые
+                        // изменения будут мгновенно парситься из памяти без обращения к диску и DbgHelp!
+                        static std::vector<std::string> fNames;
+                        static std::vector<DWORD> fOffsets;
+                        static std::vector<DWORD> fSizes;
+                        static std::vector<std::string> fTypes;
+                        static bool metadataCached = false;
+
+                        if (!metadataCached) {
+                            std::string typeNameAnsi = textValue.substr(0, openBrace);
+                            typeNameAnsi.erase(0, typeNameAnsi.find_first_not_of(" \t\r\n"));
+                            typeNameAnsi.erase(typeNameAnsi.find_last_not_of(" \t\r\n") + 1);
+
+                            std::wstring wTypeName(typeNameAnsi.begin(), typeNameAnsi.end());
+
+                            // Укол в PDB происходит только один раз при самом первом изменении текста
+                            LoadStructMetadataDirect(wTypeName.c_str(), fNames, fOffsets, fSizes, fTypes);
+                            metadataCached = true;
+                        }
+
+                        if (fOffsets.empty()) return; // Если структура не нашлась в PDB — безопасно выходим
+
+                        std::stringstream ss(innerArgs);
+                        std::string token;
+                        size_t fieldIndex = 0;
+
+                        TargetType* pStructInstance = std::any_cast<TargetType>(&targetAny);
+                        if (!pStructInstance) return;
+                        char* byteBase = reinterpret_cast<char*>(pStructInstance);
+
+                        while (std::getline(ss, token, ',') && fieldIndex < fOffsets.size()) {
+                            token.erase(0, token.find_first_not_of(" \t\r\n"));
+                            token.erase(token.find_last_not_of(" \t\r\n") + 1);
+
+                            if (!token.empty()) {
+                                DWORD offset = fOffsets[fieldIndex];
+                                std::string type = fTypes[fieldIndex];
+                                char* fieldAddress = byteBase + offset;
+
+                                if (type == "char" || type == "unsigned char" || type == "signed char") {
+                                    *reinterpret_cast<unsigned char*>(fieldAddress) = static_cast<unsigned char>(std::stoi(token));
+                                }
+                                else if (type == "int" || type == "unsigned int") {
+                                    *reinterpret_cast<int*>(fieldAddress) = std::stoi(token);
+                                }
+                                else if (type == "float") {
+                                    *reinterpret_cast<float*>(fieldAddress) = std::stof(token);
+                                }
+                                else if (type == "double") {
+                                    *reinterpret_cast<double*>(fieldAddress) = std::stod(token);
+                                }
+                                else if (type == "bool") {
+                                    *reinterpret_cast<bool*>(fieldAddress) = (token == "true" || token == "1");
+                                }
+                            }
+                            fieldIndex++;
+                        }
+                        };
                 }
+
 
                 paramDesc[target_id].loaded = true;
             }
@@ -226,6 +312,7 @@ namespace LivePT {
                 return static_cast<TargetType>(literalValue);
             }
 
+            // Проводник значений обратно в игровой цикл (вызывается на каждом кадре)
             if constexpr (std::is_enum_v<TargetType>) {
                 if (auto pVal = std::any_cast<int>(&paramDesc[real_id].value)) {
                     return static_cast<TargetType>(*pVal);
@@ -240,6 +327,7 @@ namespace LivePT {
             return static_cast<TargetType>(literalValue);
         }
     };
+
 
     template <typename LiteralType, FixedString<260> AbsoluteFile, int Line, int Column>
     struct LazyTypeDetector {
@@ -273,10 +361,12 @@ namespace LivePT {
     }
 
     // 3. Обновленный ультра-чистый макрос, пробрасывающий decltype(value) в шаблон детектора
-#define eval(value) \
+// ИСПРАВЛЕННЫЙ ВАРИАТИВНЫЙ МАКРОС: Автоматически съедает запятые структур агрегатной инициализации!
+#define eval(...) \
     LivePT::LazyTypeDetector< \
-        std::decay_t<decltype(value)>, \
+        std::decay_t<decltype(__VA_ARGS__)>, \
         LivePT::FixedString<260>{__FILE__}, \
         static_cast<int>(__LINE__), \
         static_cast<int>(__builtin_COLUMN()) \
-    >(value)
+    >(__VA_ARGS__)
+

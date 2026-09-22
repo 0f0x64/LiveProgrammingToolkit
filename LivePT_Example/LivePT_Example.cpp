@@ -22,13 +22,17 @@ public:
     show_t show;
 
     // ОТДЕЛЬНЫЕ КОМПОНЕНТЫ ЦВЕТА (По умолчанию — наш красивый синий: 0, 120, 215)
-    unsigned char r = 0;
-    unsigned char g = 120;
-    unsigned char b = 215;
+    struct color3 {
+        unsigned char r;
+        unsigned char g;
+        unsigned char b;
+    };
+
+    color3 color;
 
     // Unified setters using C++20 aggregate initialization rules
-    void Set(int xPos, int yPos, ptype form, show_t showObj, unsigned char red = 0, unsigned char green = 120, unsigned char blue = 215) {
-        *this = { xPos, yPos, form, showObj, red, green, blue };
+    void Set(int xPos, int yPos, ptype form, show_t showObj, color3 color = {100,0,0}) {
+        *this = { xPos, yPos, form, showObj, color };
     }
     void Set(const Primitive& in) { *this = in; }
 
@@ -56,7 +60,7 @@ public:
             int size = 20; // shape radius
 
             // ДИНАМИЧЕСКИЙ ЦВЕТ: Передаем раздельные байты r, g, b в системный макрос Win32
-            HBRUSH hBrush = CreateSolidBrush(RGB(p.r, p.g, p.b));
+            HBRUSH hBrush = CreateSolidBrush(RGB(p.color.r, p.color.g, p.color.b));
             HBRUSH hOldBrush = (HBRUSH)SelectObject(memDC, hBrush);
 
             switch (p.type) {
@@ -87,20 +91,18 @@ Primitive primitive[3];
 void UpdateSceneParams() {
 
     // drag numbers by pressing&move mButton inside eval, click mButton for switch / context menu
-    primitive[0].Set(eval(-91), eval(-127), eval(Primitive::ptype::roundbox), eval(Primitive::show_t::on));
+    primitive[0].Set(eval(-83), eval(-7), eval(Primitive::ptype::roundbox), eval(Primitive::show_t::on));
 
     // floating point numbers allowed (will be casted to int in this case, but you can modify class to use native floats)
-    primitive[1].Set(eval(-196.965), eval(-31.7f), eval(Primitive::ptype::circle), eval(Primitive::show_t::on));
+    primitive[1].Set(eval(-176.965), eval(-141), eval(Primitive::ptype::circle), eval(Primitive::show_t::on));
 
     // aggregate init alternative
     primitive[2].Set(Primitive{
-        .x = eval(43)*2,
-        .y = eval(-242),
+        .x = eval(27)*2,
+        .y = eval(-215),
         .type = eval(Primitive::ptype::roundbox),
         .show = eval(Primitive::show_t::on),
-        .r = (unsigned char)(eval(111) * 2), 
-        .g = eval(7),
-        .b = eval(0)
+        .color = eval(Primitive::color3{26,223,214})
         });
 }
 

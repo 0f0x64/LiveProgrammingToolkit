@@ -92,7 +92,7 @@ namespace LivePT {
 #if LivePT_WheelEditMode
         // Если идет драг или открыто окно-щит — полностью пропускаем фоновый опрос,
         // чтобы vsEditor() не конфликтовал с живым изменением текста ползунком
-        if (isMouseDragging() || (hForeground == g_hShieldWnd)) {
+        if (hForeground == g_hShieldWnd) {
             shouldProcessEditor = false;
         }
 #endif

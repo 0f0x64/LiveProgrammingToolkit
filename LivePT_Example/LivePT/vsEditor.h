@@ -471,24 +471,24 @@ namespace LivePT {
     static long g_lastLine = -1;
     static long g_lastCol = -1;
 
+    inline bool isMouseDragging();
+
     void vsEditor() {
-        // Защита 60 FPS: Если прямо сейчас идет интерактивный драг ползунка —
-        // фоновый опрос отключается, чтобы не спамить COM-командами во время подмены памяти.
-        
-
-        // Ленивый таймер: опрашиваем буфер VS не покадрово, а раз в 250 мс.
-        // Для процессора оверхед падает до нуля, а ручные правки подхватываются мгновенно.
         DWORD currentTime = GetTickCount();
-        if (currentTime - g_lastVsTickTime < 250) return;
-        g_lastVsTickTime = currentTime;
 
-        // Инициализируем COM-соединение с Visual Studio
+        // ТОЧЕЧНЫЙ ФИКС: Если прямо сейчас зажат мышиный ползунок драга, 
+        // мы полностью ОТКЛЮЧАЕМ 250мс задержку и переходим в ультра-быстрый покадровый режим!
+        if (!LivePT::isMouseDragging()) {
+            // В обычном режиме клавиатурного ввода оставляем ленивый опрос для экономии CPU
+            if (currentTime - g_lastVsTickTime < 250) return;
+            g_lastVsTickTime = currentTime;
+        }
+
         if (!initVsEditor()) return;
 
         VARIANT vtActiveDoc; VariantInit(&vtActiveDoc);
         HRESULT hr = pDTE ? AutoWrap(DISPATCH_PROPERTYGET, &vtActiveDoc, pDTE, L"ActiveDocument", 0) : E_FAIL;
 
-        // Если студия закрылась или отвалился RPC-канал — безопасно сбрасываем коннект
         if (hr == CO_E_OBJNOTCONNECTED || hr == RPC_E_DISCONNECTED || hr == E_ACCESSDENIED) {
             ResetDTEConnection();
             return;
@@ -499,47 +499,42 @@ namespace LivePT {
         }
 
         IDispatch* pActiveDoc = vtActiveDoc.pdispVal;
-
         std::string currentActiveFile = GetActiveDocumentPath(pActiveDoc);
         if (currentActiveFile.empty()) {
             VariantClear(&vtActiveDoc);
             return;
         }
 
-        // Получаем физические координаты текстовой каретки в редакторе (Line, Column)
         long line = 0, column = 0;
         if (!GetCursorCoordinates(pActiveDoc, line, column)) {
             VariantClear(&vtActiveDoc);
             return;
         }
 
-        // ОПТИМИЗАЦИЯ 1: Выкачиваем текст только ОДНОЙ текущей строки, где стоит каретка
         std::wstring currentLineText = DownloadCurrentLineText(pActiveDoc);
 
-        // Если каретка стоит на той же строке и текст этой строки не изменился — 
-        // ручного ввода не было. Выходим мгновенно без тяжелых запросов.
-        if (line == g_lastLine && currentLineText == g_lastLineTextBuffer) {
-            g_lastCol = column;
-            VariantClear(&vtActiveDoc);
-            return;
+        // ТОЧЕЧНЫЙ ФИКС КЭША СТРОК: Если идет живой драг, мы полностью пропускаем
+        // оптимизацию "выхода по совпадению строки", так как нам нужен принудительный,
+        // покадровый пересчет GetParamIndexByTextOrder для синхронизации памяти игры!
+        if (!LivePT::isMouseDragging()) {
+            if (line == g_lastLine && currentLineText == g_lastLineTextBuffer) {
+                g_lastCol = column;
+                VariantClear(&vtActiveDoc);
+                return;
+            }
+
+            if (currentLineText == g_lastLineTextBuffer && line != g_lastLine) {
+                g_lastLine = line;
+                g_lastCol = column;
+                VariantClear(&vtActiveDoc);
+                return;
+            }
         }
 
-        // Если каретка сместилась на новую строку, но текст старой строки совпадает, 
-        // мы просто обновляем позицию, не насилуя буфер.
-        if (currentLineText == g_lastLineTextBuffer && line != g_lastLine) {
-            g_lastLine = line;
-            g_lastCol = column;
-            VariantClear(&vtActiveDoc);
-            return;
-        }
-
-        // Обновляем кэш состояния текстовой строки
         g_lastLineTextBuffer = currentLineText;
         g_lastLine = line;
         g_lastCol = column;
 
-        // ОПТИМИЗАЦИЯ 2: Только если строка физически изменилась под руками программиста,
-        // мы запрашиваем полный текст файла, чтобы пересчитать глобальный GetParamIndexByTextOrder
         std::wstring fileText = DownloadDocumentText(pActiveDoc);
         if (fileText.empty()) {
             VariantClear(&vtActiveDoc);
@@ -549,17 +544,15 @@ namespace LivePT {
         size_t evalIdxInLine = 0;
         size_t targetEvalAbsolutePos = 0;
 
-        // Проверяем, находится ли каретка внутри макроса eval
         if (!CheckCursorInsideEval(fileText, line, column, evalIdxInLine, targetEvalAbsolutePos)) {
             VariantClear(&vtActiveDoc);
             return;
         }
 
-        // Синхронизируем ручной ввод из редактора VS прямо в живую память процесса игры!
         ParseAndStoreParamValue(fileText, currentActiveFile, line, evalIdxInLine, targetEvalAbsolutePos);
-
         VariantClear(&vtActiveDoc);
     }
+
 
 
     

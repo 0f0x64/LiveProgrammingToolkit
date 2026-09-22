@@ -19,7 +19,7 @@ namespace LivePT {
         if (slashPos != std::wstring::npos) searchPath = searchPath.substr(0, slashPos);
 
         if (!SymInitialize(hProcess, DbgHelpWideToUtf8(searchPath.c_str()).c_str(), TRUE)) return false;
-        SymSetOptions(SYMOPT_DEBUG | SYMOPT_DEFERRED_LOADS | SYMOPT_ALLOW_ZERO_ADDRESS);
+        SymSetOptions( SYMOPT_DEFERRED_LOADS | SYMOPT_ALLOW_ZERO_ADDRESS);
 
         DWORD64 moduleBase = SymLoadModuleExW(hProcess, nullptr, exePath, nullptr, 0, 0, nullptr, 0);
         if (!moduleBase) {
@@ -86,4 +86,126 @@ namespace LivePT {
         SymCleanup(hProcess);
         return !outNames.empty();
     }
+
+    struct DbgHelpStructContext {
+        HANDLE hProcess;
+        ULONG64 modBase;
+        const wchar_t* targetName;
+        std::vector<std::string>* pNames;
+        std::vector<DWORD>* pOffsets;
+        std::vector<DWORD>* pSizes;
+        std::vector<std::string>* pTypeNames;
+    };
+
+    // Функция для получения текстового имени типа поля по его TypeIndex (внутри PDB)
+    inline std::string DbgHelpGetTypeName(HANDLE hProcess, ULONG64 modBase, DWORD typeIndex) {
+        wchar_t* pTypeName = nullptr;
+        if (SymGetTypeInfo(hProcess, modBase, typeIndex, TI_GET_SYMNAME, &pTypeName) && pTypeName) {
+            std::string res = DbgHelpWideToUtf8(pTypeName);
+            LocalFree(pTypeName);
+            return res;
+        }
+
+        DWORD baseType = 0;
+        SymGetTypeInfo(hProcess, modBase, typeIndex, TI_GET_BASETYPE, &baseType);
+
+        ULONG64 length = 0;
+        SymGetTypeInfo(hProcess, modBase, typeIndex, TI_GET_LENGTH, &length);
+
+        switch (baseType) {
+        case 1:  return "void";
+        case 2:  return "char";
+        case 3:  return "wchar_t";
+        case 6:  return (length == 8) ? "long long" : "int";
+        case 7:  return (length == 8) ? "unsigned long long" : "unsigned int";
+        case 8:  return (length == 4) ? "float" : "double";
+        case 10: return "bool";
+        default: return "unknown_type";
+        }
+    }
+
+    inline BOOL CALLBACK DbgHelpStructTypesCallback(PSYMBOL_INFOW pSymInfo, ULONG SymbolSize, PVOID UserContext) {
+        DbgHelpStructContext* ctx = (DbgHelpStructContext*)UserContext;
+
+        if (wcscmp(pSymInfo->Name, ctx->targetName) == 0) {
+            DWORD childrenCount = 0;
+            if (SymGetTypeInfo(ctx->hProcess, ctx->modBase, pSymInfo->TypeIndex, TI_GET_CHILDRENCOUNT, &childrenCount) && childrenCount > 0) {
+                ULONG mallocSize = sizeof(TI_FINDCHILDREN_PARAMS) + (childrenCount * sizeof(ULONG));
+                TI_FINDCHILDREN_PARAMS* pChildren = (TI_FINDCHILDREN_PARAMS*)malloc(mallocSize);
+
+                if (pChildren) {
+                    memset(pChildren, 0, mallocSize);
+                    pChildren->Count = childrenCount;
+
+                    if (SymGetTypeInfo(ctx->hProcess, ctx->modBase, pSymInfo->TypeIndex, TI_FINDCHILDREN, pChildren)) {
+                        for (DWORD i = 0; i < pChildren->Count; i++) {
+                            ULONG childIndex = pChildren->ChildId[i];
+
+                            DWORD symTag = 0;
+                            SymGetTypeInfo(ctx->hProcess, ctx->modBase, childIndex, TI_GET_SYMTAG, &symTag);
+                            if (symTag != 7) continue; // 7 == SymTagData (нас интересуют только поля данных)
+
+                            wchar_t* pChildName = nullptr;
+                            SymGetTypeInfo(ctx->hProcess, ctx->modBase, childIndex, TI_GET_SYMNAME, &pChildName);
+
+                            DWORD offset = 0;
+                            SymGetTypeInfo(ctx->hProcess, ctx->modBase, childIndex, TI_GET_OFFSET, &offset);
+
+                            DWORD fieldTypeIndex = 0;
+                            SymGetTypeInfo(ctx->hProcess, ctx->modBase, childIndex, TI_GET_TYPEID, &fieldTypeIndex);
+
+                            ULONG64 fieldSize = 0;
+                            SymGetTypeInfo(ctx->hProcess, ctx->modBase, fieldTypeIndex, TI_GET_LENGTH, &fieldSize);
+
+                            std::string fieldTypeName = DbgHelpGetTypeName(ctx->hProcess, ctx->modBase, fieldTypeIndex);
+
+                            ctx->pNames->push_back(DbgHelpWideToUtf8(pChildName));
+                            ctx->pOffsets->push_back(offset);
+                            ctx->pSizes->push_back(static_cast<DWORD>(fieldSize));
+                            ctx->pTypeNames->push_back(fieldTypeName);
+
+                            if (pChildName) LocalFree(pChildName);
+                        }
+                    }
+                    free(pChildren);
+                }
+            }
+            return FALSE; // Структуру нашли, останавливаем сканирование
+        }
+        return TRUE;
+    }
+
+    // ГЛАВНЫЙ СИ-МЕТОД СБОРА АНАТОМИИ ЛЮБОЙ СТРУКТУРЫ ИЗ PDB Модуля
+    inline bool LoadStructMetadataDirect(const wchar_t* targetStructName,
+        std::vector<std::string>& outNames,
+        std::vector<DWORD>& outOffsets,
+        std::vector<DWORD>& outSizes,
+        std::vector<std::string>& outTypeNames) {
+        HANDLE hProcess = GetCurrentProcess();
+        wchar_t exePath[MAX_PATH] = { 0 };
+        GetModuleFileNameW(nullptr, exePath, MAX_PATH);
+
+        std::wstring searchPath(exePath);
+        size_t slashPos = searchPath.find_last_of(L"\\/");
+        if (slashPos != std::wstring::npos) searchPath = searchPath.substr(0, slashPos);
+
+        std::string searchPathAnsi = DbgHelpWideToUtf8(searchPath.c_str());
+        if (!SymInitialize(hProcess, searchPathAnsi.c_str(), FALSE)) return false;
+
+        SymSetOptions( SYMOPT_DEFERRED_LOADS | SYMOPT_ALLOW_ZERO_ADDRESS);
+
+        DWORD64 moduleBase = SymLoadModuleExW(hProcess, nullptr, exePath, nullptr, 0, 0, nullptr, 0);
+        if (!moduleBase) {
+            SymCleanup(hProcess);
+            return false;
+        }
+
+        DbgHelpStructContext ctx = { hProcess, moduleBase, targetStructName, &outNames, &outOffsets, &outSizes, &outTypeNames };
+        SymEnumTypesW(hProcess, moduleBase, DbgHelpStructTypesCallback, &ctx);
+
+        SymUnloadModule64(hProcess, moduleBase);
+        SymCleanup(hProcess);
+        return !outNames.empty();
+    }
+
 }
