@@ -292,7 +292,8 @@ namespace LivePT {
 
         // САМ РЕШАЕТ: Если элементов ровно 2 — берем противоположный и выходим!
         if (totalElements == 2) {
-            int currentVal = std::get<int>(paramDesc[id].value);
+            int currentVal = std::any_cast<int>(paramDesc[id].value);
+
             // ПРАВИЛЬНЫЙ ИСПРАВЛЕННЫЙ ИНДЕКС: ищем текущее значение в векторе
             int currentIndex = (paramDesc[id].enumInfo.elements[0].value == currentVal) ? 0 : 1;
             int newIndex = 1 - currentIndex;
@@ -419,9 +420,11 @@ namespace LivePT {
 
                         g_dragState.lastClickPt = pt;
 
-                        if (std::holds_alternative<bool>(paramDesc[id].value)) {
+                        // Проверяем тип внутри any через typeid
+                        if (paramDesc[id].value.type() == typeid(bool)) {
                             if (isDoubleClick) {
-                                bool currentBool = std::get<bool>(paramDesc[id].value);
+                                bool currentBool = std::any_cast<bool>(paramDesc[id].value);
+
                                 bool newBool = !currentBool;
 
                                 std::string newValueStr = newBool ? "true" : "false";
