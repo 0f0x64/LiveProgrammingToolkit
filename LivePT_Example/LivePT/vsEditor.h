@@ -2,6 +2,10 @@ namespace LivePT {
 
     static IDispatch* pDTE = nullptr;
 
+    inline size_t GetLineStartOffset(const std::wstring& text, long targetLine);
+    inline std::wstring DownloadCurrentLineText(IDispatch* pActiveDoc);
+    inline size_t FindCloseBracket(const std::wstring& text, size_t openBracketPos);
+
     std::string ConvertWStringToUtf8(const std::wstring& wstr) {
         if (wstr.empty()) return "";
 
@@ -209,60 +213,39 @@ namespace LivePT {
             }
         }
 
-    int GetParamIndexByTextOrder(const std::wstring & fileText, const std::string & currentActiveFile, long cursorLine, size_t evalIdxInLine) {
+    // 2. СИНХРОННЫЙ С КОРНЕМ СЧЕТЧИК ИНДЕКСОВ С НАЧАЛА ФАЙЛА
+    inline int GetParamIndexByTextOrder(const std::wstring& fileText, const std::string& currentActiveFile, long cursorLine, size_t evalIdxInLine) {
+        size_t globalFileCounter = 0;
+        size_t pos = 0;
+        size_t targetLineOffset = GetLineStartOffset(fileText, cursorLine);
 
-            std::vector<std::wstring> lines;
-            std::wstring currentLine;
-            const size_t TAB_SIZE = 4; // VS TAB SIZE
+        while ((pos = fileText.find(L"eval", pos)) != std::wstring::npos) {
+            bool validLeft = (pos == 0 || !iswalnum(fileText[pos - 1]) && fileText[pos - 1] != L'_');
+            bool validRight = (pos + 4 >= fileText.length() || !iswalnum(fileText[pos + 4]) && fileText[pos + 4] != L'_');
 
-            for (size_t i = 0; i < fileText.length(); ++i) {
-                wchar_t ch = fileText[i];
-                if (ch == L'\r') {
-                    continue;
-                }
-                if (ch == L'\n') {
-                    lines.push_back(currentLine);
-                    currentLine.clear();
-                }
-                else if (ch == L'\t') {
+            if (validLeft && validRight) {
+                // Честная проверка на комментарии перед инкрементом глобального счетчика
+                size_t lineStart = fileText.rfind(L'\n', pos);
+                lineStart = (lineStart == std::wstring::npos) ? 0 : lineStart + 1;
+                std::wstring prevCode = fileText.substr(lineStart, pos - lineStart);
 
-                    size_t spacesToAdd = TAB_SIZE - (currentLine.length() % TAB_SIZE);
-                    currentLine.append(spacesToAdd, L' ');
-                }
-                else {
-                    currentLine.push_back(ch);
-                }
-            }
-            lines.push_back(currentLine);
+                size_t firstNonSpace = prevCode.find_first_not_of(L" \t");
+                bool isCommented = (firstNonSpace != std::wstring::npos && prevCode[firstNonSpace] == L'#') ||
+                    (prevCode.find(L"//") != std::wstring::npos);
 
-            if (cursorLine < 1 || cursorLine > static_cast<long>(lines.size())) return -1;
-
-            size_t globalFileCounter = 0;
-
-            for (long l = 1; l < cursorLine; ++l) {
-                const std::wstring& lineText = lines[l - 1];
-
-                size_t firstNonSpace = lineText.find_first_not_of(L" \t");
-                if (firstNonSpace != std::wstring::npos && lineText[firstNonSpace] == L'#') continue;
-                if (lineText.find(L"//") != std::wstring::npos) continue;
-
-                size_t searchPos = 0;
-                while ((searchPos = lineText.find(L"eval", searchPos)) != std::wstring::npos) {
-
-                    bool validLeft = (searchPos == 0 || !iswalnum(lineText[searchPos - 1]) && lineText[searchPos - 1] != L'_');
-                    bool validRight = (searchPos + 4 >= lineText.length() || !iswalnum(lineText[searchPos + 4]) && lineText[searchPos + 4] != L'_');
-
-                    if (validLeft && validRight) {
+                if (!isCommented) {
+                    if (pos < targetLineOffset) {
                         globalFileCounter++;
                     }
-                    searchPos += 4;
+                    else {
+                        break; // Дошли до строки курсора, останавливаем сквозной счет
+                    }
                 }
             }
-
-            size_t finalGlobalFileIndex = globalFileCounter + evalIdxInLine;
-
-            return static_cast<int>(finalGlobalFileIndex);
+            pos += 4;
         }
+        return static_cast<int>(globalFileCounter + evalIdxInLine);
+    }
 
     inline size_t FindCloseBracket(const std::wstring & text, size_t openBracketPos) {
             if (openBracketPos == std::wstring::npos) return std::wstring::npos;
@@ -378,56 +361,101 @@ namespace LivePT {
             return static_cast<long>(visualCol) + 1;
         }
 
-    inline bool CheckCursorInsideEval(const std::wstring & fileText, long line, long column, size_t & outEvalIdxInLine, size_t & outTargetEvalAbsolutePos) {
-            size_t lineStartOffset = GetLineStartOffset(fileText, line);
-            size_t lineEndOffset = fileText.find(L'\n', lineStartOffset);
-            if (lineEndOffset == std::wstring::npos) lineEndOffset = fileText.length();
+    // 1. ПРОВЕРКА КУРСОРA С ОДНОПРОХОДНЫМ ЛИНЕЙНЫМ ПОИСКОМ И УЧЕТОМ КОММЕНТАРИЕВ
+    inline bool CheckCursorInsideEval(const std::wstring& fileText, long line, long column, size_t& outEvalIdxInLine, size_t& outTargetEvalAbsolutePos) {
+        // Вычисляем абсолютную позицию курсора в файле
+        size_t currentLineStart = GetLineStartOffset(fileText, line);
+        size_t globalCursorPos = currentLineStart;
 
-            std::wstring wholeLineText = fileText.substr(lineStartOffset, lineEndOffset - lineStartOffset);
-            size_t posInLine = 0; outEvalIdxInLine = 0;
+        std::wstring lineText = DownloadCurrentLineText(pDTE);
+        if (lineText.empty()) {
+            size_t nextNL = fileText.find(L'\n', currentLineStart);
+            if (nextNL == std::wstring::npos) nextNL = fileText.length();
+            lineText = fileText.substr(currentLineStart, nextNL - currentLineStart);
+        }
 
-            while ((posInLine = wholeLineText.find(L"eval", posInLine)) != std::wstring::npos) {
-                bool validLeft = (posInLine == 0 || !iswalnum(wholeLineText[posInLine - 1]) && wholeLineText[posInLine - 1] != L'_');
-                bool validRight = (posInLine + 4 >= wholeLineText.length() || !iswalnum(wholeLineText[posInLine + 4]) && wholeLineText[posInLine + 4] != L'_');
+        long currentVisualCol = 1;
+        for (size_t i = 0; i < lineText.length(); ++i) {
+            if (currentVisualCol >= column) { globalCursorPos += i; break; }
+            currentVisualCol += (lineText[i] == L'\t') ? (4 - ((currentVisualCol - 1) % 4)) : 1;
+        }
 
-                if (validLeft && validRight) {
-                    size_t openBracket = wholeLineText.find(L'(', posInLine + 4);
-                    size_t closeBracket = FindCloseBracket(wholeLineText, openBracket);
+        size_t pos = 0;
+        while ((pos = fileText.find(L"eval", pos)) != std::wstring::npos) {
+            bool validLeft = (pos == 0 || !iswalnum(fileText[pos - 1]) && fileText[pos - 1] != L'_');
+            bool validRight = (pos + 4 >= fileText.length() || !iswalnum(fileText[pos + 4]) && fileText[pos + 4] != L'_');
 
-                    if (openBracket != std::wstring::npos && closeBracket != std::wstring::npos) {
-                        long evalStartCol = GetVisualColumn(wholeLineText, posInLine);
-                        long evalEndCol = GetVisualColumn(wholeLineText, closeBracket);
+            if (validLeft && validRight) {
+                // ПРОВЕРКА НА КОММЕНТАРИИ И ДИРЕКТИВЫ ПРЕПРОЦЕССОРА НА ТЕКУЩЕЙ СТРОКЕ:
+                // Ищем начало строки, на которой расположен данный конкретный eval
+                size_t lineStart = fileText.rfind(L'\n', pos);
+                lineStart = (lineStart == std::wstring::npos) ? 0 : lineStart + 1;
+                std::wstring prevCode = fileText.substr(lineStart, pos - lineStart);
 
-                        if (column >= evalStartCol && column <= evalEndCol) {
-                            outTargetEvalAbsolutePos = lineStartOffset + posInLine;
+                size_t firstNonSpace = prevCode.find_first_not_of(L" \t");
+                bool isCommented = (firstNonSpace != std::wstring::npos && prevCode[firstNonSpace] == L'#') ||
+                    (prevCode.find(L"//") != std::wstring::npos);
+
+                if (!isCommented) {
+                    size_t openBracket = fileText.find(L'(', pos + 4);
+                    if (openBracket != std::wstring::npos) {
+                        size_t globalCloseBracket = FindCloseBracket(fileText, openBracket);
+
+                        // Если курсор зажат строго внутри скобок этого макроса (однострочного или многострочного)
+                        if (globalCursorPos >= pos && globalCursorPos <= globalCloseBracket) {
+                            outTargetEvalAbsolutePos = pos;
+
+                            // Считаем, какой по счету это eval строго на его родной строке начала
+                            outEvalIdxInLine = 0;
+                            size_t scanPos = lineStart;
+                            while ((scanPos = fileText.find(L"eval", scanPos)) != std::wstring::npos && scanPos < pos) {
+                                bool sLeft = (scanPos == 0 || !iswalnum(fileText[scanPos - 1]) && fileText[scanPos - 1] != L'_');
+                                bool sRight = (scanPos + 4 >= fileText.length() || !iswalnum(fileText[scanPos + 4]) && fileText[scanPos + 4] != L'_');
+                                if (sLeft && sRight) {
+                                    outEvalIdxInLine++;
+                                }
+                                scanPos += 4;
+                            }
                             return true;
                         }
                     }
-                    outEvalIdxInLine++;
                 }
-                posInLine += 4;
             }
-            return false;
+            pos += 4;
+        }
+        return false;
+    }
+
+
+    // 3. ПОЛНЫЙ ВЫРЕЗАТЕЛЬ СКОБОК ДЛЯ ПАРСИНГА С КЛАВИАТУРЫ
+    inline void ParseAndStoreParamValue(const std::wstring& fileText, const std::string& currentActiveFile, long line, size_t evalIdxInLine, size_t targetEvalAbsolutePos) {
+        long evalRealLine = 1;
+        size_t lOffset = 0;
+        while (lOffset < targetEvalAbsolutePos) {
+            size_t nextNL = fileText.find(L'\n', lOffset);
+            if (nextNL != std::wstring::npos && nextNL < targetEvalAbsolutePos) { evalRealLine++; lOffset = nextNL + 1; }
+            else break;
         }
 
-    inline void ParseAndStoreParamValue(const std::wstring & fileText, const std::string & currentActiveFile, long line, size_t evalIdxInLine, size_t targetEvalAbsolutePos) {
-            int counterID = GetParamIndexByTextOrder(fileText, currentActiveFile, line, evalIdxInLine);
-            if (counterID == -1) return;
+        int counterID = GetParamIndexByTextOrder(fileText, currentActiveFile, evalRealLine, evalIdxInLine);
+        if (counterID == -1) return;
 
-            std::string vsLookupKey = currentActiveFile + ":" + std::to_string(counterID);
-            int targetId = getID(vsLookupKey);
-            if (targetId == -1) return;
+        std::string vsLookupKey = currentActiveFile + ":" + std::to_string(counterID);
+        int targetId = getID(vsLookupKey);
+        if (targetId == -1) return;
 
-            size_t openBracket = fileText.find(L'(', targetEvalAbsolutePos);
-            size_t closeBracket = FindCloseBracket(fileText, openBracket);
-            if (openBracket != std::wstring::npos && closeBracket != std::wstring::npos) {
-                std::wstring innerValueW = fileText.substr(openBracket + 1, closeBracket - openBracket - 1);
-                std::string innerValueA = ConvertWStringToUtf8(innerValueW);
-                innerValueA.erase(0, innerValueA.find_first_not_of(" \t\r\n"));
-                innerValueA.erase(innerValueA.find_last_not_of(" \t\r\n") + 1);
-                UpdateParamValue(targetId, innerValueA);
-            }
+        size_t openBracket = fileText.find(L'(', targetEvalAbsolutePos);
+        size_t closeBracket = FindCloseBracket(fileText, openBracket);
+        if (openBracket != std::wstring::npos && closeBracket != std::wstring::npos) {
+            std::wstring innerValueW = fileText.substr(openBracket + 1, closeBracket - openBracket - 1);
+            std::string innerValueA = ConvertWStringToUtf8(innerValueW);
+
+            innerValueA.erase(0, innerValueA.find_first_not_of(" \t\r\n"));
+            innerValueA.erase(innerValueA.find_last_not_of(" \t\r\n") + 1);
+
+            UpdateParamValue(targetId, innerValueA);
         }
+    }
 
 
     inline std::wstring DownloadCurrentLineText(IDispatch* pActiveDoc) {

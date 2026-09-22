@@ -234,16 +234,13 @@ namespace LivePT {
                 else {
                     paramDesc[target_id].stringUpdater = [](std::any& targetAny, const std::string& textValue) {
                         size_t openBrace = textValue.find('{');
-                        size_t closeBrace = textValue.find('}');
+                        size_t closeBrace = textValue.rfind('}');
                         if (openBrace == std::string::npos || closeBrace == std::string::npos || closeBrace <= openBrace) {
                             return;
                         }
 
                         std::string innerArgs = textValue.substr(openBrace + 1, closeBrace - openBrace - 1);
 
-                        // Ћќ јЋ№Ќџ… —“ј“»„≈— »…  ЁЎ ƒЋя “≈ ”ў≈√ќ ћј –ќ—ј:
-                        // Ёти векторы заполн€тс€ из PDB ровно ќƒ»Ќ раз. ¬се последующие текстовые
-                        // изменени€ будут мгновенно парситьс€ из пам€ти без обращени€ к диску и DbgHelp!
                         static std::vector<std::string> fNames;
                         static std::vector<DWORD> fOffsets;
                         static std::vector<DWORD> fSizes;
@@ -256,13 +253,11 @@ namespace LivePT {
                             typeNameAnsi.erase(typeNameAnsi.find_last_not_of(" \t\r\n") + 1);
 
                             std::wstring wTypeName(typeNameAnsi.begin(), typeNameAnsi.end());
-
-                            // ”кол в PDB происходит только один раз при самом первом изменении текста
                             LoadStructMetadataDirect(wTypeName.c_str(), fNames, fOffsets, fSizes, fTypes);
                             metadataCached = true;
                         }
 
-                        if (fOffsets.empty()) return; // ≈сли структура не нашлась в PDB Ч безопасно выходим
+                        if (fOffsets.empty()) return;
 
                         std::stringstream ss(innerArgs);
                         std::string token;
@@ -277,6 +272,15 @@ namespace LivePT {
                             token.erase(token.find_last_not_of(" \t\r\n") + 1);
 
                             if (!token.empty()) {
+                                // ќтрезаем ".им€ =" или "им€:", если они есть перед значением
+                                size_t eqPos = token.find('=');
+                                if (eqPos == std::string::npos) eqPos = token.find(':');
+                                if (eqPos != std::string::npos) {
+                                    token = token.substr(eqPos + 1);
+                                    token.erase(0, token.find_first_not_of(" \t\r\n"));
+                                    token.erase(token.find_last_not_of(" \t\r\n") + 1);
+                                }
+
                                 DWORD offset = fOffsets[fieldIndex];
                                 std::string type = fTypes[fieldIndex];
                                 char* fieldAddress = byteBase + offset;
@@ -301,6 +305,8 @@ namespace LivePT {
                         }
                         };
                 }
+
+
 
 
                 paramDesc[target_id].loaded = true;

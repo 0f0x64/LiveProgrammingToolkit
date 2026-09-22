@@ -91,19 +91,31 @@ Primitive primitive[3];
 void UpdateSceneParams() {
 
     // drag numbers by pressing&move mButton inside eval, click mButton for switch / context menu
-    primitive[0].Set(eval(-205), eval(-127), eval(Primitive::ptype::box), eval(Primitive::show_t::on));
+    primitive[0].Set(eval(-144), eval(-175), eval(Primitive::ptype::circle), eval(Primitive::show_t::on));
 
     // floating point numbers allowed (will be casted to int in this case, but you can modify class to use native floats)
-    primitive[1].Set(eval(-34.965), eval(-243), eval(Primitive::ptype::circle), eval(Primitive::show_t::on));
+    primitive[1].Set(eval(-32), eval(-16), eval(Primitive::ptype::roundbox), eval(Primitive::show_t::on));
 
     // aggregate init alternative
     primitive[2].Set(Primitive{
-        .x = eval(78)*2,
-        .y = eval(-248),
-        .type = eval(Primitive::ptype::roundbox),
+        .x = eval(10)*2,
+        .y = eval(-270),
+        .type = eval(Primitive::ptype::box),
         .show = eval(Primitive::show_t::on),
-        .color = eval(Primitive::color3{232,9,34})
+        .color = eval(Primitive::color3{
+            .r = 222,
+            .g = 229,
+            .b = 9})
         });
+
+    /*
+    primitive[2].Set(Primitive{
+    .x = eval(77) * 2,
+    .y = eval(-349),
+    .type = eval(Primitive::ptype::box),
+    .show = eval(Primitive::show_t::on),
+    .color = eval(Primitive::color3{2,4,5})
+        });*/
 }
 
 // ================ END OF USER SPACE ================
