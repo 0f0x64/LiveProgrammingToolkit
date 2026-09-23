@@ -84,7 +84,7 @@ public:
 
 
 // Global instance array of primitives
-Primitive primitive[3];
+Primitive primitive[4];
 
 // =================== USER SPACE ===================
 
@@ -96,29 +96,29 @@ void UpdateSceneParams() {
     // floating point numbers allowed (will be casted to int in this case, but you can modify class to use native floats)
     primitive[1].Set(eval(-142), eval(-64), eval(Primitive::ptype::roundbox), eval(Primitive::show_t::on));
 
-    unsigned char x = rand() % eval(22);
+    unsigned char x = rand() % eval(139);
     unsigned char y = rand() % eval(22);
 
     // aggregate init alternative
     primitive[2].Set(Primitive{
-        .x = eval(38)*2,
+        .x = eval(50)*2,
         .y = eval(-146),
         .type = eval(Primitive::ptype::circle),
         .show = eval(Primitive::show_t::on),
         .color = eval(Primitive::color3{
             .r = x,
-            .g = 231,
+            .g = 155,
             .b = y})
         });
 
-    /*
-    primitive[2].Set(Primitive{
-    .x = eval(77) * 2,
-    .y = eval(-349),
+    
+    primitive[3].Set(Primitive{
+    .x = eval(123) * 2,
+    .y = eval(-262),
     .type = eval(Primitive::ptype::box),
     .show = eval(Primitive::show_t::on),
-    .color = eval(Primitive::color3{2,4,5})
-        });*/
+    .color = eval(Primitive::color3{169,0,0})
+        });
 }
 
 // ================ END OF USER SPACE ================

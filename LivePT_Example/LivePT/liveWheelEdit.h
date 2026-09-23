@@ -476,15 +476,14 @@ namespace LivePT {
                     std::wstring numW = lineText.substr(startCol, endCol - startCol);
                     std::string cleanText(numW.begin(), numW.end());
 
-                    // Важно: ParseMacroValueBoundaries вызываем только если крутим честный eval-параметр,
-                    // чтобы инициализировать макрос-границы структуры для покадровой сборки строк
-                    if (id != -1) {
-                        ParseMacroValueBoundaries(fileText, line, targetEvalAbsolutePos);
-                    }
+                    // УДАЛИТЬ ИЛИ ЗАКОММЕНТИРОВАТЬ ЭТОТ БЛОК СТРОГО:
+                    // if (id != -1) {
+                    //     ParseMacroValueBoundaries(fileText, line, targetEvalAbsolutePos);
+                    // }
 
                     g_dragState.dragLine = line;
-                    g_dragState.dragStartCol = startCol + 1;
-                    g_dragState.currentTextLength = cleanText.length();
+                    g_dragState.dragStartCol = startCol + 1; // Теперь тут ВСЕГДА точная колонка числа 216
+                    g_dragState.currentTextLength = cleanText.length(); // Теперь тут ВСЕГДА длина числа (3)
                     g_dragState.oldMouseY = pt.y;
 
                     size_t relativeCursorIdx = cursorColIdx - startCol;
@@ -492,6 +491,7 @@ namespace LivePT {
 
                     clickedInsideNumber = true;
                 }
+
             }
             VariantClear(&vtActiveDoc);
         }
@@ -562,58 +562,15 @@ namespace LivePT {
             newCursorRelPos = std::clamp(newCursorRelPos, 0L, static_cast<long>(newValueStr.length()));
             long newCursorPhysicalCol = g_dragState.dragStartCol + newCursorRelPos;
 
-            // Шлем изменения в VS
             ReplaceTextInActiveVS(g_dragState.dragLine, g_dragState.dragStartCol, g_dragState.dragStartCol + static_cast<long>(g_dragState.currentTextLength), newValueStr, newCursorPhysicalCol);
 
             g_dragState.currentTextLength = newValueStr.length();
-
-            // ПРЯМАЯ ИГРОВАЯ СИНХРОНИЗАЦИЯ С ПАМЯТЬЮ (Только если у числа есть ID макроса eval)
-            int targetId = g_dragState.targetParamId;
-            if (targetId != -1) {
-                size_t openBrace = g_dragState.startTextValue.find('{');
-                size_t closeBrace = g_dragState.startTextValue.rfind('}');
-
-                if (openBrace != std::string::npos && closeBrace != std::string::npos && closeBrace > openBrace) {
-                    std::string typePrefix = g_dragState.startTextValue.substr(0, openBrace + 1);
-                    std::string innerArgs = g_dragState.startTextValue.substr(openBrace + 1, closeBrace - openBrace - 1);
-
-                    std::stringstream ss(innerArgs);
-                    std::string token;
-                    std::string rebuiltArgs = "";
-                    bool replaced = false;
-
-                    while (std::getline(ss, token, ',')) {
-                        if (!rebuiltArgs.empty()) rebuiltArgs += ",";
-
-                        std::string cleanToken = token;
-                        cleanToken.erase(0, cleanToken.find_first_not_of(" \t\r\n"));
-                        cleanToken.erase(cleanToken.find_last_not_of(" \t\r\n") + 1);
-
-                        if (!replaced && cleanToken == g_dragState.lastValueStr) {
-                            size_t leadingSpaces = token.find_first_not_of(" \t\r\n");
-                            std::string prefix = (leadingSpaces != std::string::npos) ? token.substr(0, leadingSpaces) : "";
-                            rebuiltArgs += prefix + newValueStr;
-                            replaced = true;
-                        }
-                        else {
-                            rebuiltArgs += token;
-                        }
-                    }
-
-                    std::string finalStructString = typePrefix + rebuiltArgs + "}";
-                    g_dragState.startTextValue = finalStructString;
-                    g_dragState.lastValueStr = newValueStr;
-
-                    UpdateParamValue(targetId, finalStructString);
-                }
-                else { 
-                    UpdateParamValue(targetId, newValueStr); 
-                    g_dragState.lastValueStr = newValueStr; 
-                }
-            }
+            g_dragState.lastValueStr = newValueStr;
             g_dragState.lastValue = g_dragState.newValue;
         }
-}
+    }
+
+
 
 
 
