@@ -195,7 +195,6 @@ namespace LivePT {
                 return static_cast<TargetType>(literalValue);
             }
 
-            // Инициализация при первом проходе (кадре)
             if (!paramDesc[target_id].loaded) {
                 if constexpr (std::is_enum_v<TargetType>) {
                     paramDesc[target_id].value = static_cast<int>(literalValue);
@@ -204,7 +203,6 @@ namespace LivePT {
                     paramDesc[target_id].value = static_cast<TargetType>(literalValue);
                 }
 
-                // ВЕТКА А: Генерация хука для булевых флагов
                 if constexpr (std::is_same_v<TargetType, bool>) {
                     paramDesc[target_id].stringUpdater = [](std::any& targetAny, const std::string& textValue) {
                         std::string str = textValue;
@@ -212,7 +210,6 @@ namespace LivePT {
                         targetAny = (str == "true" || str == "1");
                         };
                 }
-                // ВЕТКА Б: Генерация хука для базовых числовых типов C++ (int, float, double и т.д.)
                 else if constexpr (std::integral<TargetType> || std::floating_point<TargetType>) {
                     long long minB = static_cast<long long>((std::numeric_limits<TargetType>::min)());
                     long long maxB = static_cast<long long>((std::numeric_limits<TargetType>::max)());
@@ -230,84 +227,100 @@ namespace LivePT {
                         }
                         };
                 }
-                // ВЕТКА В: Автоматическая генерация текстового парсера для пользовательских STRUCT / CLASS
                 else {
                     paramDesc[target_id].stringUpdater = [](std::any& targetAny, const std::string& textValue) {
                         size_t openBrace = textValue.find('{');
                         size_t closeBrace = textValue.rfind('}');
-                        if (openBrace == std::string::npos || closeBrace == std::string::npos || closeBrace <= openBrace) {
-                            return;
-                        }
+                        if (openBrace == std::string::npos || closeBrace == std::string::npos || closeBrace <= openBrace) return;
 
                         std::string innerArgs = textValue.substr(openBrace + 1, closeBrace - openBrace - 1);
 
-                        static std::vector<std::string> fNames;
-                        static std::vector<DWORD> fOffsets;
-                        static std::vector<DWORD> fSizes;
-                        static std::vector<std::string> fTypes;
-                        static bool metadataCached = false;
-
-                        if (!metadataCached) {
+                        int globalId = GlobalEvalRegistry<TargetType, AbsoluteFile, Line, Column>::cached_id;
+                        if (!paramDesc[globalId].structInfo.isStruct) {
                             std::string typeNameAnsi = textValue.substr(0, openBrace);
                             typeNameAnsi.erase(0, typeNameAnsi.find_first_not_of(" \t\r\n"));
                             typeNameAnsi.erase(typeNameAnsi.find_last_not_of(" \t\r\n") + 1);
 
+                            if (typeNameAnsi.rfind("struct ", 0) == 0) typeNameAnsi.erase(0, 7);
+                            if (typeNameAnsi.rfind("class ", 0) == 0) typeNameAnsi.erase(0, 6);
+
                             std::wstring wTypeName(typeNameAnsi.begin(), typeNameAnsi.end());
+
+                            std::vector<std::string> fNames;
+                            std::vector<DWORD> fOffsets;
+                            std::vector<DWORD> fSizes;
+                            std::vector<std::string> fTypes;
                             LoadStructMetadataDirect(wTypeName.c_str(), fNames, fOffsets, fSizes, fTypes);
-                            metadataCached = true;
+
+                            for (size_t i = 0; i < fOffsets.size(); ++i) {
+                                paramDesc[globalId].structInfo.members.push_back({ fNames[i], fOffsets[i], fSizes[i], fTypes[i] });
+                            }
+                            paramDesc[globalId].structInfo.isStruct = true;
                         }
-
-                        if (fOffsets.empty()) return;
-
-                        std::stringstream ss(innerArgs);
-                        std::string token;
-                        size_t fieldIndex = 0;
 
                         TargetType* pStructInstance = std::any_cast<TargetType>(&targetAny);
                         if (!pStructInstance) return;
                         char* byteBase = reinterpret_cast<char*>(pStructInstance);
 
-                        while (std::getline(ss, token, ',') && fieldIndex < fOffsets.size()) {
+                        std::stringstream ss(innerArgs);
+                        std::string token;
+                        size_t fieldIndex = 0;
+
+                        while (std::getline(ss, token, ',')) {
                             token.erase(0, token.find_first_not_of(" \t\r\n"));
                             token.erase(token.find_last_not_of(" \t\r\n") + 1);
 
+                            if (token.empty()) continue;
+                            if (fieldIndex >= paramDesc[globalId].structInfo.members.size()) break;
+
+                            size_t eqPos = token.find('=');
+                            if (eqPos == std::string::npos) eqPos = token.find(':');
+                            if (eqPos != std::string::npos) {
+                                token = token.substr(eqPos + 1);
+                                token.erase(0, token.find_first_not_of(" \t\r\n"));
+                                token.erase(token.find_last_not_of(" \t\r\n") + 1);
+                            }
+
+                            bool isNumeric = false;
                             if (!token.empty()) {
-                                // Отрезаем ".имя =" или "имя:", если они есть перед значением
-                                size_t eqPos = token.find('=');
-                                if (eqPos == std::string::npos) eqPos = token.find(':');
-                                if (eqPos != std::string::npos) {
-                                    token = token.substr(eqPos + 1);
-                                    token.erase(0, token.find_first_not_of(" \t\r\n"));
-                                    token.erase(token.find_last_not_of(" \t\r\n") + 1);
-                                }
+                                unsigned char firstChar = static_cast<unsigned char>(token[0]);
+                                isNumeric = std::isdigit(firstChar) || firstChar == '-' || firstChar == '.';
+                            }
+                            bool isBool = (token == "true" || token == "false" || token == "1" || token == "0");
 
-                                DWORD offset = fOffsets[fieldIndex];
-                                std::string type = fTypes[fieldIndex];
-                                char* fieldAddress = byteBase + offset;
+                            auto& member = paramDesc[globalId].structInfo.members[fieldIndex];
 
-                                if (type == "char" || type == "unsigned char" || type == "signed char") {
-                                    *reinterpret_cast<unsigned char*>(fieldAddress) = static_cast<unsigned char>(std::stoi(token));
+                            if (member.offset + member.size <= sizeof(TargetType)) {
+                                char* fieldAddress = byteBase + member.offset;
+
+                                if (isNumeric || isBool) {
+                                    try {
+                                        if (member.typeName == "char" || member.typeName == "unsigned char" || member.typeName == "signed char") {
+                                            *reinterpret_cast<unsigned char*>(fieldAddress) = static_cast<unsigned char>(std::stoi(token));
+                                        }
+                                        else if (member.typeName == "int" || member.typeName == "unsigned int") {
+                                            *reinterpret_cast<int*>(fieldAddress) = std::stoi(token);
+                                        }
+                                        else if (member.typeName == "float") {
+                                            *reinterpret_cast<float*>(fieldAddress) = std::stof(token);
+                                        }
+                                        else if (member.typeName == "double") {
+                                            *reinterpret_cast<double*>(fieldAddress) = std::stod(token);
+                                        }
+                                        else if (member.typeName == "bool") {
+                                            *reinterpret_cast<bool*>(fieldAddress) = (token == "true" || token == "1");
+                                        }
+                                    }
+                                    catch (...) {}
                                 }
-                                else if (type == "int" || type == "unsigned int") {
-                                    *reinterpret_cast<int*>(fieldAddress) = std::stoi(token);
-                                }
-                                else if (type == "float") {
-                                    *reinterpret_cast<float*>(fieldAddress) = std::stof(token);
-                                }
-                                else if (type == "double") {
-                                    *reinterpret_cast<double*>(fieldAddress) = std::stod(token);
-                                }
-                                else if (type == "bool") {
-                                    *reinterpret_cast<bool*>(fieldAddress) = (token == "true" || token == "1");
+                                else {
+                                    member.typeName = "";
                                 }
                             }
                             fieldIndex++;
                         }
                         };
                 }
-
-
-
 
                 paramDesc[target_id].loaded = true;
             }
@@ -318,15 +331,36 @@ namespace LivePT {
                 return static_cast<TargetType>(literalValue);
             }
 
-            // Проводник значений обратно в игровой цикл (вызывается на каждом кадре)
             if constexpr (std::is_enum_v<TargetType>) {
                 if (auto pVal = std::any_cast<int>(&paramDesc[real_id].value)) {
                     return static_cast<TargetType>(*pVal);
                 }
             }
-            else {
+            else if constexpr (std::integral<TargetType> || std::floating_point<TargetType> || std::is_same_v<TargetType, bool>) {
                 if (auto pVal = std::any_cast<TargetType>(&paramDesc[real_id].value)) {
                     return *pVal;
+                }
+            }
+            else {
+                if (auto pVal = std::any_cast<TargetType>(&paramDesc[real_id].value)) {
+                    if (!paramDesc[real_id].structInfo.isStruct) {
+                        return static_cast<TargetType>(literalValue);
+                    }
+
+                    TargetType resultStruct = literalValue;
+                    char* targetBase = reinterpret_cast<char*>(&resultStruct);
+                    const char* sourceBase = reinterpret_cast<const char*>(pVal);
+
+                    for (size_t i = 0; i < paramDesc[real_id].structInfo.members.size(); ++i) {
+                        const auto& m = paramDesc[real_id].structInfo.members[i];
+                        if (m.offset + m.size <= sizeof(TargetType)) {
+                            if (m.typeName.empty()) {
+                                continue;
+                            }
+                            std::memcpy(targetBase + m.offset, sourceBase + m.offset, m.size);
+                        }
+                    }
+                    return resultStruct;
                 }
             }
 

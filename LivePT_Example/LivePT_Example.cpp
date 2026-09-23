@@ -91,21 +91,24 @@ Primitive primitive[3];
 void UpdateSceneParams() {
 
     // drag numbers by pressing&move mButton inside eval, click mButton for switch / context menu
-    primitive[0].Set(eval(-227), eval(-264), eval(Primitive::ptype::circle), eval(Primitive::show_t::on));
+    primitive[0].Set(eval(-129), eval(-208), eval(Primitive::ptype::circle), eval(Primitive::show_t::on));
 
     // floating point numbers allowed (will be casted to int in this case, but you can modify class to use native floats)
-    primitive[1].Set(eval(-36), eval(-16), eval(Primitive::ptype::roundbox), eval(Primitive::show_t::on));
+    primitive[1].Set(eval(-142), eval(-64), eval(Primitive::ptype::roundbox), eval(Primitive::show_t::on));
+
+    unsigned char x = rand() % eval(22);
+    unsigned char y = rand() % eval(22);
 
     // aggregate init alternative
     primitive[2].Set(Primitive{
-        .x = eval(76)*2,
-        .y = eval(-231),
+        .x = eval(38)*2,
+        .y = eval(-146),
         .type = eval(Primitive::ptype::circle),
         .show = eval(Primitive::show_t::on),
         .color = eval(Primitive::color3{
-            .r = 135,
-            .g = 0,
-            .b = 233})
+            .r = x,
+            .g = 231,
+            .b = y})
         });
 
     /*
