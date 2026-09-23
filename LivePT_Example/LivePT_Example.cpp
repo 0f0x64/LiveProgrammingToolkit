@@ -16,7 +16,7 @@ class Primitive {
 public:
     enum class ptype { circle, box, roundbox };
     enum class show_t { on, off };
-    int x = 0;
+    float x = 0;
     int y = 0;
     ptype type = ptype::circle;
     show_t show;
@@ -31,7 +31,7 @@ public:
     color3 color;
 
     // Unified setters using C++20 aggregate initialization rules
-    void Set(int xPos, int yPos, ptype form, show_t showObj, color3 color = {100,0,0}) {
+    void Set(float xPos, int yPos, ptype form, show_t showObj, color3 color = { 100,0,0 }) {
         *this = { xPos, yPos, form, showObj, color };
     }
     void Set(const Primitive& in) { *this = in; }
@@ -91,33 +91,38 @@ Primitive primitive[4];
 void UpdateSceneParams() {
 
     // drag numbers by pressing&move mButton inside eval, click mButton for switch / context menu
-    primitive[0].Set(eval(-129), eval(-208), eval(Primitive::ptype::circle), eval(Primitive::show_t::on));
+    primitive[0].Set(eval(-197), 
+        eval(-243), eval(Primitive::ptype::box), eval(Primitive::show_t::on));
 
     // floating point numbers allowed (will be casted to int in this case, but you can modify class to use native floats)
-    primitive[1].Set(eval(-142), eval(-64), eval(Primitive::ptype::roundbox), eval(Primitive::show_t::on));
+    primitive[1].Set(eval(-141), eval(-64), eval(Primitive::ptype::roundbox), eval(Primitive::show_t::on));
 
     unsigned char x = rand() % eval(139);
     unsigned char y = rand() % eval(22);
 
+
+
     // aggregate init alternative
     primitive[2].Set(Primitive{
-        .x = eval(50)*2,
-        .y = eval(-146),
+        .x = eval(   113.39  ),
+        .y = eval(-161),
         .type = eval(Primitive::ptype::circle),
         .show = eval(Primitive::show_t::on),
         .color = eval(Primitive::color3{
             .r = x,
-            .g = 155,
+
+            .g = 171,
             .b = y})
         });
 
     
     primitive[3].Set(Primitive{
-    .x = eval(123) * 2,
-    .y = eval(-262),
+
+    .x = eval(119.1),
+    .y = eval(-105.23),
     .type = eval(Primitive::ptype::box),
     .show = eval(Primitive::show_t::on),
-    .color = eval(Primitive::color3{169,0,0})
+    .color = eval(Primitive::color3{249,217,67})
         });
 }
 

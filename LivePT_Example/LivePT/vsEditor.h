@@ -508,7 +508,7 @@ namespace LivePT {
         // мы полностью ОТКЛЮЧАЕМ 250мс задержку и переходим в ультра-быстрый покадровый режим!
         if (!LivePT::isMouseDragging()) {
             // В обычном режиме клавиатурного ввода оставляем ленивый опрос для экономии CPU
-            if (currentTime - g_lastVsTickTime < 250) return;
+          //  if (currentTime - g_lastVsTickTime < 250) return;
             g_lastVsTickTime = currentTime;
         }
 

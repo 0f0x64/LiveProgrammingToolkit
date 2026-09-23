@@ -476,11 +476,6 @@ namespace LivePT {
                     std::wstring numW = lineText.substr(startCol, endCol - startCol);
                     std::string cleanText(numW.begin(), numW.end());
 
-                    // УДАЛИТЬ ИЛИ ЗАКОММЕНТИРОВАТЬ ЭТОТ БЛОК СТРОГО:
-                    // if (id != -1) {
-                    //     ParseMacroValueBoundaries(fileText, line, targetEvalAbsolutePos);
-                    // }
-
                     g_dragState.dragLine = line;
                     g_dragState.dragStartCol = startCol + 1; // Теперь тут ВСЕГДА точная колонка числа 216
                     g_dragState.currentTextLength = cleanText.length(); // Теперь тут ВСЕГДА длина числа (3)
@@ -509,7 +504,7 @@ namespace LivePT {
         g_dragState.newValue = static_cast<int>(targetValue);
 
         if (g_dragState.newValue != g_dragState.lastValue) {
-            size_t dotPos = g_dragState.startTextValue.find('.');
+            size_t dotPos = g_dragState.oldValueStr.find('.');
             std::string newValueStr;
 
             if (dotPos == std::string::npos) {
@@ -518,8 +513,8 @@ namespace LivePT {
                 newValueStr = modified;
             }
             else {
-                std::string intPartStr = g_dragState.startTextValue.substr(0, dotPos);
-                std::string fracPartStr = g_dragState.startTextValue.substr(dotPos + 1);
+                std::string intPartStr = g_dragState.oldValueStr.substr(0, dotPos);
+                std::string fracPartStr = g_dragState.oldValueStr.substr(dotPos + 1);
                 std::string suffix = "";
                 if (!fracPartStr.empty() && (fracPartStr.back() == 'f' || fracPartStr.back() == 'F')) {
                     suffix = fracPartStr.back();
@@ -534,7 +529,10 @@ namespace LivePT {
                     long long totalUnits = currentIntVal * fracLimit;
                     if (currentIntVal < 0 || intPartStr[0] == '-') totalUnits -= currentFracVal;
                     else totalUnits += currentFracVal;
-                    totalUnits += delta;
+
+                    int currentDelta = g_dragState.newValue - g_dragState.lastValue;
+                    totalUnits += currentDelta;
+
                     long long newIntVal = totalUnits / fracLimit;
                     long long newFracVal = std::abs(totalUnits % fracLimit);
                     std::string newIntStr = std::to_string(newIntVal);
@@ -565,16 +563,16 @@ namespace LivePT {
             ReplaceTextInActiveVS(g_dragState.dragLine, g_dragState.dragStartCol, g_dragState.dragStartCol + static_cast<long>(g_dragState.currentTextLength), newValueStr, newCursorPhysicalCol);
 
             g_dragState.currentTextLength = newValueStr.length();
-            g_dragState.lastValueStr = newValueStr;
+            g_dragState.oldValueStr = newValueStr;
+
+            int targetId = g_dragState.targetParamId;
+            if (targetId != -1) {
+                UpdateParamValue(targetId, newValueStr);
+                g_dragState.lastValueStr = newValueStr;
+            }
             g_dragState.lastValue = g_dragState.newValue;
         }
     }
-
-
-
-
-
-
 
 
     inline void HandleMouseDrag(const POINT& pt, bool ctrl, bool shift) {
