@@ -45,6 +45,12 @@
     <ClInclude Include="LivePT\vsEditor.h">
       <Filter>Source Files\LivePT</Filter>
     </ClInclude>
+    <ClInclude Include="LivePT\DbgHelpRef.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="LivePT\windowManagement.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="LivePT_Example.cpp">

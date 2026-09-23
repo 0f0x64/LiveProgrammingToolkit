@@ -49,7 +49,13 @@ public:
         HBITMAP oldBM = (HBITMAP)SelectObject(memDC, memBM);
 
         // Clear background
-        FillRect(memDC, &r, (HBRUSH)(COLOR_WINDOW + 1));
+        HBRUSH hDarkBrush = CreateSolidBrush(RGB(30, 30, 30));
+
+        // 2. Заливаем прямоугольник
+        FillRect(memDC, &r, hDarkBrush);
+
+        // 3. Удаляем кисть, когда она больше не нужна
+        DeleteObject(hDarkBrush);
 
         // Render loop for all visible primitives in the array
         for (const auto& p : arr) {
@@ -92,36 +98,40 @@ void UpdateSceneParams() {
 
     // drag numbers by pressing&move mButton inside eval, click mButton for switch / context menu
     primitive[0].Set(eval(-248), 
-        eval(-241), eval(Primitive::ptype::box), eval(Primitive::show_t::on), eval(Primitive::color3{ 244,28,8 }));
+        eval(-234), eval(Primitive::ptype::box), 
+        eval(Primitive::show_t::on), eval(Primitive::color3{ 250,28,8 }));
 
     // floating point numbers allowed (will be casted to int in this case, but you can modify class to use native floats)
-    primitive[1].Set(eval(-234), eval(-82), eval(Primitive::ptype::circle), eval(Primitive::show_t::on), eval(Primitive::color3{ 8,255,8 }));
+    primitive[1].Set(eval(-115), eval(13), 
+        eval(Primitive::ptype::box), 
+        eval(Primitive::show_t::on), eval(Primitive::color3{ 8,255,8 }));
 
-    unsigned char x = rand() % eval(131);
-    unsigned char y = rand() % eval(79);
+    unsigned char x = rand() % eval(5);
+    unsigned char y = rand() % eval(9);
 
 
 
     // aggregate init alternative
     primitive[2].Set(Primitive{
-        .x = eval(   -56.85  ),
-        .y = eval(-203),
+        .x = eval(   111.85  ),
+        .y = eval(-181),
         .type = eval(Primitive::ptype::circle),
         .show = eval(Primitive::show_t::on),
         .color = eval(Primitive::color3{
             .r = x,
-            .g = 232,
+
+            .g = 250,
             .b = y})
         });
 
     
     primitive[3].Set(Primitive{
 
-    .x = eval(85.1),
-    .y = eval(-334.23),
-    .type = eval(Primitive::ptype::box),
+    .x = eval(55.6f),
+    .y = eval(-328.26),
+    .type = eval(Primitive::ptype::circle),
     .show = eval(Primitive::show_t::on),
-    .color = eval(Primitive::color3{153,32,168})
+    .color = eval(Primitive::color3{47,75,168})
         });
 }
 

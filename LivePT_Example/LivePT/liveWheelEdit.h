@@ -88,7 +88,7 @@ namespace LivePT {
 
         // 4. Создаем окно 1x1 пиксель прямо под курсором мыши
         g_hShieldWnd = CreateWindowExA(
-            WS_EX_LAYERED | WS_EX_TOPMOST,
+            WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
             className, "LPT_DragShield", WS_POPUP,
             pt.x, pt.y, 1, 1,
             NULL, NULL, hInst, NULL
