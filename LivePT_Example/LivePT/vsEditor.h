@@ -501,17 +501,10 @@ namespace LivePT {
 
     inline bool isMouseDragging();
 
+    static inline size_t g_lastTargetEvalPos = 0;
+    static inline int    g_cachedCounterID = -1;
+
     void vsEditor() {
-        DWORD currentTime = GetTickCount();
-
-        // ТОЧЕЧНЫЙ ФИКС: Если прямо сейчас зажат мышиный ползунок драга, 
-        // мы полностью ОТКЛЮЧАЕМ 250мс задержку и переходим в ультра-быстрый покадровый режим!
-        if (!LivePT::isMouseDragging()) {
-            // В обычном режиме клавиатурного ввода оставляем ленивый опрос для экономии CPU
-          //  if (currentTime - g_lastVsTickTime < 250) return;
-            g_lastVsTickTime = currentTime;
-        }
-
         if (!initVsEditor()) return;
 
         VARIANT vtActiveDoc; VariantInit(&vtActiveDoc);
@@ -541,9 +534,6 @@ namespace LivePT {
 
         std::wstring currentLineText = DownloadCurrentLineText(pActiveDoc);
 
-        // ТОЧЕЧНЫЙ ФИКС КЭША СТРОК: Если идет живой драг, мы полностью пропускаем
-        // оптимизацию "выхода по совпадению строки", так как нам нужен принудительный,
-        // покадровый пересчет GetParamIndexByTextOrder для синхронизации памяти игры!
         if (!LivePT::isMouseDragging()) {
             if (line == g_lastLine && currentLineText == g_lastLineTextBuffer) {
                 g_lastCol = column;
@@ -577,9 +567,28 @@ namespace LivePT {
             return;
         }
 
+        // ЖЕСТКИЙ ФИКС ДЛЯ МНОГОСТРОЧНЫХ АГРЕГАТОВ:
+        // Вычисляем, на какой ИМЕННО строке текстового файла Студии физически началось слово "eval"
+        long evalRealLine = 1;
+        size_t lOffset = 0;
+        while (lOffset < targetEvalAbsolutePos) {
+            size_t nextNL = fileText.find(L'\n', lOffset);
+            if (nextNL != std::wstring::npos && nextNL < targetEvalAbsolutePos) {
+                evalRealLine++;
+                lOffset = nextNL + 1;
+            }
+            else break;
+        }
+
+        // Принудительно подменяем line физической строкой старта макроса eval!
+        // Благодаря этому GetParamIndexByTextOrder() внутри ParseAndStoreParamValue()
+        // вычислит идеальный, стабильный counterID, который на 100% совпадет со стартовым ID в игре.
+        line = evalRealLine;
+
         ParseAndStoreParamValue(fileText, currentActiveFile, line, evalIdxInLine, targetEvalAbsolutePos);
         VariantClear(&vtActiveDoc);
     }
+
 
 
 

@@ -436,13 +436,33 @@ namespace LivePT {
             g_dragState.targetParamId = -1; // По умолчанию -1 (число вне eval)
 
             // 1. Проверяем, лежит ли курсор внутри eval СТУДИИ
+        // Находим этот блок внутри HandleMouseDown(const POINT& pt) в файле liveWheelEdit.h:
+
+
             if (CheckCursorInsideEval(fileText, line, column, evalIdxInLine, targetEvalAbsolutePos)) {
-                int counterID = GetParamIndexByTextOrder(fileText, currentFile, line, evalIdxInLine);
+
+                // Вычисляем физическую строку начала макроса eval
+                long evalRealLine = 1;
+                size_t lOffset = 0;
+                while (lOffset < targetEvalAbsolutePos) {
+                    size_t nextNL = fileText.find(L'\n', lOffset);
+                    if (nextNL != std::wstring::npos && nextNL < targetEvalAbsolutePos) {
+                        evalRealLine++;
+                        lOffset = nextNL + 1;
+                    }
+                    else break;
+                }
+
+                // Вызываем GetParamIndexByTextOrder со всеми 4-мя оригинальными аргументами в правильном порядке!
+                // fileText, currentFile, line, evalIdxInLine
+                int counterID = GetParamIndexByTextOrder(fileText, currentFile, evalRealLine, evalIdxInLine);
+
                 if (counterID != -1) {
                     std::string vsLookupKey = currentFile + ":" + std::to_string(counterID);
                     g_dragState.targetParamId = getID(vsLookupKey);
                 }
             }
+
 
             int id = g_dragState.targetParamId;
 
