@@ -233,7 +233,32 @@ namespace LivePT {
                         size_t closeBrace = textValue.rfind('}');
                         if (openBrace == std::string::npos || closeBrace == std::string::npos || closeBrace <= openBrace) return;
 
-                        std::string innerArgs = textValue.substr(openBrace + 1, closeBrace - openBrace - 1);
+                        std::string rawInnerArgs = textValue.substr(openBrace + 1, closeBrace - openBrace - 1);
+
+                        std::string innerArgs = "";
+                        bool inComment = false;
+
+                        for (size_t i = 0; i < rawInnerArgs.length(); ++i) {
+                            char c = rawInnerArgs[i];
+                            char nextC = (i + 1 < rawInnerArgs.length()) ? rawInnerArgs[i + 1] : '\0';
+
+                            if (inComment) {
+                                if (c == '\n' || c == '\r') {
+                                    inComment = false;
+                                    innerArgs += c; // Сохраняем перенос строки для логов/отладки
+                                }
+                                continue;
+                            }
+
+                            // Ловим начало однострочного коммента
+                            if ((c == '/' && nextC == '/') || c == '#') {
+                                inComment = true;
+                                if (c == '/') i++; // Пропускаем второй слэш
+                                continue;
+                            }
+
+                            innerArgs += c; // Копируем только чистый, живой код C++!
+                        }
 
                         int globalId = GlobalEvalRegistry<TargetType, AbsoluteFile, Line, Column>::cached_id;
                         if (!paramDesc[globalId].structInfo.isStruct) {

@@ -216,36 +216,103 @@ namespace LivePT {
     // 2. СИНХРОННЫЙ С КОРНЕМ СЧЕТЧИК ИНДЕКСОВ С НАЧАЛА ФАЙЛА
     inline int GetParamIndexByTextOrder(const std::wstring& fileText, const std::string& currentActiveFile, long cursorLine, size_t evalIdxInLine) {
         size_t globalFileCounter = 0;
-        size_t pos = 0;
-        size_t targetLineOffset = GetLineStartOffset(fileText, cursorLine);
 
-        while ((pos = fileText.find(L"eval", pos)) != std::wstring::npos) {
-            bool validLeft = (pos == 0 || !iswalnum(fileText[pos - 1]) && fileText[pos - 1] != L'_');
-            bool validRight = (pos + 4 >= fileText.length() || !iswalnum(fileText[pos + 4]) && fileText[pos + 4] != L'_');
+        // Флаги автомата состояний комментариев
+        bool inSingleLineComment = false;
+        bool inMultiLineComment = false;
+        bool inStringLiteral = false;
 
-            if (validLeft && validRight) {
-                // Честная проверка на комментарии перед инкрементом глобального счетчика
-                size_t lineStart = fileText.rfind(L'\n', pos);
-                lineStart = (lineStart == std::wstring::npos) ? 0 : lineStart + 1;
-                std::wstring prevCode = fileText.substr(lineStart, pos - lineStart);
+        long currentLine = 1;       // Текущая физическая строка, по которой идет парсер
+        size_t evalsOnCurrentLine = 0; // Сколько слов eval мы уже насчитали на ТЕКУЩЕЙ строке
 
-                size_t firstNonSpace = prevCode.find_first_not_of(L" \t");
-                bool isCommented = (firstNonSpace != std::wstring::npos && prevCode[firstNonSpace] == L'#') ||
-                    (prevCode.find(L"//") != std::wstring::npos);
+        for (size_t i = 0; i < fileText.length(); ++i) {
+            wchar_t c = fileText[i];
+            wchar_t nextC = (i + 1 < fileText.length()) ? fileText[i + 1] : L'\0';
 
-                if (!isCommented) {
-                    if (pos < targetLineOffset) {
-                        globalFileCounter++;
-                    }
-                    else {
-                        break; // Дошли до строки курсора, останавливаем сквозной счет
+            // Отслеживаем перенос строк, чтобы покадрово инкрементировать currentLine
+            if (c == L'\n') {
+                currentLine++;
+                evalsOnCurrentLine = 0; // Сброс счетчика слов для новой строки
+                inSingleLineComment = false; // Однострочный комментарий закрывается концом строки
+                continue;
+            }
+            if (c == L'\r') {
+                continue;
+            }
+
+            // Автомат состояний: Пропуск однострочного комментария
+            if (inSingleLineComment) {
+                continue;
+            }
+
+            // Автомат состояний: Пропуск многострочного комментария
+            if (inMultiLineComment) {
+                if (c == L'*' && nextC == L'/') {
+                    inMultiLineComment = false;
+                    i++; // Пропускаем слэш
+                }
+                continue;
+            }
+
+            // Автомат состояний: Пропуск строкового литерала
+            if (inStringLiteral) {
+                if (c == L'\\' && nextC == L'"') {
+                    i++; // Пропускаем экранированную кавычку
+                }
+                else if (c == L'"') {
+                    inStringLiteral = false;
+                }
+                continue;
+            }
+
+            // ПРОВЕРКА НА ВХОД В КОММЕНТАРИИ / СТРОКИ
+            if (c == L'/' && nextC == L'/') {
+                inSingleLineComment = true;
+                i++;
+                continue;
+            }
+            if (c == L'#') {
+                inSingleLineComment = true;
+                continue;
+            }
+            if (c == L'/' && nextC == L'*') {
+                inMultiLineComment = true;
+                i++;
+                continue;
+            }
+            if (c == L'"') {
+                inStringLiteral = true;
+                continue;
+            }
+
+            // ЕСЛИ МЫ В ЧИСТОМ КОДЕ: Ищем слово "eval"
+            if (c == L'e' && i + 4 <= fileText.length()) {
+                if (fileText[i + 1] == L'v' && fileText[i + 2] == L'a' && fileText[i + 3] == L'l') {
+
+                    // Проверяем границы токена (чтобы не задеть "my_eval")
+                    bool validLeft = (i == 0 || !iswalnum(fileText[i - 1]) && fileText[i - 1] != L'_');
+                    bool validRight = (i + 4 >= fileText.length() || !iswalnum(fileText[i + 4]) && fileText[i + 4] != L'_');
+
+                    if (validLeft && validRight) {
+                        // ЕСЛИ МЫ СТОИМ НА НАШЕЙ ЦЕЛЕВОЙ СТРОКЕ:
+                        if (currentLine == cursorLine) {
+                            if (evalsOnCurrentLine == evalIdxInLine) {
+                                // Мы дошли ровно до того слова eval, на котором стоит курсор!
+                                // Останавливаем парсер и возвращаем накопленный глобальный индекс.
+                                break;
+                            }
+                            evalsOnCurrentLine++;
+                        }
+
+                        globalFileCounter++; // Увеличиваем общий сквозной счетчик живых макросов
                     }
                 }
             }
-            pos += 4;
         }
-        return static_cast<int>(globalFileCounter + evalIdxInLine);
+
+        return static_cast<int>(globalFileCounter);
     }
+
 
     inline size_t FindCloseBracket(const std::wstring & text, size_t openBracketPos) {
             if (openBracketPos == std::wstring::npos) return std::wstring::npos;

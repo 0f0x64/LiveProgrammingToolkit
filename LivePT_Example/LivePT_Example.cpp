@@ -97,41 +97,47 @@ Primitive primitive[4];
 void UpdateSceneParams() {
 
     // drag numbers by pressing&move mButton inside eval, click mButton for switch / context menu
-    primitive[0].Set(eval(-248), 
-        eval(-234), eval(Primitive::ptype::box), 
-        eval(Primitive::show_t::on), eval(Primitive::color3{ 250,28,8 }));
+
+    primitive[0].Set(eval(-300), 
+        eval(-299), eval(Primitive::ptype::box), 
+        eval(Primitive::show_t::on), eval(Primitive::color3{ 204,28,110 }));
+
+    /*    primitive[0].Set(eval(-294),
+            eval(-174), eval(Primitive::ptype::box),
+            eval(Primitive::show_t::on), eval(Primitive::color3{ 176,28,8 }));*/
+
 
     // floating point numbers allowed (will be casted to int in this case, but you can modify class to use native floats)
-    primitive[1].Set(eval(-115), eval(13), 
+    primitive[1].Set(eval(-123), eval(-40), 
         eval(Primitive::ptype::box), 
-        eval(Primitive::show_t::on), eval(Primitive::color3{ 8,255,8 }));
+        eval(Primitive::show_t::on), eval(Primitive::color3{ 175,27,91 }));
 
-    unsigned char x = rand() % eval(5);
+    unsigned char x = rand() % eval(23);
     unsigned char y = rand() % eval(9);
 
 
 
     // aggregate init alternative
     primitive[2].Set(Primitive{
-        .x = eval(   111.85  ),
-        .y = eval(-181),
+        .x = eval(   112.06  ),
+        .y = eval(-264),
         .type = eval(Primitive::ptype::circle),
         .show = eval(Primitive::show_t::on),
         .color = eval(Primitive::color3{
             .r = x,
 
-            .g = 250,
+            .g = 134,//.g=22 aaaaaa
             .b = y})
         });
 
     
     primitive[3].Set(Primitive{
 
-    .x = eval(55.6f),
-    .y = eval(-328.26),
-    .type = eval(Primitive::ptype::circle),
+    .x = eval(-139.9f),
+    .y = eval(-249.26),
+    .type = eval(Primitive::ptype::roundbox),
     .show = eval(Primitive::show_t::on),
-    .color = eval(Primitive::color3{47,75,168})
+    .color = eval(Primitive::color3{39,166,102})
         });
 }
 
