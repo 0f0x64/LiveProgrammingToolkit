@@ -403,114 +403,98 @@ namespace LivePT {
     }
 
     inline bool HandleMouseDown(const POINT& pt) {
-        if (!initVsEditor()) return false;
+        if (!initVsEditor()) return false; // [7]
 
-        VARIANT vtActiveDoc;
-        std::string currentFile;
-        long line = 0, column = 0;
-        std::wstring fileText;
+        VARIANT vtActiveDoc; // [7]
+        std::string currentFile; // [7]
+        long line = 0, column = 0; // [7]
+        std::wstring fileText; // [7]
 
-        bool clickedInsideNumber = false;
+        bool clickedInsideNumber = false; // [7]
 
-        if (GetActiveVSContext(vtActiveDoc, currentFile, line, column, fileText)) {
+        if (GetActiveVSContext(vtActiveDoc, currentFile, line, column, fileText)) { // [7]
 
-            DWORD currentTime = GetTickCount();
-            DWORD doubleClickTime = GetDoubleClickTime();
+            // 1. Вычисляем дельту времени для детекции полноценного DoubleClick
+            DWORD currentTime = GetTickCount(); // [7]
+            DWORD doubleClickTime = GetDoubleClickTime(); // [7]
 
             bool isDoubleClick = (g_dragState.lastClickTime != 0) &&
                 (currentTime - g_dragState.lastClickTime <= doubleClickTime) &&
                 (std::abs(pt.x - g_dragState.lastClickPt.x) < 4) &&
-                (std::abs(pt.y - g_dragState.lastClickPt.y) < 4);
+                (std::abs(pt.y - g_dragState.lastClickPt.y) < 4); // [7]
 
             if (isDoubleClick) {
-                g_dragState.lastClickTime = 0;
+                g_dragState.lastClickTime = 0; // [7]
             }
             else {
-                g_dragState.lastClickTime = currentTime;
+                g_dragState.lastClickTime = currentTime; // [7]
             }
 
-            g_dragState.lastClickPt = pt;
+            g_dragState.lastClickPt = pt; // [7]
 
-            size_t evalIdxInLine = 0;
-            size_t targetEvalAbsolutePos = 0;
-            g_dragState.targetParamId = -1; // По умолчанию -1 (число вне eval)
+            size_t targetEvalAbsolutePos = 0; // [7]
+            g_dragState.targetParamId = -1; // По умолчанию -1 (число вне макроса eval) [7]
 
-            // 1. Проверяем, лежит ли курсор внутри eval СТУДИИ
-        // Находим этот блок внутри HandleMouseDown(const POINT& pt) в файле liveWheelEdit.h:
+            // 2. ИСПОЛЬЗУЕМ НОВЫЙ УНИФИЦИРОВАННЫЙ АВТОМАТ СОСТОЯНИЙ
+            // Вместо старых сломанных CheckCursorInsideEval и GetParamIndexByTextOrder
+            EvalMatchContext matchCtx = FindEvalUnderCursor(fileText, line, column);
 
+            if (matchCtx.found && matchCtx.globalCounterID != -1) {
+                std::string vsLookupKey = currentFile + ":" + std::to_string(matchCtx.globalCounterID);
+                g_dragState.targetParamId = getID(vsLookupKey); // [7]
+                targetEvalAbsolutePos = matchCtx.evalAbsolutePos;
+            }
 
-            if (CheckCursorInsideEval(fileText, line, column, evalIdxInLine, targetEvalAbsolutePos)) {
+            int id = g_dragState.targetParamId; // [7]
 
-                // Вычисляем физическую строку начала макроса eval
-                long evalRealLine = 1;
-                size_t lOffset = 0;
-                while (lOffset < targetEvalAbsolutePos) {
-                    size_t nextNL = fileText.find(L'\n', lOffset);
-                    if (nextNL != std::wstring::npos && nextNL < targetEvalAbsolutePos) {
-                        evalRealLine++;
-                        lOffset = nextNL + 1;
+            // 3. ОБРАБОТКА ЕНАМОВ / ПЕРЕКЛЮЧАТЕЛЕЙ ПО ДАБЛКЛИКУ
+            if (id != -1 && paramDesc[id].enumInfo.isEnum) { // [7]
+                if (isDoubleClick) { // [7]
+                    // Вычисляем границы текста внутри круглых скобок макроса eval(...)
+                    if (ParseMacroValueBoundaries(fileText, line, targetEvalAbsolutePos)) { // [7]
+                        InitMultiEnumSelection(id); // Вызываем меню выбора или инвертируем bool-подобный enum [7]
                     }
-                    else break;
                 }
-
-                // Вызываем GetParamIndexByTextOrder со всеми 4-мя оригинальными аргументами в правильном порядке!
-                // fileText, currentFile, line, evalIdxInLine
-                int counterID = GetParamIndexByTextOrder(fileText, currentFile, evalRealLine, evalIdxInLine);
-
-                if (counterID != -1) {
-                    std::string vsLookupKey = currentFile + ":" + std::to_string(counterID);
-                    g_dragState.targetParamId = getID(vsLookupKey);
-                }
+                g_dragState.targetParamId = -1; // Сбрасываем захват драга для енамов [7]
+                VariantClear(&vtActiveDoc); // [7]
+                return false; // Завершаем обработку клика без старта мышиного драга [7]
             }
 
+            // 4. УНИВЕРСАЛЬНЫЙ ЗАХВАТ ГРАНИЦ ЧИСЛА ДЛЯ ИЗМЕНЕНИЯ ЗНАЧЕНИЯ МЫШЬЮ
+            // Работает атомарно для любого типа числа под текстовым курсором в VS [7]
+            std::wstring lineText = DownloadCurrentLineText(vtActiveDoc.pdispVal); // [7]
+            long cursorColIdx = column - 1; // [7]
 
-            int id = g_dragState.targetParamId;
+            if (cursorColIdx >= 0 && cursorColIdx < static_cast<long>(lineText.length())) { // [7]
+                long startCol = cursorColIdx; // [7]
+                long endCol = cursorColIdx; // [7]
 
-            // 2. ОБРАБОТКА ЕНАМОВ ПО ДАБЛКЛИКУ (Остается изолированной, требует валидный id)
-            if (id != -1 && paramDesc[id].enumInfo.isEnum) {
-                if (isDoubleClick) {
-                    ParseMacroValueBoundaries(fileText, line, targetEvalAbsolutePos);
-                    InitMultiEnumSelection(id);
-                }
-                g_dragState.targetParamId = -1;
-                VariantClear(&vtActiveDoc);
-                return false;
-            }
-
-            // 3. УНИВЕРСАЛЬНЫЙ ЗАХВАТ ГРАНИЦ ЧИСЛА (Работает для любого числа в коде)
-            std::wstring lineText = DownloadCurrentLineText(vtActiveDoc.pdispVal);
-            long cursorColIdx = column - 1;
-
-            if (cursorColIdx >= 0 && cursorColIdx < static_cast<long>(lineText.length())) {
-                long startCol = cursorColIdx;
-                long endCol = cursorColIdx;
-
+                // Расширяем границы токена влево и вправо, собирая валидные символы литерала числа C++
                 while (startCol > 0 && (iswdigit(lineText[startCol - 1]) || lineText[startCol - 1] == L'.' || lineText[startCol - 1] == L'-' || lineText[startCol - 1] == L'f' || lineText[startCol - 1] == L'F')) {
-                    startCol--;
+                    startCol--; // [7]
                 }
                 while (endCol < static_cast<long>(lineText.length()) && (iswdigit(lineText[endCol]) || lineText[endCol] == L'.' || lineText[endCol] == L'-' || lineText[endCol] == L'f' || lineText[endCol] == L'F')) {
-                    endCol++;
+                    endCol++; // [7]
                 }
 
-                if (startCol < endCol) {
-                    std::wstring numW = lineText.substr(startCol, endCol - startCol);
-                    std::string cleanText(numW.begin(), numW.end());
+                if (startCol < endCol) { // Если под курсором действительно обнаружена строка-число [7]
+                    std::wstring numW = lineText.substr(startCol, endCol - startCol); // [7]
+                    std::string cleanText(numW.begin(), numW.end()); // [7]
 
-                    g_dragState.dragLine = line;
-                    g_dragState.dragStartCol = startCol + 1; // Теперь тут ВСЕГДА точная колонка числа 216
-                    g_dragState.currentTextLength = cleanText.length(); // Теперь тут ВСЕГДА длина числа (3)
-                    g_dragState.oldMouseY = pt.y;
+                    g_dragState.dragLine = line; // [7]
+                    g_dragState.dragStartCol = startCol + 1; // Точная физическая колонка начала числа в редакторе [7]
+                    g_dragState.currentTextLength = cleanText.length(); // Длина исходного текстового представления числа [7]
+                    g_dragState.oldMouseY = pt.y; // [7]
 
-                    size_t relativeCursorIdx = cursorColIdx - startCol;
-                    InitNumericDragState(relativeCursorIdx, cleanText);
+                    size_t relativeCursorIdx = cursorColIdx - startCol; // [7]
+                    InitNumericDragState(relativeCursorIdx, cleanText); // Инициализируем внутренний стейт драга [7]
 
-                    clickedInsideNumber = true;
+                    clickedInsideNumber = true; // Сигнализируем об успешном захвате [7]
                 }
-
             }
-            VariantClear(&vtActiveDoc);
+            VariantClear(&vtActiveDoc); // [7]
         }
-        return clickedInsideNumber;
+        return clickedInsideNumber; // [7]
     }
 
     inline void DragNumericValue(int /*dummy*/, const POINT& pt, bool ctrl, bool shift) {
