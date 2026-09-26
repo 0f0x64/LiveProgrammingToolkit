@@ -144,14 +144,14 @@ void UpdateSceneParams() {
 
     // aggregate init alternative
     primitive[2].Set(Primitive{
-        .x = eval(   -31.40  ),
+        .x = eval(   11.40  ),
         .y = eval(-276),
         .type = eval(Primitive::ptype::box),
         .show = eval(Primitive::show_t::on),
         .color = eval(Primitive::color3{
             .r = x,
 
-            .g = 116,//.g=22 aaaaaa
+            .g = 118,//.g=22 aaaaaa
             .b = y})
         });
 
