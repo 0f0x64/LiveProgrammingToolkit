@@ -2,7 +2,6 @@ namespace LivePT {
 
     static IDispatch* pDTE = nullptr;
 
-    inline size_t GetLineStartOffset(const std::wstring& text, long targetLine);
     inline std::wstring DownloadCurrentLineText(IDispatch* pActiveDoc);
     inline size_t FindCloseBracket(const std::wstring& text, size_t openBracketPos);
 
@@ -305,15 +304,6 @@ namespace LivePT {
             return fileText;
         }
 
-    inline size_t GetLineStartOffset(const std::wstring & text, long targetLine) {
-            size_t offset = 0; long currentIdx = 1;
-            while (currentIdx < targetLine && offset < text.length()) {
-                size_t nextNL = text.find(L'\n', offset);
-                if (nextNL != std::wstring::npos) { offset = nextNL + 1; currentIdx++; }
-                else break;
-            }
-            return offset;
-        }
 
     inline long GetVisualColumn(const std::wstring & lineText, size_t charIdx) {
             const size_t TAB_SIZE = 4; // VS TAB SIZE
@@ -443,15 +433,11 @@ namespace LivePT {
     }
 
     // Хранилище для оптимизации
-    static DWORD g_lastVsTickTime = 0;
     static std::wstring g_lastLineTextBuffer = L"";
     static long g_lastLine = -1;
     static long g_lastCol = -1;
 
     inline bool isMouseDragging();
-
-    static inline size_t g_lastTargetEvalPos = 0;
-    static inline int    g_cachedCounterID = -1;
 
     
     // Возвращает актуальный сырой ID макроса, на котором ПРЯМО СЕЙЧАС стоит курсор.
@@ -575,34 +561,7 @@ namespace LivePT {
 
     static std::string g_cachedMapFilePath = "";
 
-    // Индекс вектора — сырой ID в тексте (включая вообще ВСЕ токены "eval"). 
-// Значение — валидный Runtime ID из базы компилятора (или -1)
-    inline int CountRawEvalsUpToOffset(const std::wstring& fileText, size_t targetOffset) {
-        if (targetOffset == std::wstring::npos || targetOffset > fileText.length()) {
-            return 0;
-        }
-
-        int rawEvalCount = 0;
-        size_t currentOffset = 0;
-
-        while ((currentOffset = fileText.find(L"eval", currentOffset)) != std::wstring::npos) {
-            // Если дошли или перешагнули физическое начало нашего макроса — стоп
-            if (currentOffset >= targetOffset) {
-                break;
-            }
-
-            bool validLeft = (currentOffset == 0 || (!iswalnum(fileText[currentOffset - 1]) && fileText[currentOffset - 1] != L'_'));
-            bool validRight = (currentOffset + 4 >= fileText.length() || (!iswalnum(fileText[currentOffset + 4]) && fileText[currentOffset + 4] != L'_'));
-
-            if (validLeft && validRight) {
-                rawEvalCount++;
-            }
-
-            currentOffset += 4;
-        }
-
-        return rawEvalCount;
-    }
+   
 
     inline void BuildRawToRuntimeMapLinear(const std::string& targetFileName, const std::wstring& fileText) {
         if (fileText.empty()) return;

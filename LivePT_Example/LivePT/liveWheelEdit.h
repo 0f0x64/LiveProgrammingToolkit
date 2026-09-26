@@ -106,24 +106,7 @@ namespace LivePT {
 
     inline bool isMouseDragging() { return g_dragState.isDragging; }
 
-    inline std::string updateFractionalPart(const std::string& original, int delta) {
-        if (original.empty()) return "";
-        size_t length = original.length();
-        if (original.back() == 'f' || original.back() == 'F') length--;
-        std::string pureFrac = original.substr(0, length);
-        long long limit = 1;
-        for (size_t i = 0; i < pureFrac.length(); ++i) limit *= 10;
-        long long max_val = limit - 1;
-        long long value = std::stoll(pureFrac);
-        value += delta;
-        if (value > max_val) value = max_val;
-        if (value < 0) value = 0;
-        std::string result = std::to_string(value);
-        if (result.length() < pureFrac.length()) {
-            result.insert(0, pureFrac.length() - result.length(), '0');
-        }
-        return result + "f";
-    }
+    
 
     inline bool ReplaceTextInActiveVS(long line, long visualStartCol, long visualEndCol, const std::string& newText, long newCursorPhysicalCol) {
         if (!pDTE) return false;

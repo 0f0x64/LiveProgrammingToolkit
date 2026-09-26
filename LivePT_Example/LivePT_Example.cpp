@@ -98,28 +98,39 @@ void UpdateSceneParams() {
 
     // drag numbers by pressing&move mButton inside eval, click mButton for switch / context menu
 
-    primitive[0].Set(eval(-197), 
-        eval(-322), eval(Primitive::ptype::circle), 
-        eval(Primitive::show_t::on), eval(Primitive::color3{ 139,28,35 }));
+    primitive[0].Set(eval(-245), 
+        eval(-231), eval(Primitive::ptype::box), 
+        eval(Primitive::show_t::on), eval(Primitive::color3{ 69,28,107 }));
 
 #ifdef blaaa
         primitive[0].Set(eval(-289),
-            eval(-180), eval(Primitive::ptype::box),
+            eval(-172), eval(Primitive::ptype::box),
             eval(Primitive::show_t::on), eval(Primitive::color3{ 178,83,8 }));
+
+        primitive[31].Set(Primitive{
+    .x = eval(34.40),
+    .y = eval(-276),
+    .type = eval(Primitive::ptype::roundbox),
+    .show = eval(Primitive::show_t::on),
+    .color = eval(Primitive::color3{
+        .r = x,
+
+        .g = 86,//.g=22 aaaaaa
+        .b = y})
+            });
 #endif
 
-    // floating point numbers allowed (will be casted to int in this case, but you can modify class to use native floats)
-    primitive[1].Set(eval(-202), eval(5), 
-        eval(Primitive::ptype::roundbox), 
-        eval(Primitive::show_t::on), eval(Primitive::color3{ 59,41,1 }));
+      
 
-    unsigned char x = rand() % eval(33);
+    // floating point numbers allowed (will be casted to int in this case, but you can modify class to use native floats)
+    primitive[1].Set(eval(-216), eval(-14), 
+        eval(Primitive::ptype::roundbox), 
+        eval(Primitive::show_t::on), eval(Primitive::color3{ 135,41,1 }));
+
+    unsigned char x = rand() % eval(73);
     unsigned char y = rand() % eval(9);
 
-
-
-    // aggregate init alternative
-    primitive[2].Set(Primitive{
+/*    primitive[2].Set(Primitive{
         .x = eval(   26.40  ),
         .y = eval(-276),
         .type = eval(Primitive::ptype::roundbox),
@@ -128,6 +139,19 @@ void UpdateSceneParams() {
             .r = x,
 
             .g = 62,//.g=22 aaaaaa
+            .b = y})
+        });*/
+
+    // aggregate init alternative
+    primitive[2].Set(Primitive{
+        .x = eval(   -31.40  ),
+        .y = eval(-276),
+        .type = eval(Primitive::ptype::box),
+        .show = eval(Primitive::show_t::on),
+        .color = eval(Primitive::color3{
+            .r = x,
+
+            .g = 116,//.g=22 aaaaaa
             .b = y})
         });
 
