@@ -666,11 +666,11 @@ namespace LivePT {
 
         if (!LivePT::isMouseDragging()) {
             if (line == g_lastLine && currentLineText == g_lastLineTextBuffer) {
-                g_lastCol = column; 
+               // g_lastCol = column; 
                 //VariantClear(&vtActiveDoc); return;
             }
             if (currentLineText == g_lastLineTextBuffer && line != g_lastLine) {
-                g_lastLine = line; g_lastCol = column; 
+               // g_lastLine = line; g_lastCol = column; 
                 //VariantClear(&vtActiveDoc); return;
             }
         }
