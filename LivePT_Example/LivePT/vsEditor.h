@@ -492,6 +492,157 @@ namespace LivePT {
     static inline size_t g_lastTargetEvalPos = 0;
     static inline int    g_cachedCounterID = -1;
 
+    inline size_t CoordinateToAbsolutePos(const std::wstring& fileText, long targetLine, long targetColumn) {
+        size_t lineStartOffset = 0;
+        long currentLineIdx = 1;
+
+        while (currentLineIdx < targetLine && lineStartOffset < fileText.length()) {
+            size_t nextNL = fileText.find(L'\n', lineStartOffset);
+            if (nextNL != std::wstring::npos) {
+                lineStartOffset = nextNL + 1;
+                currentLineIdx++;
+            }
+            else {
+                break;
+            }
+        }
+
+        size_t nextNL = fileText.find(L'\n', lineStartOffset);
+        if (nextNL == std::wstring::npos) nextNL = fileText.length();
+        std::wstring lineText = fileText.substr(lineStartOffset, nextNL - lineStartOffset);
+
+        long currentVisualCol = 1;
+        size_t charOffsetInsideLine = lineText.length();
+
+        for (size_t i = 0; i < lineText.length(); ++i) {
+            if (currentVisualCol >= targetColumn) {
+                charOffsetInsideLine = i;
+                break;
+            }
+            currentVisualCol += (lineText[i] == L'\t') ? (4 - ((currentVisualCol - 1) % 4)) : 1;
+        }
+
+        return lineStartOffset + charOffsetInsideLine;
+    }
+
+    int CountRawEvalsInRange(const std::wstring& fileText, long startLine, long startCol, long endLine, long endCol) {
+        size_t startOffset = CoordinateToAbsolutePos(fileText, startLine, startCol);
+        size_t endOffset = CoordinateToAbsolutePos(fileText, endLine, endCol);
+
+        if (startOffset >= endOffset || startOffset >= fileText.length()) {
+            return 0;
+        }
+
+        int rawEvalCount = 0;
+        size_t currentOffset = startOffset;
+
+        // Крутим .find(), пока находим подстроку
+        while ((currentOffset = fileText.find(L"eval", currentOffset)) != std::wstring::npos) {
+
+            // Вылетели за поддиапазон? Всё, дальше нам не интересно
+            if (currentOffset + 4 > endOffset) {
+                break;
+            }
+
+            // Обещанная валидация границ слова
+            bool validLeft = (currentOffset == 0 || (!iswalnum(fileText[currentOffset - 1]) && fileText[currentOffset - 1] != L'_'));
+            bool validRight = (currentOffset + 4 >= fileText.length() || (!iswalnum(fileText[currentOffset + 4]) && fileText[currentOffset + 4] != L'_'));
+
+            if (validLeft && validRight) {
+                rawEvalCount++;
+            }
+
+            // Смещаем offset, чтобы искать дальше
+            currentOffset += 4;
+        }
+
+        return rawEvalCount;
+    }
+
+    inline int ResolveRuntimeIdByVisualId(const std::string& targetFileName, const std::wstring& fileText, long cursorLine, long cursorColumn) {
+        std::string normalizedPath = LivePT::NormalizePath(targetFileName.c_str());
+        const auto& params = LivePT::getParamDesc();
+
+        int currentId = 0;
+
+        // Переводим текущие живые координаты курсора в абсолютное смещение в символах
+        size_t cursorAbsoluteOffset = CoordinateToAbsolutePos(fileText, cursorLine, cursorColumn);
+
+        // Переменная для отслеживания абсолютного конца самого последнего скомпилированного макроса в файле
+        size_t absoluteLastMacroEnd = 0;
+
+        while (true) {
+            std::string lookupKey = normalizedPath + ":" + std::to_string(currentId);
+            int paramIndex = LivePT::getID(lookupKey);
+
+            if (paramIndex == -1) {
+                break; // Зарегистрированные макросы в файле закончились
+            }
+
+            const auto& p = params[paramIndex];
+
+            // 1. Точка анкора от компилятора
+            size_t anchorOffset = CoordinateToAbsolutePos(fileText, p.line, p.column);
+
+            // 2. РЕТРОПОИСК: Находим физическое начало "eval" для текущего параметра
+            size_t currentMacroStart = std::wstring::npos;
+            if (anchorOffset != std::wstring::npos && anchorOffset < fileText.length()) {
+                size_t rfindPos = fileText.rfind(L"eval", anchorOffset);
+                if (rfindPos != std::wstring::npos) {
+                    bool validLeft = (rfindPos == 0 || (!iswalnum(fileText[rfindPos - 1]) && fileText[rfindPos - 1] != L'_'));
+                    bool validRight = (rfindPos + 4 >= fileText.length() || (!iswalnum(fileText[rfindPos + 4]) && fileText[rfindPos + 4] != L'_'));
+                    if (validLeft && validRight) {
+                        currentMacroStart = rfindPos;
+                    }
+                }
+            }
+            if (currentMacroStart == std::wstring::npos) {
+                currentMacroStart = anchorOffset;
+            }
+
+            // 3. ТОЧНЫЙ РАСЧЕТ НИЖНЕЙ ГРАНИЦЫ ЧЕРЕЗ ЗАКРЫВАЮЩУЮ СКОБКУ МАКРОСА
+            size_t currentMacroEnd = std::wstring::npos;
+            size_t openBracket = fileText.find(L'(', currentMacroStart);
+            if (openBracket != std::wstring::npos) {
+                size_t closeBracket = FindCloseBracket(fileText, openBracket);
+                if (closeBracket != std::wstring::npos) {
+                    currentMacroEnd = closeBracket + 1; // Включаем саму скобку
+                }
+            }
+
+            if (currentMacroEnd == std::wstring::npos) {
+                currentMacroEnd = currentMacroStart + 6;
+            }
+
+            // Запоминаем максимальный конец макроса, который мы встретили в файле
+            if (currentMacroEnd > absoluteLastMacroEnd) {
+                absoluteLastMacroEnd = currentMacroEnd;
+            }
+
+            // 4. МАТЧ: Если курсор строго внутри границ живого скомпилированного макроса
+            if (cursorAbsoluteOffset >= currentMacroStart && cursorAbsoluteOffset < currentMacroEnd) {
+                return currentId; // Возвращаем точный counterID в рамках файла
+            }
+
+            // Защита для самого первого макроса
+            if (currentId == 0 && cursorAbsoluteOffset < currentMacroStart) {
+                return 0;
+            }
+
+            currentId++;
+        }
+
+        // ИСПРАВЛЕННЫЙ ФОЛБЕК: Возвращаем последний ID только если курсор находится 
+        // гарантированно ниже самого последнего скомпилированного макроса в файле.
+        // Во всех остальных случаях (включая неактивный #ifdef в середине кода) отдаем -1.
+        if (currentId > 0 && cursorAbsoluteOffset >= absoluteLastMacroEnd) {
+            return currentId - 1;
+        }
+
+        return -1;
+    }
+
+
     inline void vsEditor() {
         if (!initVsEditor()) return;
 
@@ -515,12 +666,17 @@ namespace LivePT {
 
         if (!LivePT::isMouseDragging()) {
             if (line == g_lastLine && currentLineText == g_lastLineTextBuffer) {
-                g_lastCol = column; VariantClear(&vtActiveDoc); return;
+                g_lastCol = column; 
+                //VariantClear(&vtActiveDoc); return;
             }
             if (currentLineText == g_lastLineTextBuffer && line != g_lastLine) {
-                g_lastLine = line; g_lastCol = column; VariantClear(&vtActiveDoc); return;
+                g_lastLine = line; g_lastCol = column; 
+                //VariantClear(&vtActiveDoc); return;
             }
         }
+        bool lg = false;
+        if (line != g_lastLine || g_lastCol != column) lg = true;
+
 
         g_lastLineTextBuffer = currentLineText;
         g_lastLine = line;
@@ -532,6 +688,18 @@ namespace LivePT {
         // Вызов нашего нового унифицированного метода
         EvalMatchContext matchCtx = FindEvalUnderCursor(fileText, line, column);
         if (!matchCtx.found) { VariantClear(&vtActiveDoc); return; }
+
+        int rawEvalsBeforeCursor = CountRawEvalsInRange(fileText, 1, 1, line, column);
+        int validRuntimeId = ResolveRuntimeIdByVisualId(currentActiveFile,fileText, line, column);
+        HWND hEngineWnd = ::FindWindowA("WindowClass", "LivePT Test");
+        char titleBuffer[256];
+            sprintf_s(titleBuffer, "x: %d", validRuntimeId);
+        // Меняем заголовок окна Win32
+            if (lg)
+            {
+          //      ::SetWindowTextA(hEngineWnd, titleBuffer);
+                Log(titleBuffer);
+            }
 
         ParseAndStoreParamValue(fileText, currentActiveFile, matchCtx);
         VariantClear(&vtActiveDoc);

@@ -99,13 +99,14 @@ void UpdateSceneParams() {
     // drag numbers by pressing&move mButton inside eval, click mButton for switch / context menu
 
     primitive[0].Set(eval(-251), 
-        eval(-291), eval(Primitive::ptype::box), 
+        eval(-290), eval(Primitive::ptype::box), 
         eval(Primitive::show_t::on), eval(Primitive::color3{ 55,28,110 }));
 
-    /*    primitive[0].Set(eval(-294),
+#ifdef blaaa
+        primitive[0].Set(eval(-294),
             eval(-174), eval(Primitive::ptype::box),
-            eval(Primitive::show_t::on), eval(Primitive::color3{ 176,28,8 }));*/
-
+            eval(Primitive::show_t::on), eval(Primitive::color3{ 176,83,8 }));
+#endif
 
     // floating point numbers allowed (will be casted to int in this case, but you can modify class to use native floats)
     primitive[1].Set(eval(-152), eval(-21), 
