@@ -213,99 +213,7 @@ namespace LivePT {
             }
         }
 
-    struct EvalMatchContext {
-        bool found = false;
-        int globalCounterID = -1;
-        size_t evalAbsolutePos = std::wstring::npos;
-    };
 
-    // ЕДИНЫЙ, СИНХРОННЫЙ АВТОМАТ СОСТОЯНИЙ (Заменяет две старые функции)
-    inline EvalMatchContext FindEvalUnderCursor(const std::wstring& fileText, long targetLine, long targetColumn) {
-        EvalMatchContext ctx;
-
-        // 1. Вычисляем абсолютную позицию курсора в символах файла
-        size_t lineStartOffset = 0; long currentLineIdx = 1;
-        while (currentLineIdx < targetLine && lineStartOffset < fileText.length()) {
-            size_t nextNL = fileText.find(L'\n', lineStartOffset);
-            if (nextNL != std::wstring::npos) { lineStartOffset = nextNL + 1; currentLineIdx++; }
-            else break;
-        }
-
-        // Переводим Visual Column (с учетом табов) в физический индекс символа в строке
-        std::wstring lineText;
-        size_t nextNL = fileText.find(L'\n', lineStartOffset);
-        if (nextNL == std::wstring::npos) nextNL = fileText.length();
-        lineText = fileText.substr(lineStartOffset, nextNL - lineStartOffset);
-
-        long currentVisualCol = 1;
-        size_t cursorCharOffsetInsideLine = lineText.length(); // по умолчанию конец строки
-        for (size_t i = 0; i < lineText.length(); ++i) {
-            if (currentVisualCol >= targetColumn) { cursorCharOffsetInsideLine = i; break; }
-            currentVisualCol += (lineText[i] == L'\t') ? (4 - ((currentVisualCol - 1) % 4)) : 1;
-        }
-        size_t globalCursorAbsolutePos = lineStartOffset + cursorCharOffsetInsideLine;
-
-        // 2. Запуск стейт-машины для честного подсчета и валидации токенов eval
-        bool inSingleLineComment = false;
-        bool inMultiLineComment = false;
-        bool inStringLiteral = false;
-        int globalFileCounter = 0;
-
-        for (size_t i = 0; i < fileText.length(); ++i) {
-            wchar_t c = fileText[i];
-            wchar_t nextC = (i + 1 < fileText.length()) ? fileText[i + 1] : L'\0';
-
-            if (c == L'\n') {
-                inSingleLineComment = false;
-                continue;
-            }
-            if (c == L'\r') continue;
-
-            if (inSingleLineComment) continue;
-            if (inMultiLineComment) {
-                if (c == L'*' && nextC == L'/') { inMultiLineComment = false; i++; }
-                continue;
-            }
-            if (inStringLiteral) {
-                if (c == L'\\' && nextC == L'"') i++;
-                else if (c == L'"') inStringLiteral = false;
-                continue;
-            }
-
-            // Вход в комментарии/литералы
-            if (c == L'/' && nextC == L'/') { inSingleLineComment = true; i++; continue; }
-            if (c == L'#') { inSingleLineComment = true; continue; }
-            if (c == L'/' && nextC == L'*') { inMultiLineComment = true; i++; continue; }
-            if (c == L'"') { inStringLiteral = true; continue; }
-
-            // Точный парсинг токена eval
-            if (c == L'e' && i + 4 <= fileText.length()) {
-                if (fileText[i + 1] == L'v' && fileText[i + 2] == L'a' && fileText[i + 3] == L'l') {
-                    bool validLeft = (i == 0 || (!iswalnum(fileText[i - 1]) && fileText[i - 1] != L'_'));
-                    bool validRight = (i + 4 >= fileText.length() || (!iswalnum(fileText[i + 4]) && fileText[i + 4] != L'_'));
-
-                    if (validLeft && validRight) {
-                        size_t openBracket = fileText.find(L'(', i + 4);
-                        if (openBracket != std::wstring::npos) {
-                            size_t closeBracket = FindCloseBracket(fileText, openBracket);
-
-                            // Проверяем, перекрывает ли этот макрос текущую позицию курсора редактора
-                            if (globalCursorAbsolutePos >= i && globalCursorAbsolutePos <= closeBracket) {
-                                ctx.found = true;
-                                ctx.globalCounterID = globalFileCounter;
-                                ctx.evalAbsolutePos = i;
-                                return ctx; // Нашли! Сразу выходим. Гарантия совпадения ID 100%
-                            }
-                        }
-                        globalFileCounter++; // Инкрементируем только чистые, не закомментированные макросы
-                    }
-                }
-            }
-        }
-        return ctx;
-    }
-
-    
 
 
     inline size_t FindCloseBracket(const std::wstring & text, size_t openBracketPos) {
@@ -425,25 +333,78 @@ namespace LivePT {
     
 
     // 3. ПОЛНЫЙ ВЫРЕЗАТЕЛЬ СКОБОК ДЛЯ ПАРСИНГА С КЛАВИАТУРЫ
-    inline void ParseAndStoreParamValue(const std::wstring& fileText, const std::string& currentActiveFile, const EvalMatchContext& matchCtx) {
-        if (!matchCtx.found || matchCtx.globalCounterID == -1) return;
+    // Исправленная оригинальная функция: парсит текст из файла, используя конвертацию в валидный ID
+    inline void ParseAndStoreParamValue(const std::wstring& fileText, const std::string& currentActiveFile, int validRuntimeId) {
+        if (validRuntimeId == -1 || fileText.empty()) return;
 
-        std::string vsLookupKey = currentActiveFile + ":" + std::to_string(matchCtx.globalCounterID);
+        // Конвертируем валидный Runtime ID из карты в реальный targetId базы рантайма
+        std::string vsLookupKey = LivePT::NormalizePath(currentActiveFile.c_str()) + ":" + std::to_string(validRuntimeId);
         int targetId = getID(vsLookupKey);
         if (targetId == -1) return;
 
-        size_t openBracket = fileText.find(L'(', matchCtx.evalAbsolutePos);
+        const auto& params = LivePT::getParamDesc();
+        const auto& p = params[targetId];
+
+        // НАДЁЖНЫЙ ЛИНЕЙНЫЙ ПЕРЕВОД КООРДИНАТ КОМПИЛЯТОРА В ОФСЕТ ЗА O(N)
+        size_t lineStartOffset = 0;
+        long currentLineIdx = 1;
+        while (currentLineIdx < p.line && lineStartOffset < fileText.length()) {
+            size_t nextNL = fileText.find(L'\n', lineStartOffset);
+            if (nextNL != std::wstring::npos) {
+                lineStartOffset = nextNL + 1;
+                currentLineIdx++;
+            }
+            else {
+                break;
+            }
+        }
+
+        size_t nextNL = fileText.find(L'\n', lineStartOffset);
+        if (nextNL == std::wstring::npos) nextNL = fileText.length();
+        std::wstring lineText = fileText.substr(lineStartOffset, nextNL - lineStartOffset);
+
+        long currentVisualCol = 1;
+        size_t paramCharIdx = lineText.length();
+        for (size_t i = 0; i < lineText.length(); ++i) {
+            if (currentVisualCol >= p.column) { paramCharIdx = i; break; }
+            currentVisualCol += (lineText[i] == L'\t') ? (4 - ((currentVisualCol - 1) % 4)) : 1;
+        }
+        size_t anchorOffset = lineStartOffset + paramCharIdx;
+
+        if (anchorOffset >= fileText.length()) return;
+
+        // ЖЕЛЕЗОБЕТОННЫЙ РЕТРОПОИСК: Отматываем текст назад до истинного начала "eval"
+        size_t evalAbsolutePos = std::wstring::npos;
+        size_t rfindPos = fileText.rfind(L"eval", anchorOffset);
+        if (rfindPos != std::wstring::npos) {
+            bool validLeft = (rfindPos == 0 || (!iswalnum(fileText[rfindPos - 1]) && fileText[rfindPos - 1] != L'_'));
+            bool validRight = (rfindPos + 4 >= fileText.length() || (!iswalnum(fileText[rfindPos + 4]) && fileText[rfindPos + 4] != L'_'));
+            if (validLeft && validRight) {
+                evalAbsolutePos = rfindPos; // Нашли физическое начало многострочного агрегата
+            }
+        }
+        if (evalAbsolutePos == std::wstring::npos) {
+            evalAbsolutePos = anchorOffset;
+        }
+
+        // Вырезаем скобки строго от истинного найденного начала макроса
+        size_t openBracket = fileText.find(L'(', evalAbsolutePos);
         size_t closeBracket = FindCloseBracket(fileText, openBracket);
-        if (openBracket != std::wstring::npos && closeBracket != std::wstring::npos) {
+
+        if (openBracket != std::wstring::npos && closeBracket != std::wstring::npos && closeBracket > openBracket) {
             std::wstring innerValueW = fileText.substr(openBracket + 1, closeBracket - openBracket - 1);
             std::string innerValueA = ConvertWStringToUtf8(innerValueW);
 
+            // Чистим пробелы и переносы строк внутри агрегата
             innerValueA.erase(0, innerValueA.find_first_not_of(" \t\r\n"));
             innerValueA.erase(innerValueA.find_last_not_of(" \t\r\n") + 1);
 
+            // Отправляем чистый отпарсенный агрегат в движок рантайма
             UpdateParamValue(targetId, innerValueA);
         }
     }
+
+
 
 
     inline std::wstring DownloadCurrentLineText(IDispatch* pActiveDoc) {
@@ -492,11 +453,31 @@ namespace LivePT {
     static inline size_t g_lastTargetEvalPos = 0;
     static inline int    g_cachedCounterID = -1;
 
-    inline size_t CoordinateToAbsolutePos(const std::wstring& fileText, long targetLine, long targetColumn) {
+    
+    // Возвращает актуальный сырой ID макроса, на котором ПРЯМО СЕЙЧАС стоит курсор.
+// Считает абсолютно ВСЕ eval (включая комменты), чтобы индексы жестко бились с картой.
+// Если курсор стоит вне скобок макроса — возвращает -1.
+    struct EvalContext {
+        int rawId = -1;
+        size_t absolutePos = std::wstring::npos;
+    };
+
+
+    // Буфер для кэширования последнего вычисленного контекста на текущих координатах
+    static EvalContext g_cachedEvalCtx;
+    static long g_cachedEvalLine = -1;
+    static long g_cachedEvalCol = -1;
+    static std::wstring g_cachedEvalTextHash = L""; // Защита на случай, если текст строки изменился
+
+
+    inline EvalContext GetCurrentRawIdUnderCursor(const std::wstring& fileText, long cursorLine, long cursorColumn, const std::wstring& currentLineText) {
+        EvalContext ctx;
+        if (fileText.empty()) return ctx;
+
+        // 1. ВЫЧИСЛЯЕМ АБСОЛЮТНЫЙ ОФСЕТ КУРСОРA В ФАЙЛЕ (Линейно O(N) до нужной строки)
         size_t lineStartOffset = 0;
         long currentLineIdx = 1;
-
-        while (currentLineIdx < targetLine && lineStartOffset < fileText.length()) {
+        while (currentLineIdx < cursorLine && lineStartOffset < fileText.length()) {
             size_t nextNL = fileText.find(L'\n', lineStartOffset);
             if (nextNL != std::wstring::npos) {
                 lineStartOffset = nextNL + 1;
@@ -511,39 +492,7 @@ namespace LivePT {
         if (nextNL == std::wstring::npos) nextNL = fileText.length();
         std::wstring lineText = fileText.substr(lineStartOffset, nextNL - lineStartOffset);
 
-        long currentVisualCol = 1;
-        size_t charOffsetInsideLine = lineText.length();
-
-        for (size_t i = 0; i < lineText.length(); ++i) {
-            if (currentVisualCol >= targetColumn) {
-                charOffsetInsideLine = i;
-                break;
-            }
-            currentVisualCol += (lineText[i] == L'\t') ? (4 - ((currentVisualCol - 1) % 4)) : 1;
-        }
-
-        return lineStartOffset + charOffsetInsideLine;
-    }
-
-    // Возвращает актуальный сырой ID макроса, на котором ПРЯМО СЕЙЧАС стоит курсор.
-// Считает абсолютно ВСЕ eval (включая комменты), чтобы индексы жестко бились с картой.
-// Если курсор стоит вне скобок макроса — возвращает -1.
-    inline int GetCurrentRawIdUnderCursor(const std::wstring& fileText, long cursorLine, long cursorColumn) {
-        if (fileText.empty()) return -1;
-
-        // 1. Вычисляем точный абсолютный офсет курсора в тексте
-        size_t lineStartOffset = 0; long currentLineIdx = 1;
-        while (currentLineIdx < cursorLine && lineStartOffset < fileText.length()) {
-            size_t nextNL = fileText.find(L'\n', lineStartOffset);
-            if (nextNL != std::wstring::npos) { lineStartOffset = nextNL + 1; currentLineIdx++; }
-            else break;
-        }
-
-        std::wstring lineText;
-        size_t nextNL = fileText.find(L'\n', lineStartOffset);
-        if (nextNL == std::wstring::npos) nextNL = fileText.length();
-        lineText = fileText.substr(lineStartOffset, nextNL - lineStartOffset);
-
+        // Учитываем табы при расчете физического офсета символа в строке
         long currentVisualCol = 1;
         size_t cursorCharIdx = lineText.length();
         for (size_t i = 0; i < lineText.length(); ++i) {
@@ -552,41 +501,40 @@ namespace LivePT {
         }
         size_t globalCursorOffset = lineStartOffset + cursorCharIdx;
 
-        // 2. РЕТРОПОИСК НАЗАД С УЧЕТОМ ДВУХ СЦЕНАРИЕВ (НА МАКРОСЕ / ВНУТРИ АГРЕГАТА)
+        // 2. ЧЕСТНЫЙ РЕТРОПОИСК НАЗАД С УЧЕТОМ СКОБОЧНОГО БАЛАНСА
         size_t searchOrigin = globalCursorOffset;
         size_t targetMacroStart = std::wstring::npos;
 
         while (searchOrigin > 0) {
             size_t rfindPos = fileText.rfind(L"eval", searchOrigin);
-            if (rfindPos == std::wstring::npos) {
-                break;
-            }
+            if (rfindPos == std::wstring::npos) break;
 
+            // Проверка границ токена eval
             bool validLeft = (rfindPos == 0 || (!iswalnum(fileText[rfindPos - 1]) && fileText[rfindPos - 1] != L'_'));
             bool validRight = (rfindPos + 4 >= fileText.length() || (!iswalnum(fileText[rfindPos + 4]) && fileText[rfindPos + 4] != L'_'));
 
             if (validLeft && validRight) {
                 size_t openBracket = fileText.find(L'(', rfindPos + 4);
-
                 if (openBracket != std::wstring::npos) {
                     size_t closeBracket = FindCloseBracket(fileText, openBracket);
 
                     if (closeBracket != std::wstring::npos) {
-                        // СЦЕНАРИЙ А: Курсор стоит прямо на слове "eval" или на его открывающей скобке
+                        // Сценарий А: Курсор стоит прямо на слове "eval" или на его открывающей скобке
                         if (globalCursorOffset >= rfindPos && globalCursorOffset <= openBracket + 1) {
                             targetMacroStart = rfindPos;
                             break;
                         }
 
-                        // СЦЕНАРИЙ Б: Курсор ушел вправо/вниз внутрь параметров (многострочный агрегат)
+                        // Сценарий Б: Курсор ушел глубоко внутрь многострочного агрегата (на строки .r, .g, .b)
                         if (globalCursorOffset > openBracket + 1 && globalCursorOffset <= closeBracket) {
                             int bracketCount = 0;
+                            // Считаем скобки от начала макроса до физической позиции курсора
                             for (size_t k = openBracket; k < globalCursorOffset && k < fileText.length(); ++k) {
                                 if (fileText[k] == L'(') bracketCount++;
                                 if (fileText[k] == L')') bracketCount--;
                             }
 
-                            // Если мы внутри раскрытого тела — фиксируем
+                            // Если баланс >= 1, мы гарантированно внутри незакрытого тела этого агрегата
                             if (bracketCount >= 1) {
                                 targetMacroStart = rfindPos;
                                 break;
@@ -595,30 +543,28 @@ namespace LivePT {
                     }
                 }
             }
-
             if (rfindPos == 0) break;
             searchOrigin = rfindPos - 1;
         }
 
         if (targetMacroStart == std::wstring::npos) {
-            return -1;
+            return ctx; // Возвращаем дефолтный {-1, npos}
         }
 
-        // 3. ТУПОЙ СКВОЗНОЙ ПОДСЧЕТ ДО ИСТИННОЙ ТОЧКИ НАЧАЛА МАКРОСА
+        ctx.absolutePos = targetMacroStart;
+
+        // 3. ТУПОЙ СКВОЗНОЙ ПОДЧЕТ ДО ИСТИННОЙ ТОЧКИ (Идеально бьется с линейным генератором карты)
         int runningRawCounter = 0;
         size_t currentOffset = 0;
-
         while ((currentOffset = fileText.find(L"eval", currentOffset)) != std::wstring::npos && currentOffset < targetMacroStart) {
             bool validLeft = (currentOffset == 0 || (!iswalnum(fileText[currentOffset - 1]) && fileText[currentOffset - 1] != L'_'));
             bool validRight = (currentOffset + 4 >= fileText.length() || (!iswalnum(fileText[currentOffset + 4]) && fileText[currentOffset + 4] != L'_'));
-
-            if (validLeft && validRight) {
-                runningRawCounter++; // Индексируем коммент под номером 0, а наш eval получит честный 1!
-            }
+            if (validLeft && validRight) runningRawCounter++;
             currentOffset += 4;
         }
 
-        return runningRawCounter;
+        ctx.rawId = runningRawCounter;
+        return ctx;
     }
 
 
@@ -663,22 +609,16 @@ namespace LivePT {
 
         std::string normalizedPath = LivePT::NormalizePath(targetFileName.c_str());
 
-        // ПРОВЕРКА КЭША: Если этот файл уже обрабатывался ранее, ничего не пересобираем
+        // ПРОВЕРКА КЭША: Если этот файл уже обрабатывался, ничего не пересобираем
         if (g_filesMapsCache.find(normalizedPath) != g_filesMapsCache.end()) {
-            return; // Старый кэш успешно используется
+            return;
         }
 
         const auto& params = LivePT::getParamDesc();
         std::vector<int> tempMap;
         int currentId = 0;
 
-        // Индексы для сквозного линейного чтения файла построчно
-        size_t currentLineIdx = 1;
-        size_t lineStartOffset = 0;
-
-        // Счетчик считает абсолютно ВСЕ токены "eval" в файле по порядку (включая комменты!)
-        int runningRawCounter = 0;
-
+        // Идем строго по базе компилятора сверху вниз
         while (true) {
             std::string lookupKey = normalizedPath + ":" + std::to_string(currentId);
             int paramIndex = LivePT::getID(lookupKey);
@@ -689,63 +629,75 @@ namespace LivePT {
 
             const auto& p = params[paramIndex];
 
-            // Синхронно дочитываем файл до строки текущего параметра p.line
-            while (currentLineIdx <= p.line && lineStartOffset < fileText.length()) {
+            // ПЕРЕВОДИМ КООРДИНАТЫ АНКОРА КОМПИЛЯТОРА В ОФСЕТ (Локальный O(N) проход до строки)
+            size_t lineStartOffset = 0;
+            long currentLineIdx = 1;
+            while (currentLineIdx < p.line && lineStartOffset < fileText.length()) {
                 size_t nextNL = fileText.find(L'\n', lineStartOffset);
-                if (nextNL == std::wstring::npos) nextNL = fileText.length();
-
-                std::wstring lineText = fileText.substr(lineStartOffset, nextNL - lineStartOffset);
-
-                // Граница поиска в строке. Если дошли до строки параметра — считаем строго до его колонки
-                size_t searchLimit = lineText.length();
-                if (currentLineIdx == p.line) {
-                    long currentVisualCol = 1;
-                    for (size_t i = 0; i < lineText.length(); ++i) {
-                        if (currentVisualCol >= p.column) { searchLimit = i; break; }
-                        currentVisualCol += (lineText[i] == L'\t') ? (4 - ((currentVisualCol - 1) % 4)) : 1;
-                    }
-                }
-
-                // ТУПОЙ ПОИСК: считаем вообще все eval в накопленном куске строки (включая комменты)
-                size_t searchPos = 0;
-                while ((searchPos = lineText.find(L"eval", searchPos)) != std::wstring::npos && searchPos < searchLimit) {
-                    bool validLeft = (searchPos == 0 || (!iswalnum(lineText[searchPos - 1]) && lineText[searchPos - 1] != L'_'));
-                    bool validRight = (searchPos + 4 >= lineText.length() || (!iswalnum(lineText[searchPos + 4]) && lineText[searchPos + 4] != L'_'));
-
-                    if (validLeft && validRight) {
-                        runningRawCounter++;
-                    }
-                    searchPos += 4;
-                }
-
-                if (currentLineIdx < p.line) {
-                    lineStartOffset = (nextNL < fileText.length()) ? nextNL + 1 : fileText.length();
+                if (nextNL != std::wstring::npos) {
+                    lineStartOffset = nextNL + 1;
                     currentLineIdx++;
                 }
                 else {
-                    break; // Дошли до строки параметра и посчитали все eval ДО его p.column
+                    break;
                 }
             }
 
-            int rawCounterId = runningRawCounter;
+            size_t nextNL = fileText.find(L'\n', lineStartOffset);
+            if (nextNL == std::wstring::npos) nextNL = fileText.length();
+            std::wstring lineText = fileText.substr(lineStartOffset, nextNL - lineStartOffset);
 
+            long currentVisualCol = 1;
+            size_t paramCharIdx = lineText.length();
+            for (size_t i = 0; i < lineText.length(); ++i) {
+                if (currentVisualCol >= p.column) { paramCharIdx = i; break; }
+                currentVisualCol += (lineText[i] == L'\t') ? (4 - ((currentVisualCol - 1) % 4)) : 1;
+            }
+            size_t anchorOffset = lineStartOffset + paramCharIdx;
+
+            // РЕТРОПОИСК: Находим реальное физическое начало слова "eval" для текущего параметра
+            size_t currentMacroStart = std::wstring::npos;
+            if (anchorOffset != std::wstring::npos && anchorOffset < fileText.length()) {
+                size_t rfindPos = fileText.rfind(L"eval", anchorOffset);
+                if (rfindPos != std::wstring::npos) {
+                    bool validLeft = (rfindPos == 0 || (!iswalnum(fileText[rfindPos - 1]) && fileText[rfindPos - 1] != L'_'));
+                    bool validRight = (rfindPos + 4 >= fileText.length() || (!iswalnum(fileText[rfindPos + 4]) && fileText[rfindPos + 4] != L'_'));
+                    if (validLeft && validRight) {
+                        currentMacroStart = rfindPos;
+                    }
+                }
+            }
+            if (currentMacroStart == std::wstring::npos) {
+                currentMacroStart = anchorOffset;
+            }
+
+            // ТУПОЙ СКВОЗНОЙ ПОДСЧЕТ: Считаем eval строго до найденной физической точки начала макроса
+            // Логика поиска ПОЛНОСТЬЮ ИДЕНТИЧНА рантайм-счетчику
+            int runningRawCounter = 0;
+            size_t currentOffset = 0;
+            while ((currentOffset = fileText.find(L"eval", currentOffset)) != std::wstring::npos && currentOffset < currentMacroStart) {
+                bool validLeft = (currentOffset == 0 || (!iswalnum(fileText[currentOffset - 1]) && fileText[currentOffset - 1] != L'_'));
+                bool validRight = (currentOffset + 4 >= fileText.length() || (!iswalnum(fileText[currentOffset + 4]) && fileText[currentOffset + 4] != L'_'));
+                if (validLeft && validRight) runningRawCounter++;
+                currentOffset += 4;
+            }
+
+            // Записываем сопоставление в карту
+            int rawCounterId = runningRawCounter;
             if (rawCounterId >= 0) {
                 if (rawCounterId >= static_cast<int>(tempMap.size())) {
                     tempMap.resize(rawCounterId + 1, -1);
                 }
-                tempMap[rawCounterId] = currentId;
+                tempMap[rawCounterId] = currentId; // map[сырой id] = валидный id компилятора
             }
 
             currentId++;
         }
 
-        // Сохраняем собранный вектор в ассоциативный кэш по нормализованному пути файла
         if (!tempMap.empty()) {
             g_filesMapsCache[normalizedPath] = std::move(tempMap);
-            Log("[Cache] Map compiled and cached for file: " + normalizedPath);
         }
     }
-
 
 
     inline void vsEditor() {
@@ -769,19 +721,14 @@ namespace LivePT {
 
         std::wstring currentLineText = DownloadCurrentLineText(pActiveDoc);
 
+        // Оптимизация холостых тиков таймера, если мышь не зажата и курсор стоит на месте
         if (!LivePT::isMouseDragging()) {
             if (line == g_lastLine && currentLineText == g_lastLineTextBuffer) {
-               // g_lastCol = column; 
-                //VariantClear(&vtActiveDoc); return;
-            }
-            if (currentLineText == g_lastLineTextBuffer && line != g_lastLine) {
-               // g_lastLine = line; g_lastCol = column; 
-                //VariantClear(&vtActiveDoc); return;
+                VariantClear(&vtActiveDoc);
+                return;
             }
         }
-        bool lg = false;
-        if (line != g_lastLine || g_lastCol != column) lg = true;
-
+        bool lg = (line != g_lastLine || g_lastCol != column);
 
         g_lastLineTextBuffer = currentLineText;
         g_lastLine = line;
@@ -790,33 +737,33 @@ namespace LivePT {
         std::wstring fileText = DownloadDocumentText(pActiveDoc);
         if (fileText.empty()) { VariantClear(&vtActiveDoc); return; }
 
+        // Шаг 1: Запуск линейного сборщика карты (выполняется строго 1 раз при открытии файла)
         BuildRawToRuntimeMapLinear(currentActiveFile, fileText);
-        int currentRawId = GetCurrentRawIdUnderCursor(fileText, line, column);
 
-        if (currentRawId != -1) {
+        // Шаг 2: Получаем рантайм-контекст через наш точный двусторонний счетчик
+        EvalContext evalCtx = GetCurrentRawIdUnderCursor(fileText, line, column, currentLineText);
+
+        int finalValidRuntimeId = -1;
+
+        if (evalCtx.rawId != -1 && evalCtx.absolutePos != std::wstring::npos) {
             std::string normalizedPath = LivePT::NormalizePath(currentActiveFile.c_str());
 
-            // Находим вектор для текущего файла в общем кэше
+            // Шаг 3: Перегоняем сырой текстовый ID под курсором в валидный ID компилятора
             auto it = g_filesMapsCache.find(normalizedPath);
             if (it != g_filesMapsCache.end()) {
                 const auto& currentFileMap = it->second;
 
-                // Проверяем границы вектора и перегоняем сырой ID в валидный ID компилятора
-                if (currentRawId >= 0 && currentRawId < static_cast<int>(currentFileMap.size())) {
-                    int validRuntimeId = currentFileMap[currentRawId];
-
-                    if (validRuntimeId != -1) {
-                        char titleBuffer[256];
-                        sprintf_s(titleBuffer, "x: %d", validRuntimeId);
-                        if (lg) {
-                            Log(titleBuffer);
-                        }
-
-                        // Передаем точный валидный ID в парсер значений
-                        ParseAndStoreParamValueByValidId(fileText, currentActiveFile, validRuntimeId);
-                    }
+                if (evalCtx.rawId >= 0 && evalCtx.rawId < static_cast<int>(currentFileMap.size())) {
+                    finalValidRuntimeId = currentFileMap[evalCtx.rawId];
                 }
             }
+        }
+
+        // Шаг 4: Если ID валиден, выводим лог и отправляем данные в оригинальный парсер скобок
+        if (finalValidRuntimeId != -1) {
+
+            // Передаем управление в парсер скобок
+            ParseAndStoreParamValue(fileText, currentActiveFile, finalValidRuntimeId);
         }
 
         VariantClear(&vtActiveDoc);

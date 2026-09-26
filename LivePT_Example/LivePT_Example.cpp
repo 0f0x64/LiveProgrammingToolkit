@@ -98,44 +98,44 @@ void UpdateSceneParams() {
 
     // drag numbers by pressing&move mButton inside eval, click mButton for switch / context menu
 
-    primitive[0].Set(eval(-251), 
-        eval(-290), eval(Primitive::ptype::box), 
-        eval(Primitive::show_t::on), eval(Primitive::color3{ 55,28,110 }));
+    primitive[0].Set(eval(-197), 
+        eval(-322), eval(Primitive::ptype::circle), 
+        eval(Primitive::show_t::on), eval(Primitive::color3{ 139,28,35 }));
 
 #ifdef blaaa
-        primitive[0].Set(eval(-294),
-            eval(-174), eval(Primitive::ptype::box),
-            eval(Primitive::show_t::on), eval(Primitive::color3{ 176,83,8 }));
+        primitive[0].Set(eval(-289),
+            eval(-180), eval(Primitive::ptype::box),
+            eval(Primitive::show_t::on), eval(Primitive::color3{ 178,83,8 }));
 #endif
 
     // floating point numbers allowed (will be casted to int in this case, but you can modify class to use native floats)
-    primitive[1].Set(eval(-152), eval(-21), 
-        eval(Primitive::ptype::circle), 
-        eval(Primitive::show_t::on), eval(Primitive::color3{ 175,27,91 }));
+    primitive[1].Set(eval(-202), eval(5), 
+        eval(Primitive::ptype::roundbox), 
+        eval(Primitive::show_t::on), eval(Primitive::color3{ 59,41,1 }));
 
-    unsigned char x = rand() % eval(131);
+    unsigned char x = rand() % eval(33);
     unsigned char y = rand() % eval(9);
 
 
 
     // aggregate init alternative
     primitive[2].Set(Primitive{
-        .x = eval(   41.40  ),
-        .y = eval(-248),
-        .type = eval(Primitive::ptype::circle),
+        .x = eval(   26.40  ),
+        .y = eval(-276),
+        .type = eval(Primitive::ptype::roundbox),
         .show = eval(Primitive::show_t::on),
         .color = eval(Primitive::color3{
             .r = x,
 
-            .g = 177,//.g=22 aaaaaa
+            .g = 62,//.g=22 aaaaaa
             .b = y})
         });
 
     
     primitive[3].Set(Primitive{
 
-    .x = eval(-275.6f),
-    .y = eval(-209.26),
+    .x = eval(20.6f),
+    .y = eval(-29.26),
     .type = eval(Primitive::ptype::roundbox),
     .show = eval(Primitive::show_t::on),
     .color = eval(Primitive::color3{39,166,102})
