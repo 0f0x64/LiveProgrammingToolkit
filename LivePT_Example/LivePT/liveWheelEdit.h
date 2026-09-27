@@ -22,6 +22,8 @@ namespace LivePT {
         long endColOffset;
     };
 
+    
+
     // Токенизатор аргументов внутри фигурных скобок с учетом вложенности
     inline std::vector<ExtractedArg> TokenizeCallArguments(const std::wstring& lineText, size_t openBracketPos) {
         std::vector<ExtractedArg> args;
@@ -90,8 +92,6 @@ namespace LivePT {
 
     static DragState g_dragState;
 
-
-    // Структура отложенной команды на запись в VS
     struct PendingVsWrite {
         bool hasPending = false;
         long line = 0;
@@ -100,57 +100,38 @@ namespace LivePT {
     };
 
     static PendingVsWrite g_pendingWrite;
-    static std::mutex g_writeMutex; // Защита от одновременного доступа из двух потоков
 
-    // Эту функцию будет вызывать фоновый поток хука (она просто складывает текст в буфер)
+    // Сохраняем оригинальную сигнатуру с тремя параметрами, чтобы компилятор не ругался
     inline void PushPendingWrite(long line, long startCol, const std::string& text) {
-        std::lock_guard<std::mutex> lock(g_writeMutex);
         g_pendingWrite.line = line;
         g_pendingWrite.startCol = startCol;
         g_pendingWrite.codeText = text;
         g_pendingWrite.hasPending = true;
     }
 
-    // Эту функцию мы будем вызывать КАЖДЫЙ КАДР из главного потока игры (внутри ProcessEdit)
-        // Эту функцию мы вызываем КАЖДЫЙ КАДР из главного потока игры (внутри ProcessEdit)
+    // Восстанавливаем оригинальную функцию FlushPendingWritesToVS без аргументов (принимает 0 параметров).
+    // Теперь она вызывается каждый кадр из ProcessEdit() в главном потоке и мгновенно пишет в VS!
     inline void FlushPendingWritesToVS() {
-        std::string textToWrite = ""; // ИСПРАВЛЕНО: единое имя переменной без двоеточий
-        long line = 0;
-        long startCol = 0;
-        bool needWrite = false;
-
-        {
-            std::lock_guard<std::mutex> lock(g_writeMutex);
-            if (g_pendingWrite.hasPending) {
-                textToWrite = g_pendingWrite.codeText; // ИСПРАВЛЕНО
-                line = g_pendingWrite.line;
-                startCol = g_pendingWrite.startCol;
-                needWrite = true;
-                g_pendingWrite.hasPending = false; // Сбрасываем флаг
-            }
-        }
-
-        if (needWrite && !textToWrite.empty()) { // ИСПРАВЛЕНО
-            long newCursorPhysicalCol = startCol + static_cast<long>(textToWrite.length()); // ИСПРАВЛЕНО
+        if (g_pendingWrite.hasPending && !g_pendingWrite.codeText.empty()) {
+            long newCursorPhysicalCol = g_pendingWrite.startCol + static_cast<long>(g_pendingWrite.codeText.length());
 
             StartUndoTransaction(L"LivePT Realtime Callback Change");
 
-            // ВЫПОЛНЯЕТСЯ СТРОГО В ИГРОВОМ ПОТОКЕ — ОШИБКИ БОЛЬШЕ НЕ БУДЕТ!
             ReplaceTextInActiveVS(
-                line,
-                startCol,
-                startCol + static_cast<long>(g_dragState.currentTextLength),
-                textToWrite, // ИСПРАВЛЕНО
+                g_pendingWrite.line,
+                g_pendingWrite.startCol,
+                g_pendingWrite.startCol + static_cast<long>(g_dragState.currentTextLength),
+                g_pendingWrite.codeText,
                 newCursorPhysicalCol
             );
 
             EndUndoTransaction();
             SaveActiveDocument();
 
-            g_dragState.currentTextLength = textToWrite.length(); // ИСПРАВЛЕНО
+            g_dragState.currentTextLength = g_pendingWrite.codeText.length();
+            g_pendingWrite.hasPending = false;
         }
     }
-
 
     static HWND g_hShieldWnd = NULL;
     static DWORD g_vsThreadId = 0;

@@ -1,104 +1,349 @@
-#include <commdlg.h>
+// colorPicker.h — Часть 1 (Логика и Алгоритмы)
+#pragma once
+#include <windows.h>
 #include <string>
-#include <thread>
 #include <functional>
-#include <objbase.h>
+#include <cmath>
+#include <algorithm>
 
-static const UINT WM_COLOROK_MSG = RegisterWindowMessageA("commdlg_ColorOK");
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
-// Контекст для проброса данных в фоновый поток и хук
-struct RealtimeColorContext {
-    std::function<void(std::string)> updateVsCallback;
-    COLORREF customColors[16];
-    POINT clickPt; // ДОБАВЛЕНО: Координаты клика мыши из игры
-};
+namespace LivePT {
 
-UINT_PTR CALLBACK RealtimeColorHook(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam) {
-    if (uMsg == WM_INITDIALOG) {
-        CHOOSECOLORA* cc = reinterpret_cast<CHOOSECOLORA*>(lParam);
-        RealtimeColorContext* ctx = reinterpret_cast<RealtimeColorContext*>(cc->lpCustColors);
-        SetWindowLongPtrA(hDlg, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(ctx));
+    struct ColorPickerContext {
+        HWND hWindow = NULL;
+        HWND hWheelStatic = NULL;
+        HWND hValueStatic = NULL;
 
-        // ЦЕНТРИРОВАНИЕ ОКНА ПО КЛИКУ С ЗАЩИТОЙ ОТ ВЫЛЕТА ЗА ЭКРАН
-        RECT rcDlg;
-        GetWindowRect(hDlg, &rcDlg);
-        int dlgWidth = rcDlg.right - rcDlg.left;
-        int dlgHeight = rcDlg.bottom - rcDlg.top;
+        color3 currentRGB = { 255, 255, 255 };
+        std::function<void(std::string)> vsUpdaterCallback = nullptr;
 
-        // Рассчитываем идеальные координаты, чтобы центр окна был в точке клика
-        int targetX = ctx->clickPt.x - (dlgWidth / 2);
-        int targetY = ctx->clickPt.y - (dlgHeight / 2);
+        bool isTrackingWheel = false;
+        bool isTrackingValue = false;
 
-        // Получаем размеры текущего монитора (с учетом панели задач, rcWork)
-        HMONITOR hMonitor = MonitorFromPoint(ctx->clickPt, MONITOR_DEFAULTTONEAREST);
-        MONITORINFO mi = { sizeof(MONITORINFO) };
-        if (GetMonitorInfoA(hMonitor, &mi)) {
-            // Корректируем по оси X (левая и правая границы)
-            if (targetX < mi.rcWork.left) targetX = mi.rcWork.left;
-            if (targetX + dlgWidth > mi.rcWork.right) targetX = mi.rcWork.right - dlgWidth;
+        float currentHue = 0.0f;
+        float currentSat = 0.0f;
+        float currentValue = 1.0f;
 
-            // Корректируем по оси Y (верхняя и нижняя границы)
-            if (targetY < mi.rcWork.top) targetY = mi.rcWork.top;
-            if (targetY + dlgHeight > mi.rcWork.bottom) targetY = mi.rcWork.bottom - dlgHeight;
+        // Габариты и метрика интерфейса
+        const int centerX = 65;
+        const int centerY = 65;
+        const int radius = 58;
+
+        const int valLeft = 135;
+        const int valTop = 8;
+        const int valWidth = 16;
+        const int valHeight = 114;
+    };
+
+    static ColorPickerContext g_pickerCtx;
+
+    // Высокопроизводительный HSV в RGB конвертер, возвращающий упакованный DWORD (0x00BBGGRR) для GDI
+    inline DWORD HsvToGdiColor(float H, float S, float V) {
+        float r = 0, g = 0, b = 0;
+        if (S == 0) {
+            r = g = b = V;
         }
-
-        // Перемещаем окно пикера в безопасную позицию
-        SetWindowPos(hDlg, HWND_TOP, targetX, targetY, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE);
-        return 1;
-    }
-
-    if (uMsg == WM_COMMAND || uMsg == WM_LBUTTONUP || uMsg == WM_MOUSEMOVE || uMsg == WM_COLOROK_MSG) {
-        LONG_PTR userData = GetWindowLongPtrA(hDlg, GWLP_USERDATA);
-        if (userData) {
-            RealtimeColorContext* ctx = reinterpret_cast<RealtimeColorContext*>(userData);
-
-            int rVal = GetDlgItemInt(hDlg, 0x02C2, NULL, FALSE);
-            int gVal = GetDlgItemInt(hDlg, 0x02C3, NULL, FALSE);
-            int bVal = GetDlgItemInt(hDlg, 0x02C4, NULL, FALSE);
-
-            if (rVal <= 255 && gVal <= 255 && bVal <= 255) {
-                std::string code = "color3{ " + std::to_string(rVal) + ", " + std::to_string(gVal) + ", " + std::to_string(bVal) + " }";
-                ctx->updateVsCallback(code);
+        else {
+            float h = H / 60.0f;
+            int i = static_cast<int>(std::floor(h));
+            float f = h - i;
+            float p = V * (1.0f - S);
+            float q = V * (1.0f - S * f);
+            float t = V * (1.0f - S * (1.0f - f));
+            switch (i % 6) {
+            case 0: r = V; g = t; b = p; break;
+            case 1: r = q; g = V; b = p; break;
+            case 2: r = p; g = V; b = t; break;
+            case 3: r = p; g = q; b = V; break;
+            case 4: r = t; g = p; b = V; break;
+            case 5: r = V; g = p; b = q; break;
             }
         }
-    }
-    return 0;
-}
-
-void AsyncColorPickerWorker(HWND hParentWnd, color3 currentColor, RealtimeColorContext* pSharedCtx) {
-    CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
-
-    CHOOSECOLORA cc = { 0 };
-    cc.lStructSize = sizeof(cc);
-    cc.hwndOwner = hParentWnd;
-    cc.rgbResult = RGB(currentColor.r, currentColor.g, currentColor.b);
-    cc.lpCustColors = reinterpret_cast<COLORREF*>(pSharedCtx); // Передаем контекст с точкой клика
-    cc.Flags = CC_FULLOPEN | CC_RGBINIT | CC_ENABLEHOOK;
-    cc.lpfnHook = RealtimeColorHook;
-
-    if (ChooseColorA(&cc) == FALSE) {
-        std::string rollback = "color3{ " + std::to_string(currentColor.r) + ", " + std::to_string(currentColor.g) + ", " + std::to_string(currentColor.b) + " }";
-        pSharedCtx->updateVsCallback(rollback);
+        return (static_cast<DWORD>(b * 255) << 16) |
+            (static_cast<DWORD>(g * 255) << 8) |
+            static_cast<DWORD>(r * 255);
     }
 
-    delete pSharedCtx; // Удаляем контекст из кучи по завершении работы потока
-    CoUninitialize();
+    // Традиционный HSV в кастомную структуру color3
+    inline color3 HsvToRgbStruct(float H, float S, float V) {
+        DWORD gdiColor = HsvToGdiColor(H, S, V);
+        return color3{
+            static_cast<unsigned char>(gdiColor & 0xFF),
+            static_cast<unsigned char>((gdiColor >> 8) & 0xFF),
+            static_cast<unsigned char>((gdiColor >> 16) & 0xFF)
+        };
+    }
+
+    inline void UpdateLiveCode() {
+        g_pickerCtx.currentRGB = HsvToRgbStruct(g_pickerCtx.currentHue, g_pickerCtx.currentSat, g_pickerCtx.currentValue);
+        InvalidateRect(g_pickerCtx.hWindow, NULL, FALSE);
+
+        if (g_pickerCtx.vsUpdaterCallback) {
+            char buf[64]{};
+            sprintf_s(buf, "color3{%d,%d,%d}", g_pickerCtx.currentRGB.r, g_pickerCtx.currentRGB.g, g_pickerCtx.currentRGB.b);
+            g_pickerCtx.vsUpdaterCallback(buf);
+        }
+    }
+
+    inline void ProcessWheelClick(int mouseX, int mouseY) {
+        int dx = mouseX - g_pickerCtx.centerX;
+        int dy = mouseY - g_pickerCtx.centerY;
+        float distance = std::sqrt(static_cast<float>(dx * dx + dy * dy));
+
+        if (distance > g_pickerCtx.radius) return;
+
+        float angle = std::atan2(static_cast<float>(-dy), static_cast<float>(dx));
+        if (angle < 0) angle += static_cast<float>(2.0 * M_PI);
+
+        g_pickerCtx.currentHue = angle * (180.0f / static_cast<float>(M_PI));
+        g_pickerCtx.currentSat = distance / static_cast<float>(g_pickerCtx.radius);
+
+        UpdateLiveCode();
+    }
+
+    inline void ProcessValueClick(int mouseY) {
+        int localY = mouseY - g_pickerCtx.valTop;
+        if (localY < 0) localY = 0;
+        if (localY > g_pickerCtx.valHeight) localY = g_pickerCtx.valHeight;
+
+        g_pickerCtx.currentValue = 1.0f - (static_cast<float>(localY) / static_cast<float>(g_pickerCtx.valHeight));
+
+        UpdateLiveCode();
+    }
 }
+// colorPicker.h — Часть 2 (Высокопроизводительный Оконный Драйвер GDI)
+namespace LivePT {
 
-void MyColorPickerCallback(const color3& currentColor, std::function<void(std::string)> updateVsCallback) {
-    HWND hActiveGameWnd = GetActiveWindow();
-    if (!hActiveGameWnd) hActiveGameWnd = GetForegroundWindow();
+    inline LRESULT CALLBACK ColorPickerWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+        switch (uMsg) {
+        case WM_KEYDOWN:
+            // ТОЧЕЧНЫЙ ФИКС: Если нажат Escape, уничтожаем окно
+            if (wParam == VK_ESCAPE) {
+                DestroyWindow(hwnd);
+                g_pickerCtx.hWindow = NULL;
+                return 0;
+            }
+            break;
+        case WM_ACTIVATE:
+            if (LOWORD(wParam) == WA_INACTIVE) {
+                DestroyWindow(hwnd);
+                g_pickerCtx.hWindow = NULL;
+                return 0;
+            }
+            break;
+        case WM_DRAWITEM: {
+            LPDRAWITEMSTRUCT lpDrawItem = (LPDRAWITEMSTRUCT)lParam;
+            HDC hdc = lpDrawItem->hDC;
+            int w = lpDrawItem->rcItem.right - lpDrawItem->rcItem.left;
+            int h = lpDrawItem->rcItem.bottom - lpDrawItem->rcItem.top;
 
-    // Захватываем текущие координаты курсора мыши на экране в момент вызова (клик в игре)
-    POINT pt;
-    GetCursorPos(&pt);
+            // Выделяем одномерный массив в ОЗУ для мгновенной попиксельной заливки буфера
+            std::vector<DWORD> pixelBuffer(w * h, 0x0030302D); // Цвет фона 45,45,48
 
-    // Выделяем контекст в куче, чтобы он гарантированно жил, пока работает асинхронный поток
-    RealtimeColorContext* pCtx = new RealtimeColorContext();
-    pCtx->updateVsCallback = updateVsCallback;
-    pCtx->clickPt = pt;
-    for (int i = 0; i < 16; ++i) pCtx->customColors[i] = RGB(255, 255, 255);
+            BITMAPINFO bmi = {};
+            bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+            bmi.bmiHeader.biWidth = w;
+            bmi.bmiHeader.biHeight = -h; // Отрицательная высота переворачивает массив в стандартные координаты (0,0 сверху)
+            bmi.bmiHeader.biPlanes = 1;
+            bmi.bmiHeader.biBitCount = 32;
+            bmi.bmiHeader.biCompression = BI_RGB;
 
-    std::thread t(AsyncColorPickerWorker, hActiveGameWnd, currentColor, pCtx);
-    t.detach();
+            // 1. СВЕРХБЫСТРЫЙ ОТРЕНДЕР ЦВЕТОВОГО КРУГА В ПАМЯТИ (БЕЗ CALL SETPIXEL)
+            if (lpDrawItem->hwndItem == g_pickerCtx.hWheelStatic) {
+                for (int y = 0; y < h; ++y) {
+                    for (int x = 0; x < w; ++x) {
+                        int dx = x - g_pickerCtx.centerX;
+                        int dy = y - g_pickerCtx.centerY;
+                        float dist = std::sqrt(static_cast<float>(dx * dx + dy * dy));
+
+                        if (dist <= g_pickerCtx.radius) {
+                            float angle = std::atan2(static_cast<float>(-dy), static_cast<float>(dx));
+                            if (angle < 0) angle += static_cast<float>(2.0 * M_PI);
+                            float hue = angle * (180.0f / static_cast<float>(M_PI));
+                            float sat = dist / static_cast<float>(g_pickerCtx.radius);
+
+                            pixelBuffer[y * w + x] = HsvToGdiColor(hue, sat, g_pickerCtx.currentValue);
+                        }
+                    }
+                }
+            }
+            // 2. СВЕРХБЫСТРЫЙ ОТРЕНДЕР СЛАЙДЕРА ЯРКОСТИ
+            else if (lpDrawItem->hwndItem == g_pickerCtx.hValueStatic) {
+                for (int y = 0; y < h; ++y) {
+                    float ratio = 1.0f - (static_cast<float>(y) / static_cast<float>(h));
+                    DWORD color = HsvToGdiColor(g_pickerCtx.currentHue, g_pickerCtx.currentSat, ratio);
+
+                    for (int x = 0; x < w; ++x) {
+                        pixelBuffer[y * w + x] = color;
+                    }
+                }
+
+                // Рисуем маркер прямо в массиве байт
+                int markerY = static_cast<int>((1.0f - g_pickerCtx.currentValue) * h);
+                if (markerY >= 2 && markerY < h - 2) {
+                    for (int my = markerY - 2; my <= markerY + 2; ++my) {
+                        pixelBuffer[my * w + 0] = 0xFFFFFF;
+                        pixelBuffer[my * w + (w - 1)] = 0xFFFFFF;
+                        if (my == markerY - 2 || my == markerY + 2) {
+                            for (int mx = 0; mx < w; ++mx) pixelBuffer[my * w + mx] = 0xFFFFFF;
+                        }
+                    }
+                }
+            }
+
+            // Выгружаем весь массив пикселей в видеокарту ОДНИМ СИСТЕМНЫМ ВЫЗОВОМ
+            StretchDIBits(hdc, 0, 0, w, h, 0, 0, w, h, pixelBuffer.data(), &bmi, DIB_RGB_COLORS, SRCCOPY);
+            return TRUE;
+        }
+        case WM_PAINT: {
+            PAINTSTRUCT ps;
+            HDC hdc = BeginPaint(hwnd, &ps);
+
+            RECT previewRect = { 162, 8, 207, 122 };
+            HBRUSH hPreviewBrush = CreateSolidBrush(RGB(g_pickerCtx.currentRGB.r, g_pickerCtx.currentRGB.g, g_pickerCtx.currentRGB.b));
+            FillRect(hdc, &previewRect, hPreviewBrush);
+            DeleteObject(hPreviewBrush);
+
+            HPEN hPen = CreatePen(PS_SOLID, 1, RGB(90, 90, 90));
+            HPEN oldPen = (HPEN)SelectObject(hdc, hPen);
+            MoveToEx(hdc, previewRect.left, previewRect.top, NULL);
+            LineTo(hdc, previewRect.right, previewRect.top);
+            LineTo(hdc, previewRect.right, previewRect.bottom);
+            LineTo(hdc, previewRect.left, previewRect.bottom);
+            LineTo(hdc, previewRect.left, previewRect.top);
+            SelectObject(hdc, oldPen);
+            DeleteObject(hPen);
+
+            EndPaint(hwnd, &ps);
+            return 0;
+        }
+        case WM_LBUTTONDOWN: {
+            POINT pt = { LOWORD(lParam), HIWORD(lParam) };
+            RECT rcWheel, rcValue;
+
+            GetWindowRect(g_pickerCtx.hWheelStatic, &rcWheel);
+            MapWindowPoints(HWND_DESKTOP, hwnd, (LPPOINT)&rcWheel, 2);
+            GetWindowRect(g_pickerCtx.hValueStatic, &rcValue);
+            MapWindowPoints(HWND_DESKTOP, hwnd, (LPPOINT)&rcValue, 2);
+
+            if (PtInRect(&rcWheel, pt)) {
+                g_pickerCtx.isTrackingWheel = true;
+                SetCapture(hwnd);
+                ProcessWheelClick(pt.x - rcWheel.left, pt.y - rcWheel.top);
+            }
+            else if (PtInRect(&rcValue, pt)) {
+                g_pickerCtx.isTrackingValue = true;
+                SetCapture(hwnd);
+                ProcessValueClick(pt.y);
+            }
+            return 0;
+        }
+        case WM_MOUSEMOVE: {
+            POINT pt = { LOWORD(lParam), HIWORD(lParam) };
+            if (g_pickerCtx.isTrackingWheel) {
+                RECT rcWheel;
+                GetWindowRect(g_pickerCtx.hWheelStatic, &rcWheel);
+                MapWindowPoints(HWND_DESKTOP, hwnd, (LPPOINT)&rcWheel, 2);
+                ProcessWheelClick(pt.x - rcWheel.left, pt.y - rcWheel.top);
+            }
+            else if (g_pickerCtx.isTrackingValue) {
+                ProcessValueClick(pt.y);
+            }
+            return 0;
+        }
+        case WM_LBUTTONUP:
+            if (g_pickerCtx.isTrackingWheel || g_pickerCtx.isTrackingValue) {
+                g_pickerCtx.isTrackingWheel = false;
+                g_pickerCtx.isTrackingValue = false;
+                ReleaseCapture();
+            }
+            return 0;
+        case WM_CLOSE:
+            DestroyWindow(hwnd);
+            g_pickerCtx.hWindow = NULL;
+            return 0;
+        }
+        return DefWindowProcA(hwnd, uMsg, wParam, lParam);
+    }
+
+    inline void MyColorPickerCallback(const color3& initialColor, std::function<void(std::string)> vsUpdater) {
+        g_pickerCtx.currentRGB = initialColor;
+        g_pickerCtx.vsUpdaterCallback = vsUpdater;
+
+        float r = initialColor.r / 255.0f;
+        float g = initialColor.g / 255.0f;
+        float b = initialColor.b / 255.0f;
+        float maxVal = (std::max)({ r, g, b });
+        float minVal = (std::min)({ r, g, b });
+        float delta = maxVal - minVal;
+
+        g_pickerCtx.currentValue = maxVal;
+        g_pickerCtx.currentSat = (maxVal == 0.0f) ? 0.0f : (delta / maxVal);
+
+        if (delta == 0.0f) {
+            g_pickerCtx.currentHue = 0.0f;
+        }
+        else {
+            if (maxVal == r) g_pickerCtx.currentHue = 60.0f * (std::fmod(((g - b) / delta), 6.0f));
+            else if (maxVal == g) g_pickerCtx.currentHue = 60.0f * (((b - r) / delta) + 2.0f);
+            else if (maxVal == b) g_pickerCtx.currentHue = 60.0f * (((r - g) / delta) + 4.0f);
+            if (g_pickerCtx.currentHue < 0.0f) g_pickerCtx.currentHue += 360.0f;
+        }
+
+        if (g_pickerCtx.hWindow && IsWindow(g_pickerCtx.hWindow)) {
+            InvalidateRect(g_pickerCtx.hWindow, NULL, FALSE);
+            SetActiveWindow(g_pickerCtx.hWindow);
+            return;
+        }
+
+        POINT mousePos;
+        GetCursorPos(&mousePos);
+
+        HINSTANCE hInst = GetModuleHandleA(NULL);
+        const char* className = "LPT_CustomColorWheelWin";
+
+        static bool registered = [hInst, className]() {
+            WNDCLASSEXA wc = { sizeof(WNDCLASSEXA) };
+            wc.lpfnWndProc = ColorPickerWndProc;
+            wc.hInstance = hInst;
+            wc.lpszClassName = className;
+            wc.hIcon = LoadIcon(NULL, IDI_APPLICATION);
+            wc.hCursor = LoadCursor(NULL, IDC_ARROW);
+            wc.hbrBackground = CreateSolidBrush(RGB(45, 45, 48));
+            return RegisterClassExA(&wc) != 0;
+            }();
+
+        // УЧЕТ ВЫСОТЫ СТРОКИ VS: Стандартная высота строки шрифта Consolas/Cascadia в IDE при 100% масштабе ~20 пикселей.
+        // Смещаем окно по Y на +22 пикселя вниз, чтобы оно появилось строго ПОД строкой кода, не перекрывая текст!
+        int calculatedWindowY = mousePos.y - 144;
+
+        g_pickerCtx.hWindow = CreateWindowExA(
+            WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
+            className, NULL,
+            WS_POPUP | WS_VISIBLE, // Добавили флаг WS_VISIBLE для мгновенной фокусировки
+            mousePos.x - 10, calculatedWindowY, 215, 130,
+            NULL, NULL, hInst, NULL
+        );
+
+        if (!g_pickerCtx.hWindow) return;
+
+        g_pickerCtx.hWheelStatic = CreateWindowExA(
+            0, "STATIC", "", WS_CHILD | WS_VISIBLE | SS_OWNERDRAW,
+            0, 0, 130, 130, g_pickerCtx.hWindow, NULL, hInst, NULL
+        );
+
+        g_pickerCtx.hValueStatic = CreateWindowExA(
+            0, "STATIC", "", WS_CHILD | WS_VISIBLE | SS_OWNERDRAW,
+            g_pickerCtx.valLeft, g_pickerCtx.valTop, g_pickerCtx.valWidth, g_pickerCtx.valHeight,
+            g_pickerCtx.hWindow, NULL, hInst, NULL
+        );
+
+        ShowWindow(g_pickerCtx.hWindow, SW_SHOW);
+        UpdateWindow(g_pickerCtx.hWindow);
+        SetForegroundWindow(g_pickerCtx.hWindow);
+        SetFocus(g_pickerCtx.hWindow);
+    }
 }

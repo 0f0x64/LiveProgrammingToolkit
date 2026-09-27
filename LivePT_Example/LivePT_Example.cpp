@@ -124,7 +124,7 @@ void UpdateSceneParams() {
         .size = eval(size2{115.3995f,106.2135f}),
         .type = eval(ptype::roundbox),
         .show = eval(true),
-        .color = eval(color3{ 82, 108, 233 })
+        .color = eval(color3{102,71,102})
         });
 
 }
@@ -197,7 +197,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
     ShowWindow(hwnd, nCmdShow);
 
-    LivePT::RegisterTypeDoubleClickCallback<color3>(MyColorPickerCallback);
+    LivePT::RegisterTypeDoubleClickCallback<color3>(LivePT::MyColorPickerCallback);
 
     MSG msg = {};
 
