@@ -89,6 +89,7 @@ namespace LivePT {
 
     #include "DbgHelpRef.h"
     #include "eval.h"
+    #include "uiCallBackBridge.h"
     #include "vsEditor.h"
 
     #if LivePT_WheelEditMode

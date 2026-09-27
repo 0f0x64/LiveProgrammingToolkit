@@ -18,15 +18,25 @@ struct color3 {
     unsigned char b;
 };
 
+#include "colorPicker.h"
+LPT_REGISTER_TYPE(color3, LivePT::MyColorPickerCallback);
+
 struct pos2 {
     float x;
     float y;
 };
 
+#include "posController.h"
+LPT_REGISTER_TYPE(pos2, LivePT::MyPosPickerCallback);
+
 struct size2 {
     float x;
     float y;
 };
+
+typedef float angle;
+#include "AngleController.h"
+LPT_REGISTER_TYPE(angle, LivePT::MyAnglePickerCallback);
 
 class Primitive {
 public:
@@ -34,13 +44,14 @@ public:
 
     pos2 pos;
     size2 size;
+    angle Angle;
     ptype type = ptype::circle;
     bool show;
     color3 color;
 
     // Unified setters using C++20 aggregate initialization rules
-    void Set(pos2 pos, size2 size, ptype form, bool showObj, color3 color) {
-        *this = { pos, size, form, showObj, color };
+    void Set(pos2 pos, size2 size, angle Angle,ptype form, bool showObj, color3 color) {
+        *this = { pos, size, Angle, form, showObj, color };
     }
     void Set(const Primitive& in) { *this = in; }
 
@@ -51,57 +62,80 @@ public:
         GetClientRect(hwnd, &r);
         int w = r.right - r.left, h = r.bottom - r.top;
 
-        // Double buffering initialization
         HDC memDC = CreateCompatibleDC(hdc);
         HBITMAP memBM = CreateCompatibleBitmap(hdc, w, h);
         HBITMAP oldBM = (HBITMAP)SelectObject(memDC, memBM);
 
-        // Clear background
-        HBRUSH hDarkBrush = CreateSolidBrush(RGB(30, 30, 30));
+        // ВАЖНО: Включаем расширенный графический режим для поддержки матриц поворота
+        SetGraphicsMode(memDC, GM_ADVANCED);
 
-        // 2. Заливаем прямоугольник
+        HBRUSH hDarkBrush = CreateSolidBrush(RGB(30, 30, 32));
         FillRect(memDC, &r, hDarkBrush);
-
-        // 3. Удаляем кисть, когда она больше не нужна
         DeleteObject(hDarkBrush);
 
-        // Render loop for all visible primitives in the array
         for (const auto& p : arr) {
             if (!p.show) continue;
 
+            // Вычисляем центр фигуры на экране
             int posX = (w / 2) + p.pos.x;
             int posY = (h / 2) + p.pos.y;
-
             size2 size = p.size;
 
-            // ДИНАМИЧЕСКИЙ ЦВЕТ: Передаем раздельные байты r, g, b в системный макрос Win32
             HBRUSH hBrush = CreateSolidBrush(RGB(p.color.r, p.color.g, p.color.b));
             HBRUSH hOldBrush = (HBRUSH)SelectObject(memDC, hBrush);
 
+            // ================== МАТРИЦА ПОВОРОТА (Win32 XFORM) ==================
+            // Переводим угол из градусов в радианы. 
+            // Предположим, у вашего класса Primitive появится поле float angle;
+            // Если его пока нет, временно захардкодим 0.0f или добавьте его в класс.
+            float angleVal = p.Angle; // Сюда пойдет p.angle;
+            float radians = angleVal * (3.14159265f / 180.0f);
+            float cosA = std::cos(radians);
+            float sinA = std::sin(radians);
+
+            XFORM xForm;
+            // Матрица смещения центра координат в точку posX, posY и поворота холста
+            xForm.eM11 = cosA;  xForm.eM12 = sinA;
+            xForm.eM21 = -sinA; xForm.eM22 = cosA;
+            xForm.eDx = (float)posX;
+            xForm.eDy = (float)posY;
+
+            // Сохраняем старую матрицу трансформации холста
+            XFORM oldForm;
+            GetWorldTransform(memDC, &oldForm);
+
+            // Применяем нашу матрицу поворота
+            SetWorldTransform(memDC, &xForm);
+
+            // Так как мы сместили центр холста в (posX, posY), 
+            // рисуем фигуру строго в локальных координатах вокруг нуля (0, 0)!
             switch (p.type) {
-                case ptype::circle:   Ellipse(memDC, posX - size.x, posY - size.y, posX + size.x, posY + size.y); break;
-                case ptype::box:      Rectangle(memDC, posX - size.x, posY - size.y, posX + size.x, posY + size.y); break;
-                case ptype::roundbox: RoundRect(memDC, posX - size.x, posY - size.y, posX + size.x, posY + size.y, 75, 75); break;
+            case ptype::circle:   Ellipse(memDC, -size.x, -size.y, size.x, size.y); break;
+            case ptype::box:      Rectangle(memDC, -size.x, -size.y, size.x, size.y); break;
+            case ptype::roundbox: RoundRect(memDC, -size.x, -size.y, size.x, size.y, 40, 40); break;
             }
 
-            // Освобождаем ресурсы GDI сразу после отрисовки фигуры
+            // Восстанавливаем старую матрицу трансформации для следующей фигуры
+            SetWorldTransform(memDC, &oldForm);
+            // ====================================================================
+
             SelectObject(memDC, hOldBrush);
             DeleteObject(hBrush);
         }
 
-        // Blit buffer to screen and release GDI resources
         BitBlt(hdc, 0, 0, w, h, memDC, 0, 0, SRCCOPY);
         SelectObject(memDC, oldBM);
         DeleteObject(memBM);
         DeleteDC(memDC);
     }
+
 };
 
 
 // Global instance array of primitives
 Primitive primitive[3];
 
-#include "colorPicker.h"
+
 
 // =================== USER SPACE ===================
 
@@ -110,21 +144,23 @@ void UpdateSceneParams() {
     primitive[0].Set(Primitive{
         .pos = eval(pos2{-227.88f,-367.14f}),
         .size = eval(size2{119.435f,113.675f}),
+        .Angle = eval(0),
         .type = eval(ptype::circle),
         .show = eval(true),
 
-        .color = eval(color3{239,12,63})
+        .color = eval(color3{174,49,35})
         });
 
     
 #include "test.h"
 
     primitive[2].Set(Primitive{
-        .pos = eval(pos2{200,172}),
+        .pos = eval(pos2{-58.00f,248.00f}),
         .size = eval(size2{115.3995f,106.2135f}),
+        .Angle = eval(angle(105.7f)),
         .type = eval(ptype::roundbox),
         .show = eval(true),
-        .color = eval(color3{14,19,165})
+        .color = eval(color3{31,22,165})
         });
 
 }
@@ -196,8 +232,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     if (hwnd == NULL) return 0;
 
     ShowWindow(hwnd, nCmdShow);
-
-    LivePT::RegisterTypeDoubleClickCallback<color3>(LivePT::MyColorPickerCallback);
 
     MSG msg = {};
 
