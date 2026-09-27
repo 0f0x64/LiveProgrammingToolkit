@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🚀 Live Programming Toolkit (LivePT)
+# 🚀 Live Programming Toolkit (LivePT) — v0.3
 
 A lightweight, zero-runtime-overhead interactive development tool for C++20 and Visual Studio.
 
@@ -67,17 +67,12 @@ LivePT::ProcessEdit();
 #### ✅ Что МОЖНО оборачивать в `eval()`:
 1. **Базовые типы констант:** Любые числовые литералы (`int`, `float`), включая значения с суффиксами (например, `eval(35.6f)`, `eval(-47.01)`).
 2. **Перечисления:** Строго типизированные и классические перечисления (например, `eval(Primitive::ptype::box)`).
-3. **Агрегаты без указания имени типа (Безымянные):** Прямая инициализация структур списком значений:
-   ```cpp
-   // Поля заполняются по порядку: x, y, type, show, color
-   primitive.Set(eval(-222), eval(-320), eval(Primitive::ptype::box), eval(Primitive::show_t::on), eval(Primitive::color3{ 47, 28, 45 }));
-   ```
-4. **Агрегаты с явным указанием имени типа (Именованные):** Передача структуры с явным вызовом конструктора или типа:
+3. **Именованные агрегаты (Явное указание имени типа):** Передача структуры с явным вызовом конструктора или типа:
    ```cpp
    // Библиотека через DbgHelp найдет тип "Primitive" и сопоставит его внутреннюю анатомию
    primitive.Set(eval(Primitive{ -47.01f, -299, Primitive::ptype::box, Primitive::show_t::on, {120, 0, 0} }));
    ```
-5. **Именованные агрегаты с C++20 Designated Initializers:** Инициализация структур с явным указанием полей. LivePT автоматически сопоставит смещения полей через `DbgHelp` и обновит нужные байты в памяти:
+4. **Именованные агрегаты с C++20 Designated Initializers:** Инициализация структур с явным указанием полей. LivePT автоматически сопоставит смещения полей через `DbgHelp` и обновит нужные байты в памяти:
    ```cpp
    primitive.Set(Primitive{
        .x = eval(-47.01),
@@ -86,7 +81,7 @@ LivePT::ProcessEdit();
        .color = eval(Primitive::color3{ .r = 150, .g = 109, .b = 85 })
    });
    ```
-6. **Частичные агрегаты и смешивание с переменными:** Вы можете оборачивать в `eval()` только конкретные константные поля структуры, оставляя остальные поля завязанными на динамические runtime-переменные:
+5. **Частичные агрегаты и смешивание с переменными:** Вы можете оборачивать в `eval()` только конкретные константные поля структуры, оставляя остальные поля завязанными на динамические runtime-переменные:
    ```cpp
    // Поля .r и .b управляются динамически кодом (переменные x и y), а поле .g интерактивно меняется через eval()!
    primitive.Set(Primitive{
@@ -99,9 +94,10 @@ LivePT::ProcessEdit();
    ```
 
 #### ❌ Чего ДЕЛАТЬ НЕЛЬЗЯ:
-1. **Динамические выражения:** Нельзя писать вычисления или вызовы функций, например `eval(a + b)` или `eval(GetX())`. Макрос ожидает фиксированный литерал или структуру, подлежащую текстовой перезаписи. Если нужно смешать константы и переменные внутри структуры — оборачивайте в `eval()` только константные поля по отдельности (как показано в пункте 6).
-2. **Символы не-ASCII:** Текстовый парсер не поддерживает кодировки отличные от ASCII. Наличие кириллицы или спецсимволов внутри `eval()` вызовет ошибку парсинга.
-3. **Сложные динамические типы внутри структур:** Поля структур, обернутых в `eval()`, должны состоять из примитивных типов (`char`, `int`, `float`, `double`, `bool`). Использование `std::string` или `std::vector` внутри таких структур не поддерживается.
+1. **Динамические выражения:** Нельзя писать вычисления или вызовы функций, например `eval(a + b)` или `eval(GetX())`. Макрос ожидает фиксированный литерал или структуру, подлежащую текстовой перезаписи. Если нужно смешать константы и переменные внутри структуры — оборачивайте в `eval()` только константные поля по отдельности (как показано в пункте 5).
+2. **Агрегаты без указания имени типа (Безымянные):** Прямая инициализация структур списком значений вида `{ val1, val2 }` без явного имени типа **не поддерживается**, так как парсер не сможет извлечь анатомию структуры из PDB без текстового идентификатора типа.
+3. **Символы не-ASCII:** Текстовый парсер не поддерживает кодировки отличные от ASCII. Наличие кириллицы или спецсимволов внутри `eval()` вызовет ошибку парсинга.
+4. **Сложные динамические типы внутри структур:** Поля структур, обернутых в `eval()`, должны состоять из примитивных типов (`char`, `int`, `float`, `double`, `bool`). Использование `std::string` или `std::vector` внутри таких структур не поддерживается.
 ---
 
 ## 🇺🇸 English Version
@@ -161,17 +157,12 @@ Once your application is running, you can adjust parameters directly within your
 #### ✅ What CAN be wrapped inside `eval()`:
 1. **Basic Constant Literals:** Any primitive numerical constants (`int`, `float`), including values with type suffixes (e.g., `eval(35.6f)`, `eval(-47.01)`).
 2. **Enumerations:** Both scoped (`enum class`) and unscoped enums (e.g., `eval(Primitive::ptype::box)`).
-3. **Unnamed Aggregates (List Initialization):** Direct structural initialization by passing an ordered list of values:
-   ```cpp
-   // Fields are mapped sequentially: x, y, type, show, color
-   primitive.Set(eval(-222), eval(-320), eval(Primitive::ptype::box), eval(Primitive::show_t::on), eval(Primitive::color3{ 47, 28, 45 }));
-   ```
-4. **Named Aggregates (Explicit Type Names):** Passing a struct with an explicit constructor or type initialization:
+3. **Named Aggregates (Explicit Type Names):** Passing a struct with an explicit constructor or type initialization:
    ```cpp
    // The toolkit looks up the "Primitive" type structure via DbgHelp and maps its internal anatomy layout
    primitive.Set(eval(Primitive{ -47.01f, -299, Primitive::ptype::box, Primitive::show_t::on, {120, 0, 0} }));
    ```
-5. **Named Aggregates with C++20 Designated Initializers:** Struct initialization with explicit member naming. LivePT uses `DbgHelp` to map field offsets and updates raw bytes safely:
+4. **Named Aggregates with C++20 Designated Initializers:** Struct initialization with explicit member naming. LivePT uses `DbgHelp` to map field offsets and updates raw bytes safely:
    ```cpp
    primitive.Set(Primitive{
        .x = eval(-47.01),
@@ -180,7 +171,7 @@ Once your application is running, you can adjust parameters directly within your
        .color = eval(Primitive::color3{ .r = 150, .g = 109, .b = 85 })
    });
    ```
-6. **Partial Aggregates and Variable Mixing:** You can wrap only specific constant fields of a structure inside `eval()`, leaving other fields tied to dynamic runtime variables:
+5. **Partial Aggregates and Variable Mixing:** You can wrap only specific constant fields of a structure inside `eval()`, leaving other fields tied to dynamic runtime variables:
    ```cpp
    // The .r and .b fields are driven dynamically by runtime variables (x and y), while the .g field is interactively tweakable via eval()!
    primitive.Set(Primitive{
@@ -193,8 +184,9 @@ Once your application is running, you can adjust parameters directly within your
    ```
 
 #### ❌ What CANNOT be wrapped inside `eval()`:
-1. **Dynamic Expressions:** You cannot pass runtime logic or function calls like `eval(a + b)` or `eval(GetX())`. The macro relies on fixed literals or structural blocks that can be structurally rewritten in the text file. If you need to mix constants and variables inside a struct, wrap only the constant fields individually (as shown in point 6).
-2. **Non-ASCII Characters:** The internal text engine does not support non-ASCII encodings. Cyrillic characters or non-standard symbols inside `eval()` will cause parsing failures.
-3. **Complex Non-Trivial Types in Structs:** Members of structs wrapped inside `eval()` must be primitive types (`char`, `int`, `float`, `double`, `bool`). Dynamic containers like `std::string` or `std::vector` are explicitly ignored to prevent memory corruption.
+1. **Dynamic Expressions:** You cannot pass runtime logic or function calls like `eval(a + b)` or `eval(GetX())`. The macro relies on fixed literals or structural blocks that can be structurally rewritten in the text file. If you need to mix constants and variables inside a struct, wrap only the constant fields individually (as shown in point 5).
+2. **Unnamed Aggregates (Raw List Initializations):** Initializing structures anonymously using `{ val1, val2 }` lists without an explicit type name **is not supported**, as the parser cannot fetch the structure layout from the PDB without a text type identifier.
+3. **Non-ASCII Characters:** The internal text engine does not support non-ASCII encodings. Cyrillic characters or non-standard symbols inside `eval()` will cause parsing failures.
+4. **Complex Non-Trivial Types in Structs:** Members of structs wrapped inside `eval()` must be primitive types (`char`, `int`, `float`, `double`, `bool`). Dynamic containers like `std::string` or `std::vector` are explicitly ignored to prevent memory corruption.
 
 ---

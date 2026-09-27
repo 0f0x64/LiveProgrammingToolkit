@@ -149,9 +149,9 @@ void UpdateSceneParams() {
 
     
     primitive[3].Set(Primitive{
-            .x = eval(35.6f),
+            .x = eval(135.6f),
             .y = eval(-158),
-            .type = eval(Primitive::ptype::roundbox),
+            .type = eval(Primitive::ptype::box),
             .show = eval(Primitive::show_t::on),
             .color = eval(Primitive::color3{228,201,83})
         });
