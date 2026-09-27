@@ -81,20 +81,24 @@ LivePT::ProcessEdit();
        .color = eval(Primitive::color3{ .r = 150, .g = 109, .b = 85 })
    });
    ```
-5. **Частичные агрегаты и смешивание с переменными:** Вы можете оборачивать в `eval()` только конкретные константные поля структуры, оставляя остальные поля завязанными на динамические runtime-переменные:
+5. **Смешивание литералов и runtime-переменных внутри агрегата:** При инициализации именованного агрегата вы можете свободно передавать внутрь `eval(...)` как фиксированные константы, так и динамические переменные (например, `x` и `y`). Парсер библиотеки автоматически определит текстовые токены переменных и пропустит их при интерактивном обновлении, изменяя исключительно литералы:
    ```cpp
-   // Поля .r и .b управляются динамически кодом (переменные x и y), а поле .g интерактивно меняется через eval()!
+   // Поля .r и .b биндятся к переменным x и y, а поле .g (литерал 62) можно интерактивно крутить мышкой/клавиатурой!
    primitive.Set(Primitive{
-       .color = Primitive::color3{
+       .x = eval(26.40),
+       .y = eval(-276),
+       .type = eval(Primitive::ptype::roundbox),
+       .show = eval(Primitive::show_t::on),
+       .color = eval(Primitive::color3{
            .r = x,
-           .g = eval(109), 
+           .g = 62,
            .b = y
-       }
+       })
    });
    ```
 
 #### ❌ Чего ДЕЛАТЬ НЕЛЬЗЯ:
-1. **Динамические выражения:** Нельзя писать вычисления или вызовы функций, например `eval(a + b)` или `eval(GetX())`. Макрос ожидает фиксированный литерал или структуру, подлежащую текстовой перезаписи. Если нужно смешать константы и переменные внутри структуры — оборачивайте в `eval()` только константные поля по отдельности (как показано в пункте 5).
+1. **Динамические выражения вне структуры:** Нельзя писать изолированные вычисления или вызовы функций, например `eval(a + b)` или `eval(GetX())`. Макрос ожидает константный литерал или агрегатную структуру.
 2. **Агрегаты без указания имени типа (Безымянные):** Прямая инициализация структур списком значений вида `{ val1, val2 }` без явного имени типа **не поддерживается**, так как парсер не сможет извлечь анатомию структуры из PDB без текстового идентификатора типа.
 3. **Символы не-ASCII:** Текстовый парсер не поддерживает кодировки отличные от ASCII. Наличие кириллицы или спецсимволов внутри `eval()` вызовет ошибку парсинга.
 4. **Сложные динамические типы внутри структур:** Поля структур, обернутых в `eval()`, должны состоять из примитивных типов (`char`, `int`, `float`, `double`, `bool`). Использование `std::string` или `std::vector` внутри таких структур не поддерживается.
@@ -171,20 +175,24 @@ Once your application is running, you can adjust parameters directly within your
        .color = eval(Primitive::color3{ .r = 150, .g = 109, .b = 85 })
    });
    ```
-5. **Partial Aggregates and Variable Mixing:** You can wrap only specific constant fields of a structure inside `eval()`, leaving other fields tied to dynamic runtime variables:
+5. **Mixing Literals and Runtime Variables inside Aggregates:** When initializing a named aggregate, you can pass both fixed constants and dynamic variables (e.g., `x` and `y`) inside the `eval(...)` macro block. The toolkit's parser automatically identifies variable text tokens and skips them during update cycles, modifying only literal constants:
    ```cpp
-   // The .r and .b fields are driven dynamically by runtime variables (x and y), while the .g field is interactively tweakable via eval()!
+   // Fields .r and .b are driven dynamically by runtime variables (x and y), while field .g (literal 62) is interactively tweakable via mouse/keyboard!
    primitive.Set(Primitive{
-       .color = Primitive::color3{
+       .x = eval(26.40),
+       .y = eval(-276),
+       .type = eval(Primitive::ptype::roundbox),
+       .show = eval(Primitive::show_t::on),
+       .color = eval(Primitive::color3{
            .r = x,
-           .g = eval(109), 
+           .g = 62,
            .b = y
-       }
+       })
    });
    ```
 
 #### ❌ What CANNOT be wrapped inside `eval()`:
-1. **Dynamic Expressions:** You cannot pass runtime logic or function calls like `eval(a + b)` or `eval(GetX())`. The macro relies on fixed literals or structural blocks that can be structurally rewritten in the text file. If you need to mix constants and variables inside a struct, wrap only the constant fields individually (as shown in point 5).
+1. **Dynamic Expressions Outside Structs:** You cannot pass independent calculations or function calls like `eval(a + b)` or `eval(GetX())`. The macro expects a fixed literal or a structural aggregate block.
 2. **Unnamed Aggregates (Raw List Initializations):** Initializing structures anonymously using `{ val1, val2 }` lists without an explicit type name **is not supported**, as the parser cannot fetch the structure layout from the PDB without a text type identifier.
 3. **Non-ASCII Characters:** The internal text engine does not support non-ASCII encodings. Cyrillic characters or non-standard symbols inside `eval()` will cause parsing failures.
 4. **Complex Non-Trivial Types in Structs:** Members of structs wrapped inside `eval()` must be primitive types (`char`, `int`, `float`, `double`, `bool`). Dynamic containers like `std::string` or `std::vector` are explicitly ignored to prevent memory corruption.
