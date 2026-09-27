@@ -120,11 +120,11 @@ void UpdateSceneParams() {
 #include "test.h"
 
     primitive[2].Set(Primitive{
-        .pos = eval(pos2{229,149}),
+        .pos = eval(pos2{200,172}),
         .size = eval(size2{115.3995f,106.2135f}),
         .type = eval(ptype::roundbox),
         .show = eval(true),
-        .color = eval(color3{102,71,102})
+        .color = eval(color3{14,19,165})
         });
 
 }

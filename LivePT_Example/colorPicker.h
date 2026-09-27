@@ -27,7 +27,6 @@ namespace LivePT {
         float currentSat = 0.0f;
         float currentValue = 1.0f;
 
-        // Габариты и метрика интерфейса
         const int centerX = 65;
         const int centerY = 65;
         const int radius = 58;
@@ -40,7 +39,9 @@ namespace LivePT {
 
     static ColorPickerContext g_pickerCtx;
 
-    // Высокопроизводительный HSV в RGB конвертер, возвращающий упакованный DWORD (0x00BBGGRR) для GDI
+    // ЖЕСТКИЙ ФИКС ЦВЕТОВ: Внутренняя структура StretchDIBits при стандартном сжатии BI_RGB
+    // требует физического расположения каналов в памяти как Blue-Green-Red (BGR).
+    // Помещаем Red в самый старший доступный байт, а Blue — в самый младший. Теперь цвета идеальны!
     inline DWORD HsvToGdiColor(float H, float S, float V) {
         float r = 0, g = 0, b = 0;
         if (S == 0) {
@@ -62,18 +63,18 @@ namespace LivePT {
             case 5: r = V; g = p; b = q; break;
             }
         }
-        return (static_cast<DWORD>(b * 255) << 16) |
+        return (static_cast<DWORD>(r * 255) << 16) |
             (static_cast<DWORD>(g * 255) << 8) |
-            static_cast<DWORD>(r * 255);
+            static_cast<DWORD>(b * 255);
     }
 
-    // Традиционный HSV в кастомную структуру color3
     inline color3 HsvToRgbStruct(float H, float S, float V) {
         DWORD gdiColor = HsvToGdiColor(H, S, V);
+        // Возвращаем в вашу программу чистый, неперевернутый RGB под C++ структуры
         return color3{
-            static_cast<unsigned char>(gdiColor & 0xFF),
+            static_cast<unsigned char>((gdiColor >> 16) & 0xFF),
             static_cast<unsigned char>((gdiColor >> 8) & 0xFF),
-            static_cast<unsigned char>((gdiColor >> 16) & 0xFF)
+            static_cast<unsigned char>(gdiColor & 0xFF)
         };
     }
 
@@ -114,13 +115,35 @@ namespace LivePT {
         UpdateLiveCode();
     }
 }
-// colorPicker.h — Часть 2 (Высокопроизводительный Оконный Драйвер GDI)
+// colorPicker.h — Часть 2 (Интерфейс Win32 API и Курсор)
 namespace LivePT {
 
     inline LRESULT CALLBACK ColorPickerWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
         switch (uMsg) {
+        case WM_SETCURSOR: {
+            // ТОЧЕЧНЫЙ ФИКС КУРСОРОВ: Проверяем координаты мыши относительно центра круга
+            POINT pt;
+            GetCursorPos(&pt);
+            ScreenToClient(hwnd, &pt);
+
+            // Вычисляем расстояние от курсора до центра цветового диска
+            int dx = pt.x - g_pickerCtx.centerX;
+            int dy = pt.y - g_pickerCtx.centerY;
+            float distance = std::sqrt(static_cast<float>(dx * dx + dy * dy));
+
+            // Если мышь СТРОГО внутри круглого спектра — включаем крестик
+            if (distance <= g_pickerCtx.radius) {
+                SetCursor(LoadCursor(NULL, IDC_CROSS));
+                return TRUE;
+            }
+
+            // Во всех остальных зонах окна (слайдер яркости, превью, фон) — возвращаем стрелку
+            SetCursor(LoadCursor(NULL, IDC_ARROW));
+            return TRUE;
+        }
+
+
         case WM_KEYDOWN:
-            // ТОЧЕЧНЫЙ ФИКС: Если нажат Escape, уничтожаем окно
             if (wParam == VK_ESCAPE) {
                 DestroyWindow(hwnd);
                 g_pickerCtx.hWindow = NULL;
@@ -140,18 +163,16 @@ namespace LivePT {
             int w = lpDrawItem->rcItem.right - lpDrawItem->rcItem.left;
             int h = lpDrawItem->rcItem.bottom - lpDrawItem->rcItem.top;
 
-            // Выделяем одномерный массив в ОЗУ для мгновенной попиксельной заливки буфера
-            std::vector<DWORD> pixelBuffer(w * h, 0x0030302D); // Цвет фона 45,45,48
+            std::vector<DWORD> pixelBuffer(w * h, 0x0030302D); // Цвет фона палитры в формате GDI (0x00BBGGRR)
 
             BITMAPINFO bmi = {};
             bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
             bmi.bmiHeader.biWidth = w;
-            bmi.bmiHeader.biHeight = -h; // Отрицательная высота переворачивает массив в стандартные координаты (0,0 сверху)
+            bmi.bmiHeader.biHeight = -h;
             bmi.bmiHeader.biPlanes = 1;
             bmi.bmiHeader.biBitCount = 32;
             bmi.bmiHeader.biCompression = BI_RGB;
 
-            // 1. СВЕРХБЫСТРЫЙ ОТРЕНДЕР ЦВЕТОВОГО КРУГА В ПАМЯТИ (БЕЗ CALL SETPIXEL)
             if (lpDrawItem->hwndItem == g_pickerCtx.hWheelStatic) {
                 for (int y = 0; y < h; ++y) {
                     for (int x = 0; x < w; ++x) {
@@ -170,7 +191,6 @@ namespace LivePT {
                     }
                 }
             }
-            // 2. СВЕРХБЫСТРЫЙ ОТРЕНДЕР СЛАЙДЕРА ЯРКОСТИ
             else if (lpDrawItem->hwndItem == g_pickerCtx.hValueStatic) {
                 for (int y = 0; y < h; ++y) {
                     float ratio = 1.0f - (static_cast<float>(y) / static_cast<float>(h));
@@ -181,7 +201,6 @@ namespace LivePT {
                     }
                 }
 
-                // Рисуем маркер прямо в массиве байт
                 int markerY = static_cast<int>((1.0f - g_pickerCtx.currentValue) * h);
                 if (markerY >= 2 && markerY < h - 2) {
                     for (int my = markerY - 2; my <= markerY + 2; ++my) {
@@ -194,7 +213,6 @@ namespace LivePT {
                 }
             }
 
-            // Выгружаем весь массив пикселей в видеокарту ОДНИМ СИСТЕМНЫМ ВЫЗОВОМ
             StretchDIBits(hdc, 0, 0, w, h, 0, 0, w, h, pixelBuffer.data(), &bmi, DIB_RGB_COLORS, SRCCOPY);
             return TRUE;
         }
@@ -203,6 +221,7 @@ namespace LivePT {
             HDC hdc = BeginPaint(hwnd, &ps);
 
             RECT previewRect = { 162, 8, 207, 122 };
+            // Для FrameRect/FillRect используем COLORREF (формат 0x00BBGGRR), собираемый стандартным макросом RGB()
             HBRUSH hPreviewBrush = CreateSolidBrush(RGB(g_pickerCtx.currentRGB.r, g_pickerCtx.currentRGB.g, g_pickerCtx.currentRGB.b));
             FillRect(hdc, &previewRect, hPreviewBrush);
             DeleteObject(hPreviewBrush);
@@ -316,14 +335,12 @@ namespace LivePT {
             return RegisterClassExA(&wc) != 0;
             }();
 
-        // УЧЕТ ВЫСОТЫ СТРОКИ VS: Стандартная высота строки шрифта Consolas/Cascadia в IDE при 100% масштабе ~20 пикселей.
-        // Смещаем окно по Y на +22 пикселя вниз, чтобы оно появилось строго ПОД строкой кода, не перекрывая текст!
         int calculatedWindowY = mousePos.y - 144;
 
         g_pickerCtx.hWindow = CreateWindowExA(
             WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
             className, NULL,
-            WS_POPUP | WS_VISIBLE, // Добавили флаг WS_VISIBLE для мгновенной фокусировки
+            WS_POPUP | WS_VISIBLE,
             mousePos.x - 10, calculatedWindowY, 215, 130,
             NULL, NULL, hInst, NULL
         );
@@ -337,13 +354,11 @@ namespace LivePT {
 
         g_pickerCtx.hValueStatic = CreateWindowExA(
             0, "STATIC", "", WS_CHILD | WS_VISIBLE | SS_OWNERDRAW,
-            g_pickerCtx.valLeft, g_pickerCtx.valTop, g_pickerCtx.valWidth, g_pickerCtx.valHeight,
-            g_pickerCtx.hWindow, NULL, hInst, NULL
-        );
-
-        ShowWindow(g_pickerCtx.hWindow, SW_SHOW);
-        UpdateWindow(g_pickerCtx.hWindow);
-        SetForegroundWindow(g_pickerCtx.hWindow);
+            g_pickerCtx.valLeft, g_pickerCtx.valTop, g_pickerCtx.valWidth, g_pickerCtx.valHeight, g_pickerCtx.hWindow, NULL, hInst, NULL); 
+        
+        ShowWindow(g_pickerCtx.hWindow, SW_SHOW); 
+        UpdateWindow(g_pickerCtx.hWindow); 
+        SetForegroundWindow(g_pickerCtx.hWindow); 
         SetFocus(g_pickerCtx.hWindow);
     }
 }
