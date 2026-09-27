@@ -207,7 +207,7 @@ namespace LivePT {
             return RegisterClassExA(&wc) != 0;
             }();
 
-        int calculatedWindowY = mousePos.y - (g_posCtx.height + 4);
+        int calculatedWindowY = mousePos.y - (g_posCtx.height + 14);
 
         g_posCtx.hWindow = CreateWindowExA(
             WS_EX_TOPMOST | WS_EX_TOOLWINDOW,

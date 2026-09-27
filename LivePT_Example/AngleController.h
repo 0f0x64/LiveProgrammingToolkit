@@ -50,7 +50,7 @@ namespace LivePT {
 
         // Calculate radians from vector. 
         // Note: dy is inverted because in GDI Y goes down, but angles go up counter-clockwise.
-        float angleRad = std::atan2(static_cast<float>(-dy), static_cast<float>(dx));
+        float angleRad = std::atan2(static_cast<float>(dy), static_cast<float>(dx));
         float targetDeg = angleRad * (180.0f / 3.14159265f);
 
         if (GetAsyncKeyState(VK_SHIFT) & 0x8000) {
@@ -136,7 +136,7 @@ namespace LivePT {
             float rad = g_angleCtx.currentAngle * (3.14159265f / 180.0f);
             // Y is inverted back for correct screen coordinates orientation
             int needleX = g_angleCtx.centerX + static_cast<int>(std::cos(rad) * g_angleCtx.radius);
-            int needleY = g_angleCtx.centerY + static_cast<int>(-std::sin(rad) * g_angleCtx.radius);
+            int needleY = g_angleCtx.centerY + static_cast<int>(std::sin(rad) * g_angleCtx.radius);
 
             MoveToEx(memDC, g_angleCtx.centerX, g_angleCtx.centerY, NULL);
             LineTo(memDC, needleX, needleY);
@@ -165,7 +165,7 @@ namespace LivePT {
                 g_angleCtx.isTracking = true;
                 SetCapture(hwnd);
                 if (!g_angleCtx.isCursorHidden) {
-                    ShowCursor(FALSE);
+                    //ShowCursor(FALSE);
                     g_angleCtx.isCursorHidden = true;
                 }
                 ProcessRadarClick(pt.x, pt.y);
@@ -231,7 +231,7 @@ namespace LivePT {
             }();
 
         // Fits tightly above the current Visual Studio text line
-        int calculatedWindowY = mousePos.y - (g_angleCtx.height + 4);
+        int calculatedWindowY = mousePos.y - (g_angleCtx.height + 14);
 
         g_angleCtx.hWindow = CreateWindowExA(
             WS_EX_TOPMOST | WS_EX_TOOLWINDOW,

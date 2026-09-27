@@ -155,9 +155,9 @@ void UpdateSceneParams() {
 #include "test.h"
 
     primitive[2].Set(Primitive{
-        .pos = eval(pos2{-58.00f,248.00f}),
+        .pos = eval(pos2{-171.00f,170.00f}),
         .size = eval(size2{115.3995f,106.2135f}),
-        .Angle = eval(angle(105.7f)),
+        .Angle = eval(angle(334.4f)),
         .type = eval(ptype::roundbox),
         .show = eval(true),
         .color = eval(color3{31,22,165})

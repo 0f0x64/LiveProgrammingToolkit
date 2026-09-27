@@ -204,8 +204,25 @@ namespace LivePT {
                     paramDesc[target_id].typeMinBound = minB;
                     paramDesc[target_id].typeMaxBound = maxB;
 
+                    // МОДЕРНИЗИРОВАННЫЙ БЛОК: Умеет читать и "45.9", и "angle(45.9f)"
                     paramDesc[target_id].stringUpdater = [](std::any& targetAny, const std::string& textValue) {
-                        std::stringstream ss(textValue);
+                        std::string cleanText = textValue;
+
+                        // ТОЧЕЧНЫЙ ФИКС: Если радар или редактор прислали строку вида "angle(45.9f)"
+                        size_t openBracket = cleanText.find('(');
+                        size_t closeBracket = cleanText.rfind(')');
+                        if (openBracket != std::string::npos && closeBracket != std::string::npos && closeBracket > openBracket) {
+                            // Вырезаем только число внутри круглых скобок: "45.9f"
+                            cleanText = cleanText.substr(openBracket + 1, closeBracket - openBracket - 1);
+                        }
+
+                        // Счищаем суффиксы float (f, F), если они есть на конце
+                        while (!cleanText.empty() && (cleanText.back() == 'f' || cleanText.back() == 'F')) {
+                            cleanText.pop_back();
+                        }
+
+                        // Теперь стандартный поток ss спокойно прочитает чистое число
+                        std::stringstream ss(cleanText);
                         TargetType parsedValue;
                         if (ss >> parsedValue) {
                             targetAny = parsedValue;
