@@ -47,6 +47,63 @@ LivePT::ProcessEdit();
 
 ---
 
+### 🎮 Интерактивное управление (Мышь и Клавиатура)
+После запуска приложения вы можете настраивать параметры прямо внутри исходного кода в Visual Studio двумя способами:
+
+#### 🖱 Управление мышью
+* **Изменение чисел (Drag):** Наведите курсор на число внутри `eval()`, **зажмите кнопку-триггер** и тяните мышь вверх или вниз. Значение в коде и на экране начнет плавно меняться в реальном времени.
+* **Модификаторы скорости:** Удерживайте `Shift` во время драга для изменения значений в 10 раз быстрее, или `Ctrl` — для ускорения в 100 раз.
+* **Переключение `bool` по клику:** Кликните кнопкой-триггером по `eval(true)` или `eval(false)` для мгновенной инверсии флага.
+* **Контекстное меню `enum`:** Сделайте двойной клик кнопкой-триггером по `eval(MyEnum::Value)`. Система вытащит элементы перечисления из PDB-файла и откроет нативное контекстное меню прямо под курсором.
+
+#### ⌨️ Редактирование с клавиатуры
+* **Прямой ввод:** Вы можете в любой момент сфокусироваться на коде в IDE и **вручную переписать число, изменить текст или имя элемента перечисления** прямо внутри скобок `eval(...)`.
+* **Автоматическое чтение текста:** При перемещении курсора клавиатурой или вводе новых символов LivePT мгновенно перехватывает изменения строки через COM-интерфейсы `EnvDTE`, автоматически парсит новое строковое значение и сразу же применяет его к переменной в памяти запущенного приложения без перезапуска.
+
+---
+
+### 📦 Поддерживаемый синтаксис и ограничения макроса `eval(...)`
+
+#### ✅ Что МОЖНО оборачивать в `eval()`:
+1. **Базовые типы констант:** Любые числовые литералы (`int`, `float`), включая значения с суффиксами (например, `eval(35.6f)`, `eval(-47.01)`).
+2. **Перечисления:** Строго типизированные и классические перечисления (например, `eval(Primitive::ptype::box)`).
+3. **Агрегаты без указания имени типа (Безымянные):** Прямая инициализация структур списком значений:
+   ```cpp
+   // Поля заполняются по порядку: x, y, type, show, color
+   primitive.Set(eval(-222), eval(-320), eval(Primitive::ptype::box), eval(Primitive::show_t::on), eval(Primitive::color3{ 47, 28, 45 }));
+   ```
+4. **Агрегаты с явным указанием имени типа (Именованные):** Передача структуры с явным вызовом конструктора или типа:
+   ```cpp
+   // Библиотека через DbgHelp найдет тип "Primitive" и сопоставит его внутреннюю анатомию
+   primitive.Set(eval(Primitive{ -47.01f, -299, Primitive::ptype::box, Primitive::show_t::on, {120, 0, 0} }));
+   ```
+5. **Именованные агрегаты с C++20 Designated Initializers:** Инициализация структур с явным указанием полей. LivePT автоматически сопоставит смещения полей через `DbgHelp` и обновит нужные байты в памяти:
+   ```cpp
+   primitive.Set(Primitive{
+       .x = eval(-47.01),
+       .y = eval(-299),
+       .type = eval(Primitive::ptype::box),
+       .color = eval(Primitive::color3{ .r = 150, .g = 109, .b = 85 })
+   });
+   ```
+6. **Частичные агрегаты и смешивание с переменными:** Вы можете оборачивать в `eval()` только конкретные константные поля структуры, оставляя остальные поля завязанными на динамические runtime-переменные:
+   ```cpp
+   // Поля .r и .b управляются динамически кодом (переменные x и y), а поле .g интерактивно меняется через eval()!
+   primitive.Set(Primitive{
+       .color = Primitive::color3{
+           .r = x,
+           .g = eval(109), 
+           .b = y
+       }
+   });
+   ```
+
+#### ❌ Чего ДЕЛАТЬ НЕЛЬЗЯ:
+1. **Динамические выражения:** Нельзя писать вычисления или вызовы функций, например `eval(a + b)` или `eval(GetX())`. Макрос ожидает фиксированный литерал или структуру, подлежащую текстовой перезаписи. Если нужно смешать константы и переменные внутри структуры — оборачивайте в `eval()` только константные поля по отдельности (как показано в пункте 6).
+2. **Символы не-ASCII:** Текстовый парсер не поддерживает кодировки отличные от ASCII. Наличие кириллицы или спецсимволов внутри `eval()` вызовет ошибку парсинга.
+3. **Сложные динамические типы внутри структур:** Поля структур, обернутых в `eval()`, должны состоять из примитивных типов (`char`, `int`, `float`, `double`, `bool`). Использование `std::string` или `std::vector` внутри таких структур не поддерживается.
+---
+
 ## 🇺🇸 English Version
 
 ### 📋 Compiler & IDE Requirements
@@ -81,50 +138,6 @@ All other internal settings are configured directly inside the `LivePT.h` header
 * `#define LivePT_WindowManagement true` — Automatically splits your primary monitor screen 50/50 between your application window and Visual Studio.
 * `#define LivePT_AppToSecondaryDisplay false` — Automatically moves your application window to the secondary monitor in fullscreen mode.
 * `#define LivePT_TriggerButton VK_LBUTTON` — The physical mouse key used to interact with code (`VK_LBUTTON` for left click or `VK_MBUTTON` for middle click).
----
-
-## 🎮 Интерактивное управление (Мышь и Клавиатура)
-После запуска приложения вы можете настраивать параметры прямо внутри исходного кода в Visual Studio двумя способами:
-
-#### 🖱 Управление мышью
-* **Изменение чисел (Drag):** Наведите курсор на число внутри `eval()`, **зажмите кнопку-триггер** и тяните мышь вверх или вниз. Значение в коде и на экране начнет плавно меняться в реальном времени.
-* **Модификаторы скорости:** Удерживайте `Shift` во время драга для изменения значений в 10 раз быстрее, или `Ctrl` — для ускорения в 100 раз.
-* **Переключение `bool` по клику:** Кликните кнопкой-триггером по `eval(true)` или `eval(false)` для мгновенной инверсии флага.
-* **Контекстное меню `enum`:** Сделайте двойной клик кнопкой-триггером по `eval(MyEnum::Value)`. Система вытащит элементы перечисления из PDB-файла и откроет нативное контекстное меню прямо под курсором.
-
-#### ⌨️ Редактирование с клавиатуры
-* **Прямой ввод:** Вы можете в любой момент сфокусироваться на коде в IDE и **вручную переписать число, изменить текст или имя элемента перечисления** прямо внутри скобок `eval(...)`.
-* **Автоматическое чтение текста:** При перемещении курсора клавиатурой или вводе новых символов LivePT мгновенно перехватывает изменения строки через COM-интерфейсы `EnvDTE`, автоматически парсит новое строковое значение и сразу же применяет его к переменной в памяти запущенного приложения без перезапуска.
-
----
-
-### 📦 Поддерживаемый синтаксис и ограничения макроса `eval(...)`
-
-#### ✅ Что МОЖНО оборачивать в `eval()`:
-1. **Базовые типы констант:** Любые числовые литералы (`int`, `float`), включая значения с суффиксами (например, `eval(35.6f)`, `eval(-47.01)`).
-2. **Перечисления:** Строго типизированные и классические перечисления (например, `eval(Primitive::ptype::box)`).
-3. **Обычные агрегаты (Инициализация списком):** Прямая инициализация структур базовыми типами:
-   ```cpp
-   primitive.Set(eval(-222), eval(-320), eval(Primitive::ptype::box), eval(Primitive::color3{ 47, 28, 45 }));
-   ```
-4. **Именованные агрегаты (C++20 Designated Initializers):** Инициализация структур с явным указанием полей. LivePT автоматически сопоставит смещения полей через `DbgHelp` и обновит нужные байты в памяти:
-   ```cpp
-   primitive.Set(Primitive{
-       .x = eval(-47.01),
-       .y = eval(-299),
-       .type = eval(Primitive::ptype::box),
-       .color = eval(Primitive::color3{ .r = x, .g = 109, .b = y })
-   });
-   ```
-
-#### ❌ Чего ДЕЛАТЬ НЕЛЬЗЯ:
-1. **Динамические выражения:** Нельзя писать вычисления или вызовы функций, например `eval(a + b)` или `eval(GetX())`. Макрос ожидает фиксированный литерал или структуру, подлежащую текстовой перезаписи.
-2. **Символы не-ASCII:** Текстовый парсер не поддерживает кодировки отличные от ASCII. Наличие кириллицы или спецсимволов внутри `eval()` вызовет ошибку парсинга.
-3. **Сложные динамические типы внутри структур:** Поля структур, обернутых в `eval()`, должны состоять из примитивных типов (`char`, `int`, `float`, `double`, `bool`). Использование `std::string` или `std::vector` внутри таких структур не поддерживается.
-
----
-
-## 🇺🇸 English Version (Continued)
 
 ---
 
@@ -148,22 +161,39 @@ Once your application is running, you can adjust parameters directly within your
 #### ✅ What CAN be wrapped inside `eval()`:
 1. **Basic Constant Literals:** Any primitive numerical constants (`int`, `float`), including values with type suffixes (e.g., `eval(35.6f)`, `eval(-47.01)`).
 2. **Enumerations:** Both scoped (`enum class`) and unscoped enums (e.g., `eval(Primitive::ptype::box)`).
-3. **Regular Aggregates (List Initialization):** Direct structural initialization using primitive values:
+3. **Unnamed Aggregates (List Initialization):** Direct structural initialization by passing an ordered list of values:
    ```cpp
-   primitive.Set(eval(-222), eval(-320), eval(Primitive::ptype::box), eval(Primitive::color3{ 47, 28, 45 }));
+   // Fields are mapped sequentially: x, y, type, show, color
+   primitive.Set(eval(-222), eval(-320), eval(Primitive::ptype::box), eval(Primitive::show_t::on), eval(Primitive::color3{ 47, 28, 45 }));
    ```
-4. **Named Aggregates (C++20 Designated Initializers):** Struct initialization with explicit member naming. LivePT uses `DbgHelp` to map field offsets and updates raw bytes safely:
+4. **Named Aggregates (Explicit Type Names):** Passing a struct with an explicit constructor or type initialization:
+   ```cpp
+   // The toolkit looks up the "Primitive" type structure via DbgHelp and maps its internal anatomy layout
+   primitive.Set(eval(Primitive{ -47.01f, -299, Primitive::ptype::box, Primitive::show_t::on, {120, 0, 0} }));
+   ```
+5. **Named Aggregates with C++20 Designated Initializers:** Struct initialization with explicit member naming. LivePT uses `DbgHelp` to map field offsets and updates raw bytes safely:
    ```cpp
    primitive.Set(Primitive{
        .x = eval(-47.01),
        .y = eval(-299),
        .type = eval(Primitive::ptype::box),
-       .color = eval(Primitive::color3{ .r = x, .g = 109, .b = y })
+       .color = eval(Primitive::color3{ .r = 150, .g = 109, .b = 85 })
+   });
+   ```
+6. **Partial Aggregates and Variable Mixing:** You can wrap only specific constant fields of a structure inside `eval()`, leaving other fields tied to dynamic runtime variables:
+   ```cpp
+   // The .r and .b fields are driven dynamically by runtime variables (x and y), while the .g field is interactively tweakable via eval()!
+   primitive.Set(Primitive{
+       .color = Primitive::color3{
+           .r = x,
+           .g = eval(109), 
+           .b = y
+       }
    });
    ```
 
 #### ❌ What CANNOT be wrapped inside `eval()`:
-1. **Dynamic Expressions:** You cannot pass runtime logic or function calls like `eval(a + b)` or `eval(GetX())`. The macro relies on fixed literals or structural blocks that can be structurally rewritten in the text file.
+1. **Dynamic Expressions:** You cannot pass runtime logic or function calls like `eval(a + b)` or `eval(GetX())`. The macro relies on fixed literals or structural blocks that can be structurally rewritten in the text file. If you need to mix constants and variables inside a struct, wrap only the constant fields individually (as shown in point 6).
 2. **Non-ASCII Characters:** The internal text engine does not support non-ASCII encodings. Cyrillic characters or non-standard symbols inside `eval()` will cause parsing failures.
 3. **Complex Non-Trivial Types in Structs:** Members of structs wrapped inside `eval()` must be primitive types (`char`, `int`, `float`, `double`, `bool`). Dynamic containers like `std::string` or `std::vector` are explicitly ignored to prevent memory corruption.
 
