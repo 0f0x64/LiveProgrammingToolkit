@@ -65,7 +65,7 @@ UINT_PTR CALLBACK RealtimeColorHook(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM 
     return 0;
 }
 
-void AsyncColorPickerWorker(HWND hParentWnd, Primitive::color3 currentColor, RealtimeColorContext* pSharedCtx) {
+void AsyncColorPickerWorker(HWND hParentWnd, color3 currentColor, RealtimeColorContext* pSharedCtx) {
     CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
 
     CHOOSECOLORA cc = { 0 };
@@ -85,7 +85,7 @@ void AsyncColorPickerWorker(HWND hParentWnd, Primitive::color3 currentColor, Rea
     CoUninitialize();
 }
 
-void MyColorPickerCallback(const Primitive::color3& currentColor, std::function<void(std::string)> updateVsCallback) {
+void MyColorPickerCallback(const color3& currentColor, std::function<void(std::string)> updateVsCallback) {
     HWND hActiveGameWnd = GetActiveWindow();
     if (!hActiveGameWnd) hActiveGameWnd = GetForegroundWindow();
 

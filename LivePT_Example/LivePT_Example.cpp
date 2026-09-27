@@ -10,27 +10,37 @@
 #define TIMER_ID 1
 
 //simple class for demo purposes
+enum class ptype { circle, box, roundbox };
+
+struct color3 {
+    unsigned char r;
+    unsigned char g;
+    unsigned char b;
+};
+
+struct pos2 {
+    float x;
+    float y;
+};
+
+struct size2 {
+    float x;
+    float y;
+};
+
 class Primitive {
 public:
-    enum class ptype { circle, box, roundbox };
-    enum class show_t { on, off };
-    float x = 0;
-    int y = 0;
+
+
+    pos2 pos;
+    size2 size;
     ptype type = ptype::circle;
-    show_t show;
-
-    // ОТДЕЛЬНЫЕ КОМПОНЕНТЫ ЦВЕТА (По умолчанию — наш красивый синий: 0, 120, 215)
-    struct color3 {
-        unsigned char r;
-        unsigned char g;
-        unsigned char b;
-    };
-
+    bool show;
     color3 color;
 
     // Unified setters using C++20 aggregate initialization rules
-    void Set(float xPos, int yPos, ptype form, show_t showObj, color3 color = { 100,0,0 }) {
-        *this = { xPos, yPos, form, showObj, color };
+    void Set(pos2 pos, size2 size, ptype form, bool showObj, color3 color) {
+        *this = { pos, size, form, showObj, color };
     }
     void Set(const Primitive& in) { *this = in; }
 
@@ -57,20 +67,21 @@ public:
 
         // Render loop for all visible primitives in the array
         for (const auto& p : arr) {
-            if (p.show == show_t::off) continue;
+            if (!p.show) continue;
 
-            int posX = (w / 2) + p.x;
-            int posY = (h / 2) + p.y;
-            int size = 20; // shape radius
+            int posX = (w / 2) + p.pos.x;
+            int posY = (h / 2) + p.pos.y;
+
+            size2 size = p.size;
 
             // ДИНАМИЧЕСКИЙ ЦВЕТ: Передаем раздельные байты r, g, b в системный макрос Win32
             HBRUSH hBrush = CreateSolidBrush(RGB(p.color.r, p.color.g, p.color.b));
             HBRUSH hOldBrush = (HBRUSH)SelectObject(memDC, hBrush);
 
             switch (p.type) {
-                case ptype::circle:   Ellipse(memDC, posX - size, posY - size, posX + size, posY + size); break;
-                case ptype::box:      Rectangle(memDC, posX - size, posY - size, posX + size, posY + size); break;
-                case ptype::roundbox: RoundRect(memDC, posX - size, posY - size, posX + size, posY + size, 25, 25); break;
+                case ptype::circle:   Ellipse(memDC, posX - size.x, posY - size.y, posX + size.x, posY + size.y); break;
+                case ptype::box:      Rectangle(memDC, posX - size.x, posY - size.y, posX + size.x, posY + size.y); break;
+                case ptype::roundbox: RoundRect(memDC, posX - size.x, posY - size.y, posX + size.x, posY + size.y, 75, 75); break;
             }
 
             // Освобождаем ресурсы GDI сразу после отрисовки фигуры
@@ -88,7 +99,7 @@ public:
 
 
 // Global instance array of primitives
-Primitive primitive[4];
+Primitive primitive[3];
 
 #include "colorPicker.h"
 
@@ -96,69 +107,25 @@ Primitive primitive[4];
 
 void UpdateSceneParams() {
 
-    // drag numbers by pressing&move mButton inside eval, click mButton for switch / context menu
-
-    primitive[0].Set(eval(-222), 
-        eval(-320), eval(Primitive::ptype::box), 
-        eval(Primitive::show_t::on), eval(Primitive::color3{ 47,28,45 }));
-
-    #ifdef bla
-            primitive[0].Set(eval(-289),
-                eval(-172), eval(Primitive::ptype::box),
-                eval(Primitive::show_t::on), eval(Primitive::color3{ 178,83,8 }));
-
-            primitive[31].Set(Primitive{
-                    .x = eval(34.40),
-                    .y = eval(-276),
-                    .type = eval(Primitive::ptype::roundbox),
-                    .show = eval(Primitive::show_t::on),
-                    .color = eval(Primitive::color3{
-                        .r = x,
-                        .g = 217,
-                        .b = y})
-                });
-    #endif
-
-    // floating point numbers allowed (will be casted to int in this case, but you can modify class to use native floats)
-    primitive[1].Set(eval(-193), eval(-59), 
-        eval(Primitive::ptype::circle), 
-        eval(Primitive::show_t::on), eval(Primitive::color3{ 100,170,36 }));
-
-    unsigned char x = rand() % eval(2);
-    unsigned char y = rand() % eval(173);
-
-/*    primitive[2].Set(Primitive{
-        .x = eval(   26.40  ),
-        .y = eval(-276),
-        .type = eval(Primitive::ptype::roundbox),
-        .show = eval(Primitive::show_t::on),
-        .color = eval(Primitive::color3{
-            .r = x,
-
-            .g = 62,
-            .b = y})
-        });*/
-
-    // aggregate init alternative
-    primitive[2].Set(Primitive{
-        .x = eval(   -47.01  ),
-        .y = eval(-299),
-        .type = eval(Primitive::ptype::box),
-        .show = eval(Primitive::show_t::on),
-        .color = eval(Primitive::color3{
-            .r = x,
-            .g = 109,
-            .b = y})
+    primitive[0].Set(Primitive{
+        .pos = eval(pos2{-269,-313}),
+        .size = eval(size2{119.435f,113.675f}),
+        .type = eval(ptype::circle),
+        .show = eval(true),
+        .color = eval(color3{225,104,2})
         });
 
     
-    primitive[3].Set(Primitive{
-            .x = eval(45.6f),
-            .y = eval(-158),
-            .type = eval(Primitive::ptype::box),
-            .show = eval(Primitive::show_t::on),
-            .color = eval(Primitive::color3{ 243, 80, 67 })
+#include "test.h"
+
+    primitive[2].Set(Primitive{
+        .pos = eval(pos2{205,149}),
+        .size = eval(size2{115.3995f,106.2135f}),
+        .type = eval(ptype::roundbox),
+        .show = eval(true),
+        .color = eval(color3{17,137,197})
         });
+
 }
 
 // ================ END OF USER SPACE ================
@@ -229,7 +196,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
     ShowWindow(hwnd, nCmdShow);
 
-    LivePT::RegisterTypeDoubleClickCallback<Primitive::color3>(MyColorPickerCallback);
+    LivePT::RegisterTypeDoubleClickCallback<color3>(MyColorPickerCallback);
 
     MSG msg = {};
 

@@ -15,6 +15,51 @@ namespace LivePT {
     inline void HandleMouseDrag(const POINT& pt, bool ctrl, bool shift);
     inline void HandleMouseUp();
 
+    // РАСШИРЕНИЕ ДЛЯ ПРОПОРЦИОНАЛЬНОГО ДРАГА СТРУКТУР
+    struct ExtractedArg {
+        std::string text;
+        long startColOffset;
+        long endColOffset;
+    };
+
+    // Токенизатор аргументов внутри фигурных скобок с учетом вложенности
+    inline std::vector<ExtractedArg> TokenizeCallArguments(const std::wstring& lineText, size_t openBracketPos) {
+        std::vector<ExtractedArg> args;
+        if (openBracketPos == std::wstring::npos) return args;
+
+        size_t i = openBracketPos + 1;
+        size_t currentArgStart = i;
+        int bracketCount = 0;
+        int templateCount = 0;
+
+        while (i < lineText.length()) {
+            wchar_t ch = lineText[i];
+
+            if (ch == L'(' || ch == L'{') bracketCount++;
+            else if (ch == L')' || ch == L'}') {
+                if (bracketCount == 0) {
+                    if (i > currentArgStart) {
+                        std::wstring argW = lineText.substr(currentArgStart, i - currentArgStart);
+                        std::string argA(argW.begin(), argW.end());
+                        args.push_back({ argA, static_cast<long>(currentArgStart + 1), static_cast<long>(i + 1) });
+                    }
+                    break;
+                }
+                bracketCount--;
+            }
+            else if (ch == L'<') templateCount++;
+            else if (ch == L'>') templateCount--;
+            else if (ch == L',' && bracketCount == 0 && templateCount == 0) {
+                std::wstring argW = lineText.substr(currentArgStart, i - currentArgStart);
+                std::string argA(argW.begin(), argW.end());
+                args.push_back({ argA, static_cast<long>(currentArgStart + 1), static_cast<long>(i + 1) });
+                currentArgStart = i + 1;
+            }
+            i++;
+        }
+        return args;
+    }
+
     struct DragState {
         bool isDragging = false;
         int targetParamId = -1;
@@ -22,7 +67,6 @@ namespace LivePT {
         int lastValue = 0;
         int oldValue = 0;
         int newValue = 0;
-
 
         bool pointBefore = false;
         long dragLine = 0;
@@ -37,6 +81,10 @@ namespace LivePT {
         std::string startTextValue = "";
         std::string oldValueStr = "";
         std::string lastValueStr = "";
+
+        // ДОБАВЛЕНО: Состояние пропорционального драга типа структуры
+        bool isProportionalStructDrag = false;
+        std::vector<float> originalStructValues;
     };
 
 
@@ -436,6 +484,94 @@ namespace LivePT {
         g_dragState.lastValue = g_dragState.oldValue;
     }
 
+    inline void DragProportionalStructValue(const POINT& pt, bool ctrl, bool shift) {
+        int id = g_dragState.targetParamId;
+        if (id == -1 || id >= static_cast<int>(paramDesc.size()) || !paramDesc[id].structInfo.isStruct) return;
+
+        // Вычисляем дельту мыши от точки клика
+        int deltaY = -(pt.y - g_dragState.oldMouseY);
+
+        CComVariant vtActiveDoc;
+        if (FAILED(AutoWrap(DISPATCH_PROPERTYGET, &vtActiveDoc, pDTE, L"ActiveDocument", 0)) || !vtActiveDoc.pdispVal) return;
+
+        std::wstring currentLineText = DownloadCurrentLineText(vtActiveDoc.pdispVal);
+        size_t openBrace = currentLineText.find(L'{');
+        if (openBrace == std::wstring::npos) { VariantClear(&vtActiveDoc); return; }
+
+        auto args = TokenizeCallArguments(currentLineText, openBrace);
+
+        // РЕВЕРСИВНЫЙ ЦИКЛ: С КОНЦА В НАЧАЛО
+        for (size_t reverseIdx = args.size(); reverseIdx > 0; --reverseIdx) {
+            size_t i = reverseIdx - 1;
+
+            if (i >= g_dragState.originalStructValues.size() || i >= paramDesc[id].structInfo.members.size()) continue;
+
+            if (g_dragState.originalStructValues[i] != -999999.0f) {
+                std::string newText = "";
+                char buf[64]{};
+
+                const auto& member = paramDesc[id].structInfo.members[i];
+                float startVal = g_dragState.originalStructValues[i];
+
+                // --- 1. ГИБРИДНЫЙ ПРОПОРЦИОНАЛЬНЫЙ НАКАТ ДЛЯ ЦЕЛОЧИСЛЕННЫХ ТИПОВ (ЦВЕТА) ---
+                if (member.typeName == "char" || member.typeName == "unsigned char" || member.typeName == "signed char" ||
+                    member.typeName == "int" || member.typeName == "unsigned int" || member.typeName == "long")
+                {
+                    float multiplier = 1.0f + (deltaY * 0.005f);
+                    if (multiplier < 0.0f) multiplier = 0.0f;
+
+                    // МАГИЯ: Умножаем пропорционально, но если стартовое значение было 0 — 
+                    // добавляем плоский аддитивный сдвиг, чтобы объект "ожил" и вылез из нуля!
+                    float computedVal = startVal * multiplier;
+                    if (startVal == 0.0f) {
+                        float speedScale = ctrl ? 5.0f : (shift ? 0.2f : 1.0f);
+                        computedVal += static_cast<float>(deltaY) * speedScale;
+                    }
+
+                    int intVal = static_cast<int>(computedVal + 0.5f);
+
+                    // Жесткий Clamp для unsigned char (0-255)
+                    if (member.typeName == "unsigned char") {
+                        if (intVal > 255) intVal = 255;
+                        if (intVal < 0) intVal = 0;
+                    }
+
+                    sprintf_s(buf, "%d", intVal);
+                    newText = buf;
+                }
+                // --- 2. ГИБРИДНЫЙ ПРОПОРЦИОНАЛЬНЫЙ НАКАТ ДЛЯ FLOAT ---
+                else
+                {
+                    float multiplier = 1.0f + (deltaY * 0.005f);
+                    if (multiplier < 0.0f) multiplier = 0.0f;
+
+                    float floatVal = startVal * multiplier;
+                    if (startVal == 0.0f) {
+                        float speedScale = ctrl ? 0.1f : (shift ? 0.001f : 0.01f);
+                        floatVal += static_cast<float>(deltaY) * speedScale;
+                    }
+
+                    sprintf_s(buf, "%.4f", floatVal);
+                    newText = buf;
+
+                    while (newText.length() > 2 && newText.back() == '0' && newText[newText.length() - 2] != '.') {
+                        newText.pop_back();
+                    }
+                    newText += "f";
+                }
+
+                long startCol = args[i].startColOffset;
+                long endCol = args[i].endColOffset;
+
+                ReplaceTextInActiveVS(g_dragState.dragLine, startCol, endCol, newText, startCol + static_cast<long>(newText.length()));
+                UpdateParamValue(id, newText);
+            }
+        }
+
+        VariantClear(&vtActiveDoc);
+    }
+
+
     inline bool HandleMouseDown(const POINT& pt) {
         if (!initVsEditor()) return false;
 
@@ -485,8 +621,9 @@ namespace LivePT {
             }
 
             int id = g_dragState.targetParamId;
+            long cursorColIdx = column - 1;
 
-            // 1. ОБРАБОТКА ЕНАМОВ ПРИ ДАБЛКЛИКЕ (Твой оригинальный блок)
+            // 1. ОБРАБОТКА ЕНАМОВ ПРИ ДАБЛКЛИКЕ
             if (id != -1 && paramDesc[id].enumInfo.isEnum) {
                 if (isDoubleClick) {
                     if (ParseMacroValueBoundaries(fileText, line, targetEvalAbsolutePos)) {
@@ -498,13 +635,62 @@ namespace LivePT {
                 return false;
             }
 
-            // 2. ДОБАВЛЕННЫЙ БЛОК: ОБРАБОТКА КАСТОМНЫХ СТРУКТУР ПРИ ДАБЛКЛИКЕ
-                        // 2. ОБРАБОТКА КАСТОМНЫХ СТРУКТУР ПРИ ДАБЛКЛИКЕ
-                        // 2. ОБРАБОТКА КАСТОМНЫХ СТРУКТУР ПРИ ДАБЛКЛИКЕ
+            // 2. ОБРАБОТКА КАСТОМНЫХ СТРУКТУР ПРИ ДАБЛКЛИКЕ / ПРОПОРЦИОНАЛЬНЫЙ ДРАГ ТИПА
             if (id != -1 && !paramDesc[id].enumInfo.isEnum) {
-                if (isDoubleClick) {
-                    if (ParseMacroValueBoundaries(fileText, line, targetEvalAbsolutePos)) {
+                size_t openBracePos = currentLineText.find(L'{');
 
+                if (openBracePos != std::wstring::npos && cursorColIdx < static_cast<long>(openBracePos)) {
+                    size_t firstNonSpace = currentLineText.find_first_not_of(L" \t");
+                    if (cursorColIdx >= static_cast<long>(firstNonSpace) && paramDesc[id].structInfo.isStruct) {
+
+                        g_dragState.isProportionalStructDrag = true;
+                        g_dragState.dragLine = line;
+                        g_dragState.oldMouseY = pt.y;
+                        g_dragState.originalStructValues.clear();
+
+                        StartUndoTransaction(L"LiveWheel Live Edit");
+
+                        std::wstring innerArgsW = currentLineText.substr(openBracePos + 1);
+                        size_t closeBracePos = innerArgsW.rfind(L'}');
+                        if (closeBracePos != std::wstring::npos) {
+                            innerArgsW = innerArgsW.substr(0, closeBracePos);
+                        }
+
+                        std::string innerArgs(innerArgsW.begin(), innerArgsW.end());
+                        std::stringstream ss(innerArgs);
+                        std::string token;
+
+                        while (std::getline(ss, token, ',')) {
+                            size_t eqPos = token.find('=');
+                            if (eqPos == std::string::npos) eqPos = token.find(':');
+                            std::string valPart = (eqPos != std::string::npos) ? token.substr(eqPos + 1) : token;
+
+                            valPart.erase(0, valPart.find_first_not_of(" \t\r\n"));
+                            valPart.erase(valPart.find_last_not_of(" \t\r\n") + 1);
+                            while (!valPart.empty() && (valPart.back() == 'f' || valPart.back() == 'F' ||
+                                valPart.back() == 'u' || valPart.back() == 'U' ||
+                                valPart.back() == 'l' || valPart.back() == 'L')) {
+                                valPart.pop_back();
+                            }
+
+                            float startVal = 0.0f;
+                            auto [ptr, ec] = std::from_chars(valPart.data(), valPart.data() + valPart.size(), startVal);
+                            if (ec == std::errc() && ptr == (valPart.data() + valPart.size())) {
+                                g_dragState.originalStructValues.push_back(startVal);
+                            }
+                            else {
+                                g_dragState.originalStructValues.push_back(-999999.0f);
+                            }
+                        }
+
+                        VariantClear(&vtActiveDoc);
+                        return true;
+                    }
+                }
+
+                if (isDoubleClick) {
+                    g_dragState.isProportionalStructDrag = false;
+                    if (ParseMacroValueBoundaries(fileText, line, targetEvalAbsolutePos)) {
                         std::string typeNameStr = paramDesc[id].value.type().name();
                         auto& registry = GetTypeCallbackRegistry();
 
@@ -512,12 +698,9 @@ namespace LivePT {
                             long targetLine = g_dragState.dragLine;
                             long targetStartCol = g_dragState.dragStartCol;
 
-                            // ИСПРАВЛЕНО: Лямбда больше не трогает COM/DTE напрямую. 
-                            // Она просто безопасно складывает текст в буфер из любого потока!
                             std::function<void(std::string)> vsUpdater = [targetLine, targetStartCol](std::string newCodeText) {
                                 PushPendingWrite(targetLine, targetStartCol, newCodeText);
                                 };
-
                             registry[typeNameStr](paramDesc[id].value, vsUpdater);
                         }
                     }
@@ -527,12 +710,8 @@ namespace LivePT {
                 }
             }
 
-
-
-            // 3. ПАРСИНГ ОБЫЧНЫХ ЧИСЕЛ ДЛЯ ДРАГА (Твой оригинальный блок)
-            long cursorColIdx = column - 1;
-
-            if (cursorColIdx >= 0 && cursorColIdx < static_cast<long>(currentLineText.length())) {
+            // 3. ПАРСИНГ ОБЫЧНЫХ ЧИСЕЛ ДЛЯ ДРАГА
+            if (!g_dragState.isProportionalStructDrag && cursorColIdx >= 0 && cursorColIdx < static_cast<long>(currentLineText.length())) {
                 long startCol = cursorColIdx;
                 long endCol = cursorColIdx;
 
@@ -571,7 +750,7 @@ namespace LivePT {
             VariantClear(&vtActiveDoc);
         }
 
-        return clickedInsideNumber;
+        return (clickedInsideNumber || g_dragState.isProportionalStructDrag);
     }
 
 
@@ -658,21 +837,25 @@ namespace LivePT {
     }
 
 
+    // ОБНОВЛЕННЫЙ МЕТОД HANDLE_MOUSE_DRAG
     inline void HandleMouseDrag(const POINT& pt, bool ctrl, bool shift) {
-
-        if (!g_dragState.isDragging) return;
+        if (!g_dragState.isDragging && !g_dragState.isProportionalStructDrag) return;
 
         if (!g_hShieldWnd) {
             CreateDragShield(pt);
         }
 
-        DragNumericValue(pt, ctrl, shift);
+        if (g_dragState.isProportionalStructDrag) {
+            DragProportionalStructValue(pt, ctrl, shift);
+        }
+        else {
+            DragNumericValue(pt, ctrl, shift);
+        }
     }
 
-
+    // ОБНОВЛЕННЫЙ МЕТОД HANDLE_MOUSE_UP
     inline void HandleMouseUp() {
-
-        if (!g_dragState.isDragging) {
+        if (!g_dragState.isDragging && !g_dragState.isProportionalStructDrag) {
             if (g_hShieldWnd) {
                 ReleaseCapture();
                 DestroyWindow(g_hShieldWnd);
@@ -689,7 +872,9 @@ namespace LivePT {
         SaveActiveDocument();
 
         g_dragState.isDragging = false;
+        g_dragState.isProportionalStructDrag = false;
         g_dragState.targetParamId = -1;
+        g_dragState.originalStructValues.clear();
 
         if (g_hShieldWnd) {
             ReleaseCapture();
@@ -702,6 +887,7 @@ namespace LivePT {
             g_vsThreadId = 0;
         }
     }
+
 
     inline bool IsCursorOverActiveVSWindow() {
         if (!pDTE) return false;
