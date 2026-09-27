@@ -213,13 +213,13 @@ namespace LivePT {
                         };
                 }
                 else {
+                    // ÌÎÄÅĞÍÈÇÈĞÎÂÀÍÍÛÉ ÁËÎÊ ÄÅÑÅĞÈÀËÈÇÀÖÈÈ ÑÒĞÓÊÒÓĞ (ÂÛÑÎÊÎÏĞÎÈÇÂÎÄÈÒÅËÜÍÛÉ ÙÈÒ)
                     paramDesc[target_id].stringUpdater = [](std::any& targetAny, const std::string& textValue) {
                         size_t openBrace = textValue.find('{');
                         size_t closeBrace = textValue.rfind('}');
                         if (openBrace == std::string::npos || closeBrace == std::string::npos || closeBrace <= openBrace) return;
 
                         std::string rawInnerArgs = textValue.substr(openBrace + 1, closeBrace - openBrace - 1);
-
                         std::string innerArgs = "";
                         bool inComment = false;
 
@@ -230,19 +230,18 @@ namespace LivePT {
                             if (inComment) {
                                 if (c == '\n' || c == '\r') {
                                     inComment = false;
-                                    innerArgs += c; 
+                                    innerArgs += c;
                                 }
                                 continue;
                             }
 
-                            // skip comments
                             if ((c == '/' && nextC == '/') || c == '#') {
                                 inComment = true;
                                 if (c == '/') i++;
                                 continue;
                             }
 
-                            innerArgs += c; 
+                            innerArgs += c;
                         }
 
                         int globalId = GlobalEvalRegistry<TargetType, AbsoluteFile, Line, Column>::cached_id;
@@ -291,40 +290,66 @@ namespace LivePT {
                                 token.erase(token.find_last_not_of(" \t\r\n") + 1);
                             }
 
-                            bool isNumeric = false;
-                            if (!token.empty()) {
-                                unsigned char firstChar = static_cast<unsigned char>(token[0]);
-                                isNumeric = std::isdigit(firstChar) || firstChar == '-' || firstChar == '.';
-                            }
-                            bool isBool = (token == "true" || token == "false" || token == "1" || token == "0");
-
                             auto& member = paramDesc[globalId].structInfo.members[fieldIndex];
 
                             if (member.offset + member.size <= sizeof(TargetType)) {
                                 char* fieldAddress = byteBase + member.offset;
 
-                                if (isNumeric || isBool) {
-                                    try {
-                                        if (member.typeName == "char" || member.typeName == "unsigned char" || member.typeName == "signed char") {
-                                            *reinterpret_cast<unsigned char*>(fieldAddress) = static_cast<unsigned char>(std::stoi(token));
-                                        }
-                                        else if (member.typeName == "int" || member.typeName == "unsigned int") {
-                                            *reinterpret_cast<int*>(fieldAddress) = std::stoi(token);
-                                        }
-                                        else if (member.typeName == "float") {
-                                            *reinterpret_cast<float*>(fieldAddress) = std::stof(token);
-                                        }
-                                        else if (member.typeName == "double") {
-                                            *reinterpret_cast<double*>(fieldAddress) = std::stod(token);
-                                        }
-                                        else if (member.typeName == "bool") {
-                                            *reinterpret_cast<bool*>(fieldAddress) = (token == "true" || token == "1");
-                                        }
-                                    }
-                                    catch (...) {}
+                                // Î÷èñòêà ñóôôèêñîâ ëèòåğàëîâ C++ (f, F, u, L, ULL), ÷òîáû íå ëîìàòü std::from_chars
+                                while (!token.empty() && (token.back() == 'f' || token.back() == 'F' ||
+                                    token.back() == 'u' || token.back() == 'U' ||
+                                    token.back() == 'l' || token.back() == 'L')) {
+                                    token.pop_back();
                                 }
-                                else {
-                                    member.typeName = "";
+
+                                const char* strStart = token.data();
+                                const char* strEnd = token.data() + token.size();
+
+                                // --- ÈÍÏËİÉÑ ÍÀÊÀÒ ÈÇÌÅÍÅÍÈÉ ÍÀ ÁÀÇÅ NOEXCEPT STD::FROM_CHARS ---
+                                if (member.typeName == "float") {
+                                    float val = 0.0f;
+                                    auto [ptr, ec] = std::from_chars(strStart, strEnd, val);
+                                    if (ec == std::errc() && ptr == strEnd) {
+                                        *reinterpret_cast<float*>(fieldAddress) = val;
+                                    }
+                                }
+                                else if (member.typeName == "double") {
+                                    double val = 0.0;
+                                    auto [ptr, ec] = std::from_chars(strStart, strEnd, val);
+                                    if (ec == std::errc() && ptr == strEnd) {
+                                        *reinterpret_cast<double*>(fieldAddress) = val;
+                                    }
+                                }
+                                else if (member.typeName == "int" || member.typeName == "unsigned int" ||
+                                    member.typeName == "long" || member.typeName == "unsigned long" ||
+                                    member.typeName == "__int64" || member.typeName == "unsigned __int64") {
+                                    long long val = 0;
+                                    auto [ptr, ec] = std::from_chars(strStart, strEnd, val);
+                                    if (ec == std::errc() && ptr == strEnd) {
+                                        if (member.typeName == "int") *reinterpret_cast<int*>(fieldAddress) = static_cast<int>(val);
+                                        else if (member.typeName == "unsigned int") *reinterpret_cast<unsigned int*>(fieldAddress) = static_cast<unsigned int>(val);
+                                        else if (member.typeName == "long") *reinterpret_cast<long*>(fieldAddress) = static_cast<long>(val);
+                                        else if (member.typeName == "unsigned long") *reinterpret_cast<unsigned long*>(fieldAddress) = static_cast<unsigned long>(val);
+                                        else if (member.typeName == "__int64") *reinterpret_cast<long long*>(fieldAddress) = val;
+                                        else if (member.typeName == "unsigned __int64") *reinterpret_cast<unsigned long long*>(fieldAddress) = val;
+                                    }
+                                }
+                                else if (member.typeName == "char" || member.typeName == "unsigned char" || member.typeName == "signed char") {
+                                    int val = 0; // from_chars íå ïîääåğæèâàåò ïàğñèíã íàïğÿìóş â char êàê ÷èñëî
+                                    auto [ptr, ec] = std::from_chars(strStart, strEnd, val);
+                                    if (ec == std::errc() && ptr == strEnd) {
+                                        if (member.typeName == "char") *reinterpret_cast<char*>(fieldAddress) = static_cast<char>(val);
+                                        else if (member.typeName == "unsigned char") *reinterpret_cast<unsigned char*>(fieldAddress) = static_cast<unsigned char>(val);
+                                        else if (member.typeName == "signed char") *reinterpret_cast<signed char*>(fieldAddress) = static_cast<signed char>(val);
+                                    }
+                                }
+                                else if (member.typeName == "bool") {
+                                    if (token == "true" || token == "1") {
+                                        *reinterpret_cast<bool*>(fieldAddress) = true;
+                                    }
+                                    else if (token == "false" || token == "0") {
+                                        *reinterpret_cast<bool*>(fieldAddress) = false;
+                                    }
                                 }
                             }
                             fieldIndex++;
