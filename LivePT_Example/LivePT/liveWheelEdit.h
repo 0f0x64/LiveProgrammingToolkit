@@ -495,8 +495,18 @@ namespace LivePT {
         if (FAILED(AutoWrap(DISPATCH_PROPERTYGET, &vtActiveDoc, pDTE, L"ActiveDocument", 0)) || !vtActiveDoc.pdispVal) return;
 
         std::wstring currentLineText = DownloadCurrentLineText(vtActiveDoc.pdispVal);
-        size_t openBrace = currentLineText.find(L'{');
+
+        // ================== ТОЧЕЧНЫЙ ФИКС ДЛЯ ДВУХ МАКРОСОВ НА СТРОКЕ ==================
+        // Нам нужно найти '{' именно ТЕКУЩЕГО макроса, а не самый первый на строке.
+        // Используем g_dragState.dragStartCol как опорную точку, так как она хранит
+        // позицию открывающей КРУГЛОЙ скобки '(' текущего макроса eval(...)
+        size_t openBrace = std::wstring::npos;
+        if (g_dragState.dragStartCol > 0 && static_cast<size_t>(g_dragState.dragStartCol) <= currentLineText.length()) {
+            openBrace = currentLineText.find(L'{', g_dragState.dragStartCol - 1);
+        }
+        if (openBrace == std::wstring::npos) openBrace = currentLineText.find(L'{');
         if (openBrace == std::wstring::npos) { VariantClear(&vtActiveDoc); return; }
+        // ==============================================================================
 
         auto args = TokenizeCallArguments(currentLineText, openBrace);
 
@@ -513,15 +523,12 @@ namespace LivePT {
                 const auto& member = paramDesc[id].structInfo.members[i];
                 float startVal = g_dragState.originalStructValues[i];
 
-                // --- 1. ГИБРИДНЫЙ ПРОПОРЦИОНАЛЬНЫЙ НАКАТ ДЛЯ ЦЕЛОЧИСЛЕННЫХ ТИПОВ (ЦВЕТА) ---
                 if (member.typeName == "char" || member.typeName == "unsigned char" || member.typeName == "signed char" ||
                     member.typeName == "int" || member.typeName == "unsigned int" || member.typeName == "long")
                 {
                     float multiplier = 1.0f + (deltaY * 0.005f);
                     if (multiplier < 0.0f) multiplier = 0.0f;
 
-                    // МАГИЯ: Умножаем пропорционально, но если стартовое значение было 0 — 
-                    // добавляем плоский аддитивный сдвиг, чтобы объект "ожил" и вылез из нуля!
                     float computedVal = startVal * multiplier;
                     if (startVal == 0.0f) {
                         float speedScale = ctrl ? 5.0f : (shift ? 0.2f : 1.0f);
@@ -530,7 +537,6 @@ namespace LivePT {
 
                     int intVal = static_cast<int>(computedVal + 0.5f);
 
-                    // Жесткий Clamp для unsigned char (0-255)
                     if (member.typeName == "unsigned char") {
                         if (intVal > 255) intVal = 255;
                         if (intVal < 0) intVal = 0;
@@ -539,7 +545,6 @@ namespace LivePT {
                     sprintf_s(buf, "%d", intVal);
                     newText = buf;
                 }
-                // --- 2. ГИБРИДНЫЙ ПРОПОРЦИОНАЛЬНЫЙ НАКАТ ДЛЯ FLOAT ---
                 else
                 {
                     float multiplier = 1.0f + (deltaY * 0.005f);
@@ -570,6 +575,7 @@ namespace LivePT {
 
         VariantClear(&vtActiveDoc);
     }
+
 
 
     inline bool HandleMouseDown(const POINT& pt) {
@@ -637,23 +643,69 @@ namespace LivePT {
 
             // 2. ОБРАБОТКА КАСТОМНЫХ СТРУКТУР ПРИ ДАБЛКЛИКЕ / ПРОПОРЦИОНАЛЬНЫЙ ДРАГ ТИПА
             if (id != -1 && !paramDesc[id].enumInfo.isEnum) {
-                size_t openBracePos = currentLineText.find(L'{');
 
+                // Вычисляем точное начало текущей строки в байтах
+                size_t lineStartOffset = 0; long currentLineIdx = 1;
+                while (currentLineIdx < line) {
+                    lineStartOffset = fileText.find(L'\n', lineStartOffset) + 1;
+                    currentLineIdx++;
+                }
+
+                // Локальная позиция текущего слова eval на этой строке
+                size_t localEvalPosInLine = std::wstring::npos;
+                if (targetEvalAbsolutePos != std::wstring::npos && targetEvalAbsolutePos >= lineStartOffset) {
+                    localEvalPosInLine = targetEvalAbsolutePos - lineStartOffset;
+                }
+
+                // Ищем открывающую фигурую скобку СТРОГО после нашего eval, а не с начала строки
+                size_t openBracePos = (localEvalPosInLine != std::wstring::npos)
+                    ? currentLineText.find(L'{', localEvalPosInLine)
+                    : currentLineText.find(L'{');
+
+                // Ищем закрывающую круглую скобку ) нашего макроса eval(...)
+                std::wstring macroName = GetConfiguredMacroName();
+                size_t openBracketPos = (localEvalPosInLine != std::wstring::npos)
+                    ? currentLineText.find(L'(', localEvalPosInLine + macroName.length())
+                    : std::wstring::npos;
+
+                size_t closeBracketPos = std::wstring::npos;
+                if (openBracketPos != std::wstring::npos) {
+                    size_t globalCloseBracket = FindCloseBracket(fileText, lineStartOffset + openBracketPos);
+                    if (globalCloseBracket != std::wstring::npos) {
+                        closeBracketPos = globalCloseBracket - lineStartOffset;
+                    }
+                }
+
+                // Проверяем, что клик пришелся СТРОГО внутрь зоны инициализации типа
                 if (openBracePos != std::wstring::npos && cursorColIdx < static_cast<long>(openBracePos)) {
-                    size_t firstNonSpace = currentLineText.find_first_not_of(L" \t");
-                    if (cursorColIdx >= static_cast<long>(firstNonSpace) && paramDesc[id].structInfo.isStruct) {
+
+                    long startValidZone = (localEvalPosInLine != std::wstring::npos) ? static_cast<long>(localEvalPosInLine) : 0;
+
+                    if (cursorColIdx >= startValidZone && paramDesc[id].structInfo.isStruct) {
 
                         g_dragState.isProportionalStructDrag = true;
                         g_dragState.dragLine = line;
                         g_dragState.oldMouseY = pt.y;
                         g_dragState.originalStructValues.clear();
 
+                        g_dragState.dragStartCol = (openBracketPos != std::wstring::npos) ? static_cast<long>(openBracketPos) + 1 : static_cast<long>(openBracePos);
+
                         StartUndoTransaction(L"LiveWheel Live Edit");
 
-                        std::wstring innerArgsW = currentLineText.substr(openBracePos + 1);
-                        size_t closeBracePos = innerArgsW.rfind(L'}');
-                        if (closeBracePos != std::wstring::npos) {
-                            innerArgsW = innerArgsW.substr(0, closeBracePos);
+                        // Вырезаем аргументы строго внутри фигурных скобок ИМЕННО ЭТОЙ структуры
+                        size_t closeBracePos = currentLineText.find(L'}', openBracePos);
+                        std::wstring innerArgsW = L"";
+                        if (closeBracePos != std::wstring::npos && closeBracePos > openBracePos) {
+                            if (closeBracketPos != std::wstring::npos && closeBracePos > closeBracketPos) {
+                                closeBracePos = currentLineText.rfind(L'}', closeBracketPos);
+                            }
+                            if (closeBracePos != std::wstring::npos && closeBracePos > openBracePos) {
+                                innerArgsW = currentLineText.substr(openBracePos + 1, closeBracePos - openBracePos - 1);
+                            }
+                        }
+
+                        if (innerArgsW.empty()) {
+                            innerArgsW = currentLineText.substr(openBracePos + 1, (closeBracketPos != std::wstring::npos ? closeBracketPos : currentLineText.length()) - openBracePos - 1);
                         }
 
                         std::string innerArgs(innerArgsW.begin(), innerArgsW.end());
@@ -688,6 +740,7 @@ namespace LivePT {
                     }
                 }
 
+                // ОБРАБОТКА ДАБЛКЛИКА ДЛЯ КАСТОМНЫХ ОКРУЖЕНИЙ (ЦВЕТОВЫЕ ПАЛИТРЫ И Т.Д.)
                 if (isDoubleClick) {
                     g_dragState.isProportionalStructDrag = false;
                     if (ParseMacroValueBoundaries(fileText, line, targetEvalAbsolutePos)) {
@@ -709,6 +762,7 @@ namespace LivePT {
                     return false;
                 }
             }
+
 
             // 3. ПАРСИНГ ОБЫЧНЫХ ЧИСЕЛ ДЛЯ ДРАГА
             if (!g_dragState.isProportionalStructDrag && cursorColIdx >= 0 && cursorColIdx < static_cast<long>(currentLineText.length())) {

@@ -108,11 +108,12 @@ Primitive primitive[3];
 void UpdateSceneParams() {
 
     primitive[0].Set(Primitive{
-        .pos = eval(pos2{-225,-348}),
+        .pos = eval(pos2{-227.88f,-367.14f}),
         .size = eval(size2{119.435f,113.675f}),
         .type = eval(ptype::circle),
         .show = eval(true),
-        .color = eval(color3{183,128,2})
+
+        .color = eval(color3{210,147,2})
         });
 
     
