@@ -749,8 +749,14 @@ namespace LivePT {
             }
         }
 
+        std::string normalizedPath = LivePT::NormalizePath(currentActiveFile.c_str());
+        std::string vsLookupKey = normalizedPath + ":" + std::to_string(finalValidRuntimeId);
+        int targetId = getID(vsLookupKey);
+
         if (finalValidRuntimeId != -1) {
 
+            LivePT::getParamDesc()[targetId].line = static_cast<int>(line);
+            LivePT::getParamDesc()[targetId].column = static_cast<int>(column);
             ParseAndStoreParamValue(fileText, currentActiveFile, finalValidRuntimeId);
         }
 
