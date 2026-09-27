@@ -4,5 +4,5 @@ primitive[1].Set(Primitive{
     .size = eval(size2{123.6874f,114.0402f}),
     .type = eval(ptype::box),
     .show = eval(true),
-    .color = eval(color3{39,70,32})
+    .color = eval(color3{ 34, 95, 7 })
     });

@@ -57,7 +57,7 @@ UINT_PTR CALLBACK RealtimeColorHook(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM 
             int bVal = GetDlgItemInt(hDlg, 0x02C4, NULL, FALSE);
 
             if (rVal <= 255 && gVal <= 255 && bVal <= 255) {
-                std::string code = "Primitive::color3{ " + std::to_string(rVal) + ", " + std::to_string(gVal) + ", " + std::to_string(bVal) + " }";
+                std::string code = "color3{ " + std::to_string(rVal) + ", " + std::to_string(gVal) + ", " + std::to_string(bVal) + " }";
                 ctx->updateVsCallback(code);
             }
         }
@@ -77,7 +77,7 @@ void AsyncColorPickerWorker(HWND hParentWnd, color3 currentColor, RealtimeColorC
     cc.lpfnHook = RealtimeColorHook;
 
     if (ChooseColorA(&cc) == FALSE) {
-        std::string rollback = "Primitive::color3{ " + std::to_string(currentColor.r) + ", " + std::to_string(currentColor.g) + ", " + std::to_string(currentColor.b) + " }";
+        std::string rollback = "color3{ " + std::to_string(currentColor.r) + ", " + std::to_string(currentColor.g) + ", " + std::to_string(currentColor.b) + " }";
         pSharedCtx->updateVsCallback(rollback);
     }
 

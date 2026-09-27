@@ -66,19 +66,19 @@ LivePT::ProcessEdit();
 
 #### ✅ Что МОЖНО оборачивать в `eval()`:
 1. **Базовые типы констант:** Любые числовые литералы (`int`, `float`), включая значения с суффиксами (например, `eval(35.6f)`, `eval(-47.01)`).
-2. **Перечисления:** Строго типизированные и классические перечисления (например, `eval(Primitive::ptype::box)`).
+2. **Перечисления:** Строго типизированные и классические перечисления (например, `eval(ptype::box)`).
 3. **Именованные агрегаты (Явное указание имени типа):** Передача структуры с явным вызовом конструктора или типа:
    ```cpp
-   // Библиотека через DbgHelp найдет тип "Primitive" и сопоставит его внутреннюю анатомию
-   primitive.Set(eval(Primitive{ -47.01f, -299, Primitive::ptype::box, Primitive::show_t::on, {120, 0, 0} }));
+   // Библиотека через DbgHelp найдет тип и сопоставит его внутреннюю анатомию
+   primitive.Set(eval(Primitive{ -47.01f, -299, ptype::box, show_t::on, {120, 0, 0} }));
    ```
 4. **Именованные агрегаты с C++20 Designated Initializers:** Инициализация структур с явным указанием полей. LivePT автоматически сопоставит смещения полей через `DbgHelp` и обновит нужные байты в памяти:
    ```cpp
    primitive.Set(Primitive{
        .x = eval(-47.01),
        .y = eval(-299),
-       .type = eval(Primitive::ptype::box),
-       .color = eval(Primitive::color3{ .r = 150, .g = 109, .b = 85 })
+       .type = eval(ptype::box),
+       .color = eval(color3{ .r = 150, .g = 109, .b = 85 })
    });
    ```
 5. **Смешивание литералов и runtime-переменных внутри агрегата:** При инициализации именованного агрегата вы можете свободно передавать внутрь `eval(...)` как фиксированные константы, так и динамические переменные (например, `x` и `y`). Парсер библиотеки автоматически определит текстовые токены переменных и пропустит их при интерактивном обновлении, изменяя исключительно литералы:
@@ -87,9 +87,9 @@ LivePT::ProcessEdit();
    primitive.Set(Primitive{
        .x = eval(26.40),
        .y = eval(-276),
-       .type = eval(Primitive::ptype::roundbox),
-       .show = eval(Primitive::show_t::on),
-       .color = eval(Primitive::color3{
+       .type = eval(ptype::roundbox),
+       .show = eval(show_t::on),
+       .color = eval(color3{
            .r = x,
            .g = 62,
            .b = y
@@ -160,19 +160,19 @@ Once your application is running, you can adjust parameters directly within your
 
 #### ✅ What CAN be wrapped inside `eval()`:
 1. **Basic Constant Literals:** Any primitive numerical constants (`int`, `float`), including values with type suffixes (e.g., `eval(35.6f)`, `eval(-47.01)`).
-2. **Enumerations:** Both scoped (`enum class`) and unscoped enums (e.g., `eval(Primitive::ptype::box)`).
+2. **Enumerations:** Both scoped (`enum class`) and unscoped enums (e.g., `eval(ptype::box)`).
 3. **Named Aggregates (Explicit Type Names):** Passing a struct with an explicit constructor or type initialization:
    ```cpp
-   // The toolkit looks up the "Primitive" type structure via DbgHelp and maps its internal anatomy layout
-   primitive.Set(eval(Primitive{ -47.01f, -299, Primitive::ptype::box, Primitive::show_t::on, {120, 0, 0} }));
+   // The toolkit looks up the  type structure via DbgHelp and maps its internal anatomy layout
+   primitive.Set(eval(Primitive{ -47.01f, -299, ptype::box, show_t::on, {120, 0, 0} }));
    ```
 4. **Named Aggregates with C++20 Designated Initializers:** Struct initialization with explicit member naming. LivePT uses `DbgHelp` to map field offsets and updates raw bytes safely:
    ```cpp
    primitive.Set(Primitive{
        .x = eval(-47.01),
        .y = eval(-299),
-       .type = eval(Primitive::ptype::box),
-       .color = eval(Primitive::color3{ .r = 150, .g = 109, .b = 85 })
+       .type = eval(ptype::box),
+       .color = eval(color3{ .r = 150, .g = 109, .b = 85 })
    });
    ```
 5. **Mixing Literals and Runtime Variables inside Aggregates:** When initializing a named aggregate, you can pass both fixed constants and dynamic variables (e.g., `x` and `y`) inside the `eval(...)` macro block. The toolkit's parser automatically identifies variable text tokens and skips them during update cycles, modifying only literal constants:
@@ -181,9 +181,9 @@ Once your application is running, you can adjust parameters directly within your
    primitive.Set(Primitive{
        .x = eval(26.40),
        .y = eval(-276),
-       .type = eval(Primitive::ptype::roundbox),
-       .show = eval(Primitive::show_t::on),
-       .color = eval(Primitive::color3{
+       .type = eval(ptype::roundbox),
+       .show = eval(show_t::on),
+       .color = eval(color3{
            .r = x,
            .g = 62,
            .b = y

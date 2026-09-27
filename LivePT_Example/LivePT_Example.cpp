@@ -113,7 +113,7 @@ void UpdateSceneParams() {
         .type = eval(ptype::circle),
         .show = eval(true),
 
-        .color = eval(color3{210,147,2})
+        .color = eval(color3{239,12,63})
         });
 
     
@@ -124,7 +124,7 @@ void UpdateSceneParams() {
         .size = eval(size2{115.3995f,106.2135f}),
         .type = eval(ptype::roundbox),
         .show = eval(true),
-        .color = eval(color3{117,137,197})
+        .color = eval(color3{ 82, 108, 233 })
         });
 
 }
