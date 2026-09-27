@@ -28,6 +28,8 @@
     #include <source_location>
     #include <atlbase.h>
     #include <tlhelp32.h>
+    #include <functional>
+    #include <mutex>
 
     #pragma comment(lib, "dbghelp.lib")
     #include <dbghelp.h>
@@ -136,6 +138,7 @@ namespace LivePT {
         #endif
 
         #if LivePT_WheelEditMode
+            FlushPendingWritesToVS();
             Update();
         #endif
 

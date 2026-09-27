@@ -8,6 +8,10 @@
 
 namespace LivePT {
 
+    inline void SaveActiveDocument();
+    inline bool ReplaceTextInActiveVS(long line, long visualStartCol, long visualEndCol, const std::string& newText, long newCursorPhysicalCol);
+    
+
     inline void HandleMouseDrag(const POINT& pt, bool ctrl, bool shift);
     inline void HandleMouseUp();
 
@@ -37,6 +41,69 @@ namespace LivePT {
 
 
     static DragState g_dragState;
+
+
+    // Структура отложенной команды на запись в VS
+    struct PendingVsWrite {
+        bool hasPending = false;
+        long line = 0;
+        long startCol = 0;
+        std::string codeText;
+    };
+
+    static PendingVsWrite g_pendingWrite;
+    static std::mutex g_writeMutex; // Защита от одновременного доступа из двух потоков
+
+    // Эту функцию будет вызывать фоновый поток хука (она просто складывает текст в буфер)
+    inline void PushPendingWrite(long line, long startCol, const std::string& text) {
+        std::lock_guard<std::mutex> lock(g_writeMutex);
+        g_pendingWrite.line = line;
+        g_pendingWrite.startCol = startCol;
+        g_pendingWrite.codeText = text;
+        g_pendingWrite.hasPending = true;
+    }
+
+    // Эту функцию мы будем вызывать КАЖДЫЙ КАДР из главного потока игры (внутри ProcessEdit)
+        // Эту функцию мы вызываем КАЖДЫЙ КАДР из главного потока игры (внутри ProcessEdit)
+    inline void FlushPendingWritesToVS() {
+        std::string textToWrite = ""; // ИСПРАВЛЕНО: единое имя переменной без двоеточий
+        long line = 0;
+        long startCol = 0;
+        bool needWrite = false;
+
+        {
+            std::lock_guard<std::mutex> lock(g_writeMutex);
+            if (g_pendingWrite.hasPending) {
+                textToWrite = g_pendingWrite.codeText; // ИСПРАВЛЕНО
+                line = g_pendingWrite.line;
+                startCol = g_pendingWrite.startCol;
+                needWrite = true;
+                g_pendingWrite.hasPending = false; // Сбрасываем флаг
+            }
+        }
+
+        if (needWrite && !textToWrite.empty()) { // ИСПРАВЛЕНО
+            long newCursorPhysicalCol = startCol + static_cast<long>(textToWrite.length()); // ИСПРАВЛЕНО
+
+            StartUndoTransaction(L"LivePT Realtime Callback Change");
+
+            // ВЫПОЛНЯЕТСЯ СТРОГО В ИГРОВОМ ПОТОКЕ — ОШИБКИ БОЛЬШЕ НЕ БУДЕТ!
+            ReplaceTextInActiveVS(
+                line,
+                startCol,
+                startCol + static_cast<long>(g_dragState.currentTextLength),
+                textToWrite, // ИСПРАВЛЕНО
+                newCursorPhysicalCol
+            );
+
+            EndUndoTransaction();
+            SaveActiveDocument();
+
+            g_dragState.currentTextLength = textToWrite.length(); // ИСПРАВЛЕНО
+        }
+    }
+
+
     static HWND g_hShieldWnd = NULL;
     static DWORD g_vsThreadId = 0;
 
@@ -392,7 +459,7 @@ namespace LivePT {
             g_dragState.lastClickPt = pt;
 
             size_t targetEvalAbsolutePos = std::wstring::npos;
-            g_dragState.targetParamId = -1; 
+            g_dragState.targetParamId = -1;
 
             std::wstring currentLineText = DownloadCurrentLineText(vtActiveDoc.pdispVal);
 
@@ -419,17 +486,50 @@ namespace LivePT {
 
             int id = g_dragState.targetParamId;
 
+            // 1. ОБРАБОТКА ЕНАМОВ ПРИ ДАБЛКЛИКЕ (Твой оригинальный блок)
             if (id != -1 && paramDesc[id].enumInfo.isEnum) {
                 if (isDoubleClick) {
                     if (ParseMacroValueBoundaries(fileText, line, targetEvalAbsolutePos)) {
                         InitMultiEnumSelection(id);
                     }
                 }
-                g_dragState.targetParamId = -1; 
+                g_dragState.targetParamId = -1;
                 VariantClear(&vtActiveDoc);
                 return false;
             }
 
+            // 2. ДОБАВЛЕННЫЙ БЛОК: ОБРАБОТКА КАСТОМНЫХ СТРУКТУР ПРИ ДАБЛКЛИКЕ
+                        // 2. ОБРАБОТКА КАСТОМНЫХ СТРУКТУР ПРИ ДАБЛКЛИКЕ
+                        // 2. ОБРАБОТКА КАСТОМНЫХ СТРУКТУР ПРИ ДАБЛКЛИКЕ
+            if (id != -1 && !paramDesc[id].enumInfo.isEnum) {
+                if (isDoubleClick) {
+                    if (ParseMacroValueBoundaries(fileText, line, targetEvalAbsolutePos)) {
+
+                        std::string typeNameStr = paramDesc[id].value.type().name();
+                        auto& registry = GetTypeCallbackRegistry();
+
+                        if (registry.find(typeNameStr) != registry.end()) {
+                            long targetLine = g_dragState.dragLine;
+                            long targetStartCol = g_dragState.dragStartCol;
+
+                            // ИСПРАВЛЕНО: Лямбда больше не трогает COM/DTE напрямую. 
+                            // Она просто безопасно складывает текст в буфер из любого потока!
+                            std::function<void(std::string)> vsUpdater = [targetLine, targetStartCol](std::string newCodeText) {
+                                PushPendingWrite(targetLine, targetStartCol, newCodeText);
+                                };
+
+                            registry[typeNameStr](paramDesc[id].value, vsUpdater);
+                        }
+                    }
+                    g_dragState.targetParamId = -1;
+                    VariantClear(&vtActiveDoc);
+                    return false;
+                }
+            }
+
+
+
+            // 3. ПАРСИНГ ОБЫЧНЫХ ЧИСЕЛ ДЛЯ ДРАГА (Твой оригинальный блок)
             long cursorColIdx = column - 1;
 
             if (cursorColIdx >= 0 && cursorColIdx < static_cast<long>(currentLineText.length())) {
@@ -456,8 +556,8 @@ namespace LivePT {
                     std::wstring numW = currentLineText.substr(startCol, endCol - startCol);
                     std::string cleanText(numW.begin(), numW.end());
 
-                    g_dragState.dragLine = line; 
-                    g_dragState.dragStartCol = startCol + 1; 
+                    g_dragState.dragLine = line;
+                    g_dragState.dragStartCol = startCol + 1;
                     g_dragState.currentTextLength = cleanText.length();
                     g_dragState.oldMouseY = pt.y;
 
@@ -473,6 +573,7 @@ namespace LivePT {
 
         return clickedInsideNumber;
     }
+
 
     inline void DragNumericValue(const POINT& pt, bool ctrl, bool shift) {
 

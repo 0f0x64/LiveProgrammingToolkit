@@ -5,6 +5,8 @@
 #include "LivePT/LivePT.h" // incude it for using lib
 // ------------------------------------------------------------
 
+
+
 #define TIMER_ID 1
 
 //simple class for demo purposes
@@ -88,6 +90,8 @@ public:
 // Global instance array of primitives
 Primitive primitive[4];
 
+#include "colorPicker.h"
+
 // =================== USER SPACE ===================
 
 void UpdateSceneParams() {
@@ -149,11 +153,11 @@ void UpdateSceneParams() {
 
     
     primitive[3].Set(Primitive{
-            .x = eval(135.6f),
+            .x = eval(45.6f),
             .y = eval(-158),
             .type = eval(Primitive::ptype::box),
             .show = eval(Primitive::show_t::on),
-            .color = eval(Primitive::color3{228,201,83})
+            .color = eval(Primitive::color3{ 243, 80, 67 })
         });
 }
 
@@ -196,6 +200,10 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
 
     const char CLASS_NAME[] = "WindowClass";
+    
+    auto hUser32 = GetModuleHandleA("user32.dll");
+    typedef BOOL(WINAPI* PfnSetProcessDpiAwarenessContext)(DPI_AWARENESS_CONTEXT);
+    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
 
     WNDCLASSA wc = {};
     wc.lpfnWndProc = WindowProc;
@@ -220,6 +228,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     if (hwnd == NULL) return 0;
 
     ShowWindow(hwnd, nCmdShow);
+
+    LivePT::RegisterTypeDoubleClickCallback<Primitive::color3>(MyColorPickerCallback);
 
     MSG msg = {};
 
