@@ -1,6 +1,6 @@
-#if LPT_TRIGGER_BUTTON == VK_LBUTTON
+#if LivePT_TriggerButton == VK_LBUTTON
 #define LPT_WM_BUTTONUP   WM_LBUTTONUP
-#elif LPT_TRIGGER_BUTTON == VK_MBUTTON
+#elif LivePT_TRIGGER_BUTTON == VK_MBUTTON
 #define LPT_WM_BUTTONUP   WM_MBUTTONUP
 #endif
 
@@ -28,20 +28,18 @@ namespace LivePT {
 
         long initialCursorAnchorOffset = 0;
 
-        // ВСПЛЫВАЮЩИЕ ПЕРЕМЕННЫЕ ДЛЯ ДАБЛКЛИКА
         DWORD lastClickTime = 0;
         POINT lastClickPt = { 0, 0 };
         std::string startTextValue = "";
-        std::string oldValueStr = "";   // Исходное число при клике
+        std::string oldValueStr = "";
         std::string lastValueStr = "";
     };
 
 
     static DragState g_dragState;
     static HWND g_hShieldWnd = NULL;
-    static DWORD g_vsThreadId = 0; // Запоминаем поток VS для отмены склейки
+    static DWORD g_vsThreadId = 0;
 
-    // Процедура обработки сообщений невидимого окна-щита
     inline LRESULT CALLBACK ShieldWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
         if (uMsg == LPT_WM_BUTTONUP) {
             ReleaseCapture();
@@ -52,11 +50,9 @@ namespace LivePT {
         return DefWindowProcA(hwnd, uMsg, wParam, lParam);
     }
 
-    // Функция создания легкого окна-перехватчика со склейкой ввода ОС
     inline void CreateDragShield(const POINT& pt) {
         if (g_hShieldWnd) return;
 
-        // 1. Находим хэндл активного окна Visual Studio через DTE
         CComVariant vtMainWindow;
         if (FAILED(AutoWrap(DISPATCH_PROPERTYGET, &vtMainWindow, pDTE, L"MainWindow", 0)) || !vtMainWindow.pdispVal) return;
         CComVariant vtHWnd;
@@ -64,11 +60,9 @@ namespace LivePT {
         HWND hVSMainWnd = reinterpret_cast<HWND>(static_cast<LONG_PTR>(vtHWnd.lVal));
         if (!hVSMainWnd) return;
 
-        // 2. Находим окно конкретного текстового редактора под курсором
         HWND hEditorWnd = ::WindowFromPoint(pt);
         if (!hEditorWnd) hEditorWnd = hVSMainWnd;
 
-        // 3. СКЛЕИВАЕМ ОЧЕРЕДИ ВВОДА: Привязываем поток нашей игры к потоку Visual Studio
         DWORD currentThreadId = ::GetCurrentThreadId();
         g_vsThreadId = ::GetWindowThreadProcessId(hEditorWnd, NULL);
         if (g_vsThreadId != currentThreadId) {
@@ -86,7 +80,6 @@ namespace LivePT {
             return RegisterClassExA(&wc) != 0;
             }();
 
-        // 4. Создаем окно 1x1 пиксель прямо под курсором мыши
         g_hShieldWnd = CreateWindowExA(
             WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
             className, "LPT_DragShield", WS_POPUP,
@@ -98,15 +91,13 @@ namespace LivePT {
             SetLayeredWindowAttributes(g_hShieldWnd, 0, 1, LWA_ALPHA);
             ShowWindow(g_hShieldWnd, SW_SHOW);
 
-            // Теперь, когда потоки склеены, SetCapture заберет ЛКМ из Visual Studio НАПРАМУЮ!
             ::SetCapture(g_hShieldWnd);
         }
     }
 
-
-    inline bool isMouseDragging() { return g_dragState.isDragging; }
-
-    
+    inline bool isMouseDragging() { 
+        return g_dragState.isDragging; 
+    }
 
     inline bool ReplaceTextInActiveVS(long line, long visualStartCol, long visualEndCol, const std::string& newText, long newCursorPhysicalCol) {
         if (!pDTE) return false;
@@ -169,10 +160,13 @@ namespace LivePT {
             if (FAILED(hr)) return false;
 
             AutoWrap(DISPATCH_METHOD, NULL, vtSelection.pdispVal, L"MoveToLineAndOffset", 3, CComVariant(line), CComVariant(newCursorPhysicalCol), CComVariant(0L));
-        } return true;
+        } 
+        
+        return true;
     }
 
     inline void SaveActiveDocument() {
+
         if (!pDTE) return;
 
         VARIANT vtActiveDoc;
@@ -201,6 +195,7 @@ namespace LivePT {
     }
 
     inline bool GetActiveVSContext(VARIANT& outActiveDoc, std::string& outFilePath, long& outLine, long& outColumn, std::wstring& outDocText) {
+
         VariantInit(&outActiveDoc);
         HRESULT hr = pDTE ? AutoWrap(DISPATCH_PROPERTYGET, &outActiveDoc, pDTE, L"ActiveDocument", 0) : E_FAIL;
         if (FAILED(hr) || !outActiveDoc.pdispVal) { VariantClear(&outActiveDoc); return false; }
@@ -244,9 +239,9 @@ namespace LivePT {
     }
 
     inline void InitMultiEnumSelection(int id) {
+
         g_dragState.isDragging = false;
 
-        // 1. ОН-ДЕМАНД ЗАГРУЗКА МЕТАДАННЫХ ЕНАМА ИЗ PDB (Оригинальная логика)
         if (paramDesc[id].enumInfo.elements.empty()) {
             std::wstring wEnumName = L"";
             size_t lastCols = g_dragState.startTextValue.rfind("::");
@@ -282,7 +277,6 @@ namespace LivePT {
             currentVal = std::any_cast<int>(paramDesc[id].value);
         }
 
-        // Вспомогательный лямбда-блок для безопасного расчета текста замены
         auto GetNewValueString = [&](const std::string& pureName) -> std::string {
             std::string newValueStr = pureName;
             size_t lastCols = g_dragState.startTextValue.rfind("::");
@@ -293,7 +287,6 @@ namespace LivePT {
             return newValueStr;
             };
 
-        // 2. СЦЕНАРИЙ А: Если элементов ровно 2 (Инверсия без вызова меню, например show_t)
         if (totalElements == 2) {
             int currentIndex = 0;
             if (paramDesc[id].enumInfo.elements[0].value == currentVal) currentIndex = 0;
@@ -304,13 +297,11 @@ namespace LivePT {
             std::string pureName = paramDesc[id].enumInfo.elements[newIndex].name;
             std::string newValueStr = GetNewValueString(pureName);
 
-            // Точный расчет позиции курсора после вставки текста
             long newCursorRelPos = static_cast<long>(newValueStr.length()) - g_dragState.initialCursorAnchorOffset;
             if (newCursorRelPos < 0) newCursorRelPos = 0;
             long newCursorPhysicalCol = g_dragState.dragStartCol + newCursorRelPos;
 
             StartUndoTransaction(L"LiveWheel Change Enum");
-            // Замена текста происходит строго по строке dragLine и колонкам dragStartCol, сохраненным при клике
             ReplaceTextInActiveVS(g_dragState.dragLine, g_dragState.dragStartCol, g_dragState.dragStartCol + static_cast<long>(g_dragState.currentTextLength), newValueStr, newCursorPhysicalCol);
             EndUndoTransaction();
 
@@ -318,20 +309,20 @@ namespace LivePT {
             g_dragState.oldValueStr = newValueStr;
 
             paramDesc[id].value = std::any(targetEnumValue);
-            UpdateParamValue(id, pureName); // Обновляем движок по валидному id из карты
+            UpdateParamValue(id, pureName);
 
             SaveActiveDocument();
             g_dragState.targetParamId = -1;
+
             return;
         }
 
-        // 3. СЦЕНАРИЙ Б: Элементов больше 2 (Отображение GUI-меню, например ptype)
         std::vector<std::string> enumMenu;
         for (int i = 0; i < totalElements; i++) {
             enumMenu.push_back(paramDesc[id].enumInfo.elements[i].name);
         }
 
-        int newIndex = showEnum(enumMenu); // Вызываем ваше стандартное GUI окно выбора
+        int newIndex = showEnum(enumMenu); 
 
         if (newIndex >= 0 && newIndex < totalElements) {
             int targetEnumValue = paramDesc[id].enumInfo.elements[newIndex].value;
@@ -350,28 +341,24 @@ namespace LivePT {
             g_dragState.oldValueStr = newValueStr;
 
             paramDesc[id].value = std::any(targetEnumValue);
-            UpdateParamValue(id, pureName); // Синхронизируем рантайм
+            UpdateParamValue(id, pureName); 
 
             SaveActiveDocument();
         }
+
         g_dragState.targetParamId = -1;
+
     }
 
-
-
-
-
     inline void InitNumericDragState(size_t cursorIdxInRaw, const std::string& cleanText) {
+
         g_dragState.isDragging = true;
         StartUndoTransaction(L"LiveWheel Live Edit");
 
-        // СОХРАНЯЕМ ИСХОДНУЮ СТРОКУ ЧИСЛА ДЛЯ ФИКСА СТРУКТУР
         g_dragState.oldValueStr = cleanText;
         g_dragState.lastValueStr = cleanText;
 
         long relativeOffset = static_cast<long>(cursorIdxInRaw);
-        // ... (весь остальной ваш код метода InitNumericDragState остается прежним)
-
 
         size_t dotPos = cleanText.find('.');
         g_dragState.pointBefore = (dotPos != std::string::npos && relativeOffset > static_cast<long>(dotPos));
@@ -393,7 +380,6 @@ namespace LivePT {
 
         if (GetActiveVSContext(vtActiveDoc, currentFile, line, column, fileText)) {
 
-            // Детекция DoubleClick для енамов
             DWORD currentTime = GetTickCount();
             DWORD doubleClickTime = GetDoubleClickTime();
             bool isDoubleClick = (g_dragState.lastClickTime != 0) &&
@@ -406,18 +392,16 @@ namespace LivePT {
             g_dragState.lastClickPt = pt;
 
             size_t targetEvalAbsolutePos = std::wstring::npos;
-            g_dragState.targetParamId = -1; // По умолчанию -1 (число вне макроса eval)
+            g_dragState.targetParamId = -1; 
 
             std::wstring currentLineText = DownloadCurrentLineText(vtActiveDoc.pdispVal);
 
-            // ШАГ 1: Запрашиваем рантайм-контекст (выполнится мгновенно за O(1) из кэша кадра)
             EvalContext evalCtx = GetCurrentRawIdUnderCursor(fileText, line, column, currentLineText);
 
             if (evalCtx.rawId != -1 && evalCtx.absolutePos != std::wstring::npos) {
                 targetEvalAbsolutePos = evalCtx.absolutePos;
                 std::string normalizedPath = LivePT::NormalizePath(currentFile.c_str());
 
-                // ШАГ 2: Конвертируем сырой ID в валидный Runtime ID компилятора
                 auto it = g_filesMapsCache.find(normalizedPath);
                 if (it != g_filesMapsCache.end()) {
                     const auto& currentFileMap = it->second;
@@ -426,7 +410,6 @@ namespace LivePT {
                         int validRuntimeId = currentFileMap[evalCtx.rawId];
 
                         if (validRuntimeId != -1) {
-                            // ШАГ 3: Достаем системный targetId из базы рантайма по валидному ключу
                             std::string vsLookupKey = normalizedPath + ":" + std::to_string(validRuntimeId);
                             g_dragState.targetParamId = getID(vsLookupKey);
                         }
@@ -436,26 +419,23 @@ namespace LivePT {
 
             int id = g_dragState.targetParamId;
 
-            // ОБРАБОТКА ЕНАМОВ / ПЕРЕКЛЮЧАТЕЛЕЙ ПО ДАБЛКЛИКУ
             if (id != -1 && paramDesc[id].enumInfo.isEnum) {
                 if (isDoubleClick) {
                     if (ParseMacroValueBoundaries(fileText, line, targetEvalAbsolutePos)) {
                         InitMultiEnumSelection(id);
                     }
                 }
-                g_dragState.targetParamId = -1; // Сбрасываем захват драга для енамов
+                g_dragState.targetParamId = -1; 
                 VariantClear(&vtActiveDoc);
                 return false;
             }
 
-            // ШАГ 4: ЗАХВАТ ГРАНИЦ ЧИСЛА ДЛЯ МЫШИНОГО ДРАГА
             long cursorColIdx = column - 1;
 
             if (cursorColIdx >= 0 && cursorColIdx < static_cast<long>(currentLineText.length())) {
                 long startCol = cursorColIdx;
                 long endCol = cursorColIdx;
 
-                // Собираем границы токена литерала числа влево
                 while (startCol > 0 && (iswdigit(currentLineText[startCol - 1]) ||
                     currentLineText[startCol - 1] == L'.' ||
                     currentLineText[startCol - 1] == L'-' ||
@@ -464,7 +444,6 @@ namespace LivePT {
                     startCol--;
                 }
 
-                // Собираем границы токена литерала числа вправо (ОТЛАЖЕНО)
                 while (endCol < static_cast<long>(currentLineText.length()) && (iswdigit(currentLineText[endCol]) ||
                     currentLineText[endCol] == L'.' ||
                     currentLineText[endCol] == L'-' ||
@@ -477,9 +456,8 @@ namespace LivePT {
                     std::wstring numW = currentLineText.substr(startCol, endCol - startCol);
                     std::string cleanText(numW.begin(), numW.end());
 
-                    // ЖЕСТКАЯ ФИКСАЦИЯ ЛОКАЛЬНЫХ КООРДИНАТ ДЛЯ ДРАГА:
-                    g_dragState.dragLine = line; // Текущая физическая строка числа (например, с .g = 177)
-                    g_dragState.dragStartCol = startCol + 1; // Точная локальная колонка начала числа на этой строке
+                    g_dragState.dragLine = line; 
+                    g_dragState.dragStartCol = startCol + 1; 
                     g_dragState.currentTextLength = cleanText.length();
                     g_dragState.oldMouseY = pt.y;
 
@@ -489,14 +467,15 @@ namespace LivePT {
                     clickedInsideNumber = true;
                 }
             }
+
             VariantClear(&vtActiveDoc);
         }
+
         return clickedInsideNumber;
     }
 
+    inline void DragNumericValue(const POINT& pt, bool ctrl, bool shift) {
 
-
-    inline void DragNumericValue(int /*dummy*/, const POINT& pt, bool ctrl, bool shift) {
         int scale = 1;
         if (ctrl)  scale *= 100;
         if (shift) scale *= 10;
@@ -579,21 +558,19 @@ namespace LivePT {
 
 
     inline void HandleMouseDrag(const POINT& pt, bool ctrl, bool shift) {
-        // ИСПРАВЛЕНО: Проверяем только флаг драга, так как мышь теперь текстовая
+
         if (!g_dragState.isDragging) return;
 
-        // Создаем шилд со склейкой потоков строго в момент НАЧАЛА движения
         if (!g_hShieldWnd) {
             CreateDragShield(pt);
         }
 
-        // Передаем 0 вместо ID, так как внутри функции ID больше не используется
-        DragNumericValue(0, pt, ctrl, shift);
+        DragNumericValue(pt, ctrl, shift);
     }
 
 
     inline void HandleMouseUp() {
-        // ИСПРАВЛЕНО: Проверяем факт драга, а не ID параметра
+
         if (!g_dragState.isDragging) {
             if (g_hShieldWnd) {
                 ReleaseCapture();
@@ -624,9 +601,6 @@ namespace LivePT {
             g_vsThreadId = 0;
         }
     }
-
-    
-
 
     inline bool IsCursorOverActiveVSWindow() {
         if (!pDTE) return false;
@@ -666,7 +640,7 @@ namespace LivePT {
         POINT pt;
         GetCursorPos(&pt);
 
-        bool buttonDown = (GetAsyncKeyState(LPT_TRIGGER_BUTTON) & 0x8000) != 0;
+        bool buttonDown = (GetAsyncKeyState(LivePT_TriggerButton) & 0x8000) != 0;
         bool ctrl = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
         bool shift = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
 
@@ -675,7 +649,7 @@ namespace LivePT {
         if (buttonDown) {
             if (!s_PrevLButtonDown && !g_dragState.isDragging) {
                 if (IsCursorOverActiveVSWindow()) {
-                    // Если под курсором нашлось число — HandleMouseDown вернет true
+
                     if (HandleMouseDown(pt)) {
                         g_dragState.isDragging = true;
                     }
@@ -692,7 +666,6 @@ namespace LivePT {
             }
         }
 
-        // Прокачиваем очередь сообщений шилда для отлова WM_LBUTTONUP
         if (g_hShieldWnd) {
             MSG msg;
             while (PeekMessageA(&msg, g_hShieldWnd, 0, 0, PM_REMOVE)) {
@@ -703,7 +676,5 @@ namespace LivePT {
 
         s_PrevLButtonDown = buttonDown;
     }
-
-
 
 } 

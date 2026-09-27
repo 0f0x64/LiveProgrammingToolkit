@@ -1,11 +1,7 @@
 #include <windows.h>
 
 // ---------------- LivePT integration section ----------------
-#define LivePT_EditMode true // true for live text editing
-#define LivePT_WheelEditMode true // true for mouse mButton drag, switch, enums with context menu
-#define LivePT_WindowManagement true
-#define LivePT_AppToSecondaryDisplay false
-#define LPT_TRIGGER_BUTTON    VK_LBUTTON  
+#define LivePT_EditMode true // true for activate
 #include "LivePT/LivePT.h" // incude it for using lib
 // ------------------------------------------------------------
 
@@ -70,9 +66,9 @@ public:
             HBRUSH hOldBrush = (HBRUSH)SelectObject(memDC, hBrush);
 
             switch (p.type) {
-            case ptype::circle:   Ellipse(memDC, posX - size, posY - size, posX + size, posY + size); break;
-            case ptype::box:      Rectangle(memDC, posX - size, posY - size, posX + size, posY + size); break;
-            case ptype::roundbox: RoundRect(memDC, posX - size, posY - size, posX + size, posY + size, 25, 25); break;
+                case ptype::circle:   Ellipse(memDC, posX - size, posY - size, posX + size, posY + size); break;
+                case ptype::box:      Rectangle(memDC, posX - size, posY - size, posX + size, posY + size); break;
+                case ptype::roundbox: RoundRect(memDC, posX - size, posY - size, posX + size, posY + size, 25, 25); break;
             }
 
             // Освобождаем ресурсы GDI сразу после отрисовки фигуры
@@ -98,37 +94,34 @@ void UpdateSceneParams() {
 
     // drag numbers by pressing&move mButton inside eval, click mButton for switch / context menu
 
-    primitive[0].Set(eval(-245), 
-        eval(-231), eval(Primitive::ptype::box), 
-        eval(Primitive::show_t::on), eval(Primitive::color3{ 69,28,107 }));
+    primitive[0].Set(eval(-222), 
+        eval(-320), eval(Primitive::ptype::box), 
+        eval(Primitive::show_t::on), eval(Primitive::color3{ 47,28,45 }));
 
-#ifdef blaaa
-        primitive[0].Set(eval(-289),
-            eval(-172), eval(Primitive::ptype::box),
-            eval(Primitive::show_t::on), eval(Primitive::color3{ 178,83,8 }));
+    #ifdef bla
+            primitive[0].Set(eval(-289),
+                eval(-172), eval(Primitive::ptype::box),
+                eval(Primitive::show_t::on), eval(Primitive::color3{ 178,83,8 }));
 
-        primitive[31].Set(Primitive{
-    .x = eval(34.40),
-    .y = eval(-276),
-    .type = eval(Primitive::ptype::roundbox),
-    .show = eval(Primitive::show_t::on),
-    .color = eval(Primitive::color3{
-        .r = x,
-
-        .g = 86,//.g=22 aaaaaa
-        .b = y})
-            });
-#endif
-
-      
+            primitive[31].Set(Primitive{
+                    .x = eval(34.40),
+                    .y = eval(-276),
+                    .type = eval(Primitive::ptype::roundbox),
+                    .show = eval(Primitive::show_t::on),
+                    .color = eval(Primitive::color3{
+                        .r = x,
+                        .g = 217,
+                        .b = y})
+                });
+    #endif
 
     // floating point numbers allowed (will be casted to int in this case, but you can modify class to use native floats)
-    primitive[1].Set(eval(-216), eval(-14), 
-        eval(Primitive::ptype::roundbox), 
-        eval(Primitive::show_t::on), eval(Primitive::color3{ 135,41,1 }));
+    primitive[1].Set(eval(-193), eval(-59), 
+        eval(Primitive::ptype::circle), 
+        eval(Primitive::show_t::on), eval(Primitive::color3{ 100,170,36 }));
 
-    unsigned char x = rand() % eval(73);
-    unsigned char y = rand() % eval(9);
+    unsigned char x = rand() % eval(2);
+    unsigned char y = rand() % eval(173);
 
 /*    primitive[2].Set(Primitive{
         .x = eval(   26.40  ),
@@ -138,31 +131,29 @@ void UpdateSceneParams() {
         .color = eval(Primitive::color3{
             .r = x,
 
-            .g = 62,//.g=22 aaaaaa
+            .g = 62,
             .b = y})
         });*/
 
     // aggregate init alternative
     primitive[2].Set(Primitive{
-        .x = eval(   11.40  ),
-        .y = eval(-276),
+        .x = eval(   -47.01  ),
+        .y = eval(-299),
         .type = eval(Primitive::ptype::box),
         .show = eval(Primitive::show_t::on),
         .color = eval(Primitive::color3{
             .r = x,
-
-            .g = 118,//.g=22 aaaaaa
+            .g = 109,
             .b = y})
         });
 
     
     primitive[3].Set(Primitive{
-
-    .x = eval(20.6f),
-    .y = eval(-29.26),
-    .type = eval(Primitive::ptype::roundbox),
-    .show = eval(Primitive::show_t::on),
-    .color = eval(Primitive::color3{39,166,102})
+            .x = eval(35.6f),
+            .y = eval(-158),
+            .type = eval(Primitive::ptype::roundbox),
+            .show = eval(Primitive::show_t::on),
+            .color = eval(Primitive::color3{228,201,83})
         });
 }
 

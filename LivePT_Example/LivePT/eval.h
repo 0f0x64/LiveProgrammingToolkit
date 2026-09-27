@@ -10,7 +10,6 @@ namespace LivePT {
         std::vector<EnumElementDesc> elements;
     };
 
-    // Описание одного конкретного поля структуры
     struct StructMemberDesc {
         std::string name;
         DWORD offset;
@@ -18,10 +17,9 @@ namespace LivePT {
         std::string typeName;
     };
 
-    // Контейнер-кэш для хранения анатомии всей структуры
     struct StructTypeDesc {
         bool isStruct = false;
-        std::vector<StructMemberDesc> members; // Сюда осядет кэш из PDB один раз
+        std::vector<StructMemberDesc> members; 
     };
 
     struct ref {
@@ -31,7 +29,6 @@ namespace LivePT {
         unsigned int counterID;
         EnumTypeDesc enumInfo;
 
-        // ТОЧЕЧНЫЙ ДОБАВОК: Сюда макрос запишет флаг, а рантайм сохранит кэш полей
         StructTypeDesc structInfo;
 
         long long typeMinBound = 0;
@@ -63,16 +60,13 @@ namespace LivePT {
         return -1;
     }
 
-    // УЛЬТРА-СЖАТЫЙ И БЫСТРЫЙ МЕТОД ОБНОВЛЕНИЯ ПАМЯТИ
     inline void UpdateParamValue(int id, const std::string& newValue) {
         if (newValue.empty() || id < 0 || id >= static_cast<int>(paramDesc.size())) return;
 
-        // Защита от нетекстовых символов в буфере
         for (char c : newValue) {
             if (static_cast<unsigned char>(c) > 127) return;
         }
 
-        // Если это енам — его логика обработки остается изолированной (через PDB кэш селектора)
         if (paramDesc[id].enumInfo.isEnum) {
             std::string cleanName = newValue;
             size_t lastCols = cleanName.rfind("::");
@@ -81,22 +75,17 @@ namespace LivePT {
             }
             for (const auto& elem : paramDesc[id].enumInfo.elements) {
                 if (elem.name == cleanName) {
-                    paramDesc[id].value = elem.value; // Енамы внутри any храним как плоский int
+                    paramDesc[id].value = elem.value;
                     return;
                 }
             }
             return;
         }
 
-        // ДЛЯ ВСЕХ ОСТАЛЬНЫХ ТИПОВ: Просто вызываем сгенерированный хук. 
-        // Если мы не умеем редачить этот тип (структуру) — хук будет равен nullptr, мы просто игнорируем
-        // попытку текстовой записи, и объект продолжает жить в игре «как есть».
         if (paramDesc[id].stringUpdater) {
             paramDesc[id].stringUpdater(paramDesc[id].value, newValue);
         }
     }
-
-
 
     inline std::string NormalizePath(const char* fullPath) {
         std::string path(fullPath);
@@ -171,10 +160,6 @@ namespace LivePT {
                 return RegisterEvalPreMain(AbsoluteFile.c_str(), std::any{ static_cast<int>(T{}) }, Line, Column, EnumTypeDesc{ .isEnum = true });
             }
             else {
-                // ПУЛЕНЕПРОБИВАЕМЫЙ ПРОПУСК ДЛЯ СТРУКТУР:
-                // Если у типа нет дефолтного конструктора (сложная структура) или мы его не знаем,
-                // мы просто пушим пустой std::any{}. Функция EvalSyntaxShield::Get на первом кадре 
-                // сама запишет туда живой literalValue, переданный пользователем!
                 if constexpr (std::is_default_constructible_v<T>) {
                     return RegisterEvalPreMain(AbsoluteFile.c_str(), std::any{ T{} }, Line, Column, EnumTypeDesc{ false });
                 }
@@ -245,19 +230,19 @@ namespace LivePT {
                             if (inComment) {
                                 if (c == '\n' || c == '\r') {
                                     inComment = false;
-                                    innerArgs += c; // Сохраняем перенос строки для логов/отладки
+                                    innerArgs += c; 
                                 }
                                 continue;
                             }
 
-                            // Ловим начало однострочного коммента
+                            // skip comments
                             if ((c == '/' && nextC == '/') || c == '#') {
                                 inComment = true;
-                                if (c == '/') i++; // Пропускаем второй слэш
+                                if (c == '/') i++;
                                 continue;
                             }
 
-                            innerArgs += c; // Копируем только чистый, живой код C++!
+                            innerArgs += c; 
                         }
 
                         int globalId = GlobalEvalRegistry<TargetType, AbsoluteFile, Line, Column>::cached_id;
@@ -424,14 +409,3 @@ namespace LivePT {
 
 
     }
-
-    // 3. Обновленный ультра-чистый макрос, пробрасывающий decltype(value) в шаблон детектора
-// ИСПРАВЛЕННЫЙ ВАРИАТИВНЫЙ МАКРОС: Автоматически съедает запятые структур агрегатной инициализации!
-#define eval(...) \
-    LivePT::LazyTypeDetector< \
-        std::decay_t<decltype(__VA_ARGS__)>, \
-        LivePT::FixedString<260>{__FILE__}, \
-        static_cast<int>(__LINE__), \
-        static_cast<int>(__builtin_COLUMN()) \
-    >(__VA_ARGS__)
-
