@@ -1,9 +1,9 @@
 primitive[1].Set(Primitive{
 
-    .pos = eval(pos2{72.2497f,-107.7953f}),
-    .size = eval(size2{123.6874f,114.0402f}),
+    .pos = eval(pos2{74.2497f,-105.7953f}),
+    .size = eval(size2{98.3315f,90.662f}),
     .Angle = eval(0),
-    .type = eval(ptype::box),
+    .type = eval(ptype::circle),
     .show = eval(true),
-    .color = eval(color3{18,95,25})
+    .color = eval(color3{20,104,27})
     });

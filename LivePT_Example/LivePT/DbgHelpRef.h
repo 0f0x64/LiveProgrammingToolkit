@@ -1,4 +1,26 @@
+#include <windows.h>
+#include <dbghelp.h>
+#include <string>
+#include <vector>
+
+#pragma comment(lib, "dbghelp.lib")
+
 namespace LivePT {
+
+    // 🎯 ЕДИНЫЙ ГЛОБАЛЬНЫЙ СИНХРОНИЗИРОВАННЫЙ КОНТЕКСТ СИМВОЛОВ (И ДЛЯ СТРУКТУР, И ДЛЯ ЭНУМОВ)
+    static bool g_isDbgHelpGlobalReady = false;
+    static HANDLE g_hDbgHelpGlobalProcess = NULL;
+    static DWORD64 g_DbgHelpGlobalModuleBase = 0;
+
+    // Глобальный автоматический чистильщик сессии при выходе из программы (RAII)
+    struct DbgHelpGlobalCleaner {
+        ~DbgHelpGlobalCleaner() {
+            if (g_isDbgHelpGlobalReady && g_DbgHelpGlobalModuleBase && g_hDbgHelpGlobalProcess) {
+                SymUnloadModule64(g_hDbgHelpGlobalProcess, g_DbgHelpGlobalModuleBase);
+                SymCleanup(g_hDbgHelpGlobalProcess);
+            }
+        }
+    };
 
     inline std::string DbgHelpWideToUtf8(const wchar_t* wstr) {
         if (!wstr) return "";
@@ -9,8 +31,12 @@ namespace LivePT {
         return str;
     }
 
-    inline bool LoadEnumMetadataDirect(const wchar_t* targetEnumName, std::vector<std::string>& outNames, std::vector<int>& outValues) {
-        HANDLE hProcess = GetCurrentProcess();
+    // 🔥 ВОССТАНОВЛЕННАЯ ФУНКЦИЯ ИНИЦИАЛИЗАЦИИ СЕССИИ 🔥
+    // Лениво поднимает DbgHelp один раз на всю библиотеку. Повторные вызовы пролетают за 1 такт процессора.
+    inline bool EnsureDbgHelpInitialized() {
+        if (g_isDbgHelpGlobalReady) return true;
+
+        g_hDbgHelpGlobalProcess = GetCurrentProcess();
         wchar_t exePath[MAX_PATH] = { 0 };
         GetModuleFileNameW(nullptr, exePath, MAX_PATH);
 
@@ -18,45 +44,66 @@ namespace LivePT {
         size_t slashPos = searchPath.find_last_of(L"\\/");
         if (slashPos != std::wstring::npos) searchPath = searchPath.substr(0, slashPos);
 
-        if (!SymInitialize(hProcess, DbgHelpWideToUtf8(searchPath.c_str()).c_str(), TRUE)) return false;
-        SymSetOptions( SYMOPT_DEFERRED_LOADS | SYMOPT_ALLOW_ZERO_ADDRESS);
+        std::string searchPathAnsi = DbgHelpWideToUtf8(searchPath.c_str());
+        if (!SymInitialize(g_hDbgHelpGlobalProcess, searchPathAnsi.c_str(), FALSE)) return false;
 
-        DWORD64 moduleBase = SymLoadModuleExW(hProcess, nullptr, exePath, nullptr, 0, 0, nullptr, 0);
-        if (!moduleBase) {
-            SymCleanup(hProcess);
+        SymSetOptions(SYMOPT_DEFERRED_LOADS | SYMOPT_ALLOW_ZERO_ADDRESS);
+
+        g_DbgHelpGlobalModuleBase = SymLoadModuleExW(g_hDbgHelpGlobalProcess, nullptr, exePath, nullptr, 0, 0, nullptr, 0);
+        if (!g_DbgHelpGlobalModuleBase) {
+            // Если модуль уже был загружен одной из функций, подтягиваем его базовый адрес из ОС
+            g_DbgHelpGlobalModuleBase = reinterpret_cast<DWORD64>(GetModuleHandleW(nullptr));
+        }
+
+        if (!g_DbgHelpGlobalModuleBase) {
+            SymCleanup(g_hDbgHelpGlobalProcess);
             return false;
         }
 
-        std::string enumNameAnsi = DbgHelpWideToUtf8(targetEnumName);
-        SYMBOL_INFO si = { 0 };
-        si.SizeOfStruct = sizeof(SYMBOL_INFO);
+        // Регистрируем синглтон-чистильщик на выход из приложения
+        static DbgHelpGlobalCleaner globalCleaner;
+        g_isDbgHelpGlobalReady = true;
+        return true;
+    }
 
-        // ТОЧЕЧНЫЙ ФИКС: Используем системный SymGetTypeFromName. Он железно находит "Primitive::ptype" в PDB!
-        bool found = SymGetTypeFromName(hProcess, moduleBase, enumNameAnsi.c_str(), &si);
-        if (!found) {
-            std::string fallback = "enum " + enumNameAnsi;
-            found = SymGetTypeFromName(hProcess, moduleBase, fallback.c_str(), &si);
+    struct LptEnumContext {
+        HANDLE hProcess;
+        DWORD64 moduleBase;
+        const wchar_t* targetEnumName;
+        std::vector<std::string>* outNames;
+        std::vector<int>* outValues;
+    };
+
+    static BOOL CALLBACK LptEnumTypesCallback(PSYMBOL_INFOW pSymInfo, ULONG SymbolSize, PVOID UserContext) {
+        if (!pSymInfo || !UserContext) return TRUE;
+
+        LptEnumContext* ctx = reinterpret_cast<LptEnumContext*>(UserContext);
+        std::wstring pSymNameW(pSymInfo->Name);
+
+        if (pSymNameW.find(L"lambda") != std::wstring::npos || pSymNameW.find(L"anonymous-namespace") != std::wstring::npos) {
+            return TRUE; // Продолжаем перебор в PDB
         }
 
-        if (found) {
+        if (pSymNameW.find(ctx->targetEnumName) != std::wstring::npos) {
             DWORD childrenCount = 0;
-            if (SymGetTypeInfo(hProcess, moduleBase, si.TypeIndex, TI_GET_CHILDRENCOUNT, &childrenCount)) {
+            if (SymGetTypeInfo(ctx->hProcess, ctx->moduleBase, pSymInfo->TypeIndex, TI_GET_CHILDRENCOUNT, &childrenCount) && childrenCount > 0) {
+
                 ULONG mallocSize = sizeof(TI_FINDCHILDREN_PARAMS) + (childrenCount * sizeof(ULONG));
                 TI_FINDCHILDREN_PARAMS* pChildren = (TI_FINDCHILDREN_PARAMS*)malloc(mallocSize);
                 if (pChildren) {
                     memset(pChildren, 0, mallocSize);
                     pChildren->Count = childrenCount;
 
-                    if (SymGetTypeInfo(hProcess, moduleBase, si.TypeIndex, TI_FINDCHILDREN, pChildren)) {
+                    if (SymGetTypeInfo(ctx->hProcess, ctx->moduleBase, pSymInfo->TypeIndex, TI_FINDCHILDREN, pChildren)) {
                         for (DWORD i = 0; i < pChildren->Count; i++) {
                             ULONG childIndex = pChildren->ChildId[i];
 
                             wchar_t* pChildName = nullptr;
-                            SymGetTypeInfo(hProcess, moduleBase, childIndex, TI_GET_SYMNAME, &pChildName);
+                            SymGetTypeInfo(ctx->hProcess, ctx->moduleBase, childIndex, TI_GET_SYMNAME, &pChildName);
 
                             VARIANT varValue;
                             VariantInit(&varValue);
-                            SymGetTypeInfo(hProcess, moduleBase, childIndex, TI_GET_VALUE, &varValue);
+                            SymGetTypeInfo(ctx->hProcess, ctx->moduleBase, childIndex, TI_GET_VALUE, &varValue);
 
                             int extractedValue = 0;
                             if (varValue.vt == VT_I4 || varValue.vt == VT_INT) {
@@ -70,23 +117,44 @@ namespace LivePT {
                                 extractedValue = *rawDataPtr;
                             }
 
-                            outNames.push_back(DbgHelpWideToUtf8(pChildName));
-                            outValues.push_back(extractedValue);
-
-                            if (pChildName) LocalFree(pChildName);
+                            if (pChildName) {
+                                ctx->outNames->push_back(DbgHelpWideToUtf8(pChildName));
+                                LocalFree(pChildName);
+                            }
+                            ctx->outValues->push_back(extractedValue);
                             VariantClear(&varValue);
                         }
                     }
                     free(pChildren);
                 }
             }
+            return FALSE;
         }
-
-        SymUnloadModule64(hProcess, moduleBase);
-        SymCleanup(hProcess);
-        return !outNames.empty();
+        return TRUE;
     }
 
+    // ТВОЯ СТАБИЛЬНАЯ ВЕРСИЯ ENUM, ТЕПЕРЬ ПОЛНОСТЬЮ СИНХРОНИЗИРОВАННАЯ С ОБЩИМ КОНТЕКСТОМ
+    inline bool LoadEnumMetadataDirect(const wchar_t* targetEnumName, std::vector<std::string>& outNames, std::vector<int>& outValues) {
+        if (!EnsureDbgHelpInitialized()) return false;
+
+        HANDLE hProcess = g_hDbgHelpGlobalProcess;
+        DWORD64 moduleBase = g_DbgHelpGlobalModuleBase;
+
+        std::wstring cleanEnumName(targetEnumName);
+        size_t lastColon = cleanEnumName.rfind(L"::");
+        if (lastColon != std::wstring::npos) {
+            cleanEnumName = cleanEnumName.substr(lastColon + 2);
+        }
+
+        cleanEnumName.erase(0, cleanEnumName.find_first_not_of(L" \t\r\n"));
+        cleanEnumName.erase(cleanEnumName.find_last_not_of(L" \t\r\n") + 1);
+
+        LptEnumContext ctx = { hProcess, moduleBase, cleanEnumName.c_str(), &outNames, &outValues };
+
+        SymEnumTypesW(hProcess, moduleBase, LptEnumTypesCallback, &ctx);
+
+        return !outNames.empty();
+    }
     struct DbgHelpStructContext {
         HANDLE hProcess;
         ULONG64 modBase;
@@ -97,7 +165,6 @@ namespace LivePT {
         std::vector<std::string>* pTypeNames;
     };
 
-    // Функция для получения текстового имени типа поля по его TypeIndex (внутри PDB)
     inline std::string DbgHelpGetTypeName(HANDLE hProcess, ULONG64 modBase, DWORD typeIndex) {
         wchar_t* pTypeName = nullptr;
         if (SymGetTypeInfo(hProcess, modBase, typeIndex, TI_GET_SYMNAME, &pTypeName) && pTypeName) {
@@ -143,7 +210,7 @@ namespace LivePT {
 
                             DWORD symTag = 0;
                             SymGetTypeInfo(ctx->hProcess, ctx->modBase, childIndex, TI_GET_SYMTAG, &symTag);
-                            if (symTag != 7) continue; // 7 == SymTagData (нас интересуют только поля данных)
+                            if (symTag != 7) continue;
 
                             wchar_t* pChildName = nullptr;
                             SymGetTypeInfo(ctx->hProcess, ctx->modBase, childIndex, TI_GET_SYMNAME, &pChildName);
@@ -170,42 +237,24 @@ namespace LivePT {
                     free(pChildren);
                 }
             }
-            return FALSE; // Структуру нашли, останавливаем сканирование
+            return FALSE;
         }
         return TRUE;
     }
 
-    // ГЛАВНЫЙ СИ-МЕТОД СБОРА АНАТОМИИ ЛЮБОЙ СТРУКТУРЫ ИЗ PDB Модуля
+    // ТВОЯ ОРИГИНАЛЬНАЯ ФУНКЦИЯ СТРУКТУР, СИНХРОНИЗИРОВАННАЯ С ОБЩИМ КОНТЕКСТОМ
     inline bool LoadStructMetadataDirect(const wchar_t* targetStructName,
         std::vector<std::string>& outNames,
         std::vector<DWORD>& outOffsets,
         std::vector<DWORD>& outSizes,
-        std::vector<std::string>& outTypeNames) {
-        HANDLE hProcess = GetCurrentProcess();
-        wchar_t exePath[MAX_PATH] = { 0 };
-        GetModuleFileNameW(nullptr, exePath, MAX_PATH);
+        std::vector<std::string>& outTypeNames)
+    {
+        if (!EnsureDbgHelpInitialized()) return false;
 
-        std::wstring searchPath(exePath);
-        size_t slashPos = searchPath.find_last_of(L"\\/");
-        if (slashPos != std::wstring::npos) searchPath = searchPath.substr(0, slashPos);
+        DbgHelpStructContext ctx = { g_hDbgHelpGlobalProcess, g_DbgHelpGlobalModuleBase, targetStructName, &outNames, &outOffsets, &outSizes, &outTypeNames };
+        SymEnumTypesW(g_hDbgHelpGlobalProcess, g_DbgHelpGlobalModuleBase, DbgHelpStructTypesCallback, &ctx);
 
-        std::string searchPathAnsi = DbgHelpWideToUtf8(searchPath.c_str());
-        if (!SymInitialize(hProcess, searchPathAnsi.c_str(), FALSE)) return false;
-
-        SymSetOptions( SYMOPT_DEFERRED_LOADS | SYMOPT_ALLOW_ZERO_ADDRESS);
-
-        DWORD64 moduleBase = SymLoadModuleExW(hProcess, nullptr, exePath, nullptr, 0, 0, nullptr, 0);
-        if (!moduleBase) {
-            SymCleanup(hProcess);
-            return false;
-        }
-
-        DbgHelpStructContext ctx = { hProcess, moduleBase, targetStructName, &outNames, &outOffsets, &outSizes, &outTypeNames };
-        SymEnumTypesW(hProcess, moduleBase, DbgHelpStructTypesCallback, &ctx);
-
-        SymUnloadModule64(hProcess, moduleBase);
-        SymCleanup(hProcess);
         return !outNames.empty();
     }
 
-}
+} // namespace LivePT

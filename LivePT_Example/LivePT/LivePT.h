@@ -141,12 +141,10 @@ namespace LivePT {
         const size_t totalParams = params.size();
         if (totalParams == 0) return;
 
-        // Фиксируем вход, чтобы не плодить потоки на каждом кадре
         isWarmedUp = true;
 
-        // 🔥 ВЫНОСИМ ТЯЖЕЛЫЙ ПАРСИНГ PDB В ФОНОВЫЙ ПОТОК ПРОЦЕССОРА 🔥
         std::thread warmupThread([totalParams]() {
-            // Перезапрашиваем ссылку на параметры внутри потока
+
             auto& localParams = LivePT::getParamDesc();
 
             std::unordered_map<std::type_index, decltype(localParams[0].structInfo.members)> structMetadataCache;
@@ -220,7 +218,7 @@ namespace LivePT {
         warmupThread.detach();
     }
 
-    void TimeMeansure()
+    void Warmup()
     {
         static bool isFirstFrame = true;
         if (isFirstFrame) {
@@ -242,8 +240,7 @@ namespace LivePT {
 
     void ProcessEdit()
     {
-        //WarmupAllDatabaseParams();
-        TimeMeansure();
+        Warmup();
 
         #if LivePT_WindowManagement
             GetWindowManager().Tick();
