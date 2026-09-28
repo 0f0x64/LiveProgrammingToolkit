@@ -29,7 +29,7 @@
     #include <atlbase.h>
     #include <tlhelp32.h>
     #include <functional>
-    #include <mutex>
+    #include <unordered_set>
 
     #pragma comment(lib, "dbghelp.lib")
     #include <dbghelp.h>
@@ -129,8 +129,88 @@ namespace LivePT {
 
     static LptRuntimeLifetimeManager g_runtimeLifetimeManager;
 
+    
+    inline void WarmupAllDatabaseParams() {
+        static bool isWarmedUp = false;
+        if (isWarmedUp) return;
+
+        auto& params = LivePT::getParamDesc();
+        const size_t totalParams = params.size();
+        if (totalParams == 0) return;
+
+        // Выделяем память под кэш метаданных заранее, чтобы избежать реаллокаций в куче
+        std::unordered_map<std::string, decltype(params[0].structInfo.members)> structMetadataCache;
+        structMetadataCache.reserve(8); // Задаем хэш-таблице стартовую емкость (для pos2, color3, size2 и т.д.)
+
+        std::string typeNameAnsi;
+        typeNameAnsi.reserve(64); // Кэшируем буфер строки, чтобы не аллоцировать память на каждом шаге цикла
+
+        for (size_t i = 0; i < totalParams; ++i) {
+            auto& p = params[i]; // Работаем строго по ссылке, убираем копирование тяжелых структур
+
+            // Быстрый отсев: если это enum, или структура уже прогрета, или значения нет — мгновенный пропуск
+            if (p.enumInfo.isEnum || p.structInfo.isStruct || !p.value.has_value()) {
+                continue;
+            }
+
+            // Получаем ANSI имя типа из рантайма C++
+            typeNameAnsi = p.value.type().name();
+            if (typeNameAnsi.empty()) continue;
+
+            // Ассемблерно-быстрая очистка префиксов MSVC без вызова тяжелого .erase() по центру строки
+            const char* typePtr = typeNameAnsi.c_str();
+            if (strncmp(typePtr, "struct ", 7) == 0) typePtr += 7;
+            else if (strncmp(typePtr, "class ", 6) == 0) typePtr += 6;
+
+            // Отсекаем примитивные типы за 1 такт процессора
+            if (*typePtr == 'f' && strcmp(typePtr, "float") == 0) continue;
+            if (*typePtr == 'i' && strcmp(typePtr, "int") == 0) continue;
+            if (*typePtr == 'b' && strcmp(typePtr, "bool") == 0) continue;
+            if (*typePtr == 'd' && strcmp(typePtr, "double") == 0) continue;
+            if (*typePtr == 'c' && strcmp(typePtr, "char") == 0) continue;
+
+            // СВЕРХБЫСТРЫЙ КЭШ: проверяем, делали ли мы уже этот тип
+            auto it = structMetadataCache.find(typePtr);
+            if (it != structMetadataCache.end()) {
+                p.structInfo.members = it->second; // Мгновенное блочное копирование вектора из L1/L2 кэша процессора
+                p.structInfo.isStruct = true;
+                continue;
+            }
+
+            // Если тип встретился впервые — парсим PDB-символы через DbgHelp
+            size_t len = strlen(typePtr);
+            std::wstring wTypeName(len, L'\0');
+            MultiByteToWideChar(CP_ACP, 0, typePtr, static_cast<int>(len), wTypeName.data(), static_cast<int>(len));
+
+            std::vector<std::string> fNames;
+            std::vector<DWORD> fOffsets;
+            std::vector<DWORD> fSizes;
+            std::vector<std::string> fTypes;
+
+            if (LoadStructMetadataDirect(wTypeName.c_str(), fNames, fOffsets, fSizes, fTypes)) {
+                decltype(p.structInfo.members) loadedMembers;
+                const size_t fieldsCount = fOffsets.size();
+                loadedMembers.reserve(fieldsCount); // Исключаем реаллокации при пуше полей
+
+                for (size_t k = 0; k < fieldsCount; ++k) {
+                    loadedMembers.push_back({ std::move(fNames[k]), fOffsets[k], fSizes[k], std::move(fTypes[k]) });
+                }
+
+                p.structInfo.members = loadedMembers;
+                p.structInfo.isStruct = true;
+
+                // Сохраняем готовую структуру полей в кэш для всех последующих аналогичных типов
+                structMetadataCache.emplace(typePtr, std::move(loadedMembers));
+            }
+        }
+
+        isWarmedUp = true;
+        Log("[LivePT Hyper-Warmup] Complete. Processing speed optimized to the limit.");
+    }
+
     void ProcessEdit()
     {
+        WarmupAllDatabaseParams();
 
         #if LivePT_WindowManagement
             GetWindowManager().Tick();
