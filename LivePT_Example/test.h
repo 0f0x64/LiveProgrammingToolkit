@@ -1,4 +1,4 @@
-primitive[1].Set(Primitive{
+primitive[1].Set({
 
     .pos = eval(pos2{74.2497f,-105.7953f}),
     .size = eval(size2{98.3315f,90.662f}),

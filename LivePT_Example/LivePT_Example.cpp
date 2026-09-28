@@ -123,25 +123,25 @@ Primitive primitive[3];
 
 void UpdateSceneParams() {
 
-    primitive[0].Set(Primitive{
+    primitive[0].Set({
         .pos = eval(pos2{-259.5996f,-292.6638f}),
-        .size = eval(size2{150.7454f,137.3907f}),
+        .size = eval(size2{110.0f,101.0f}),
         .Angle = eval(0),
-        .type = eval(ptype::box),
+        .type = eval(ptype::roundbox),
         .show = eval(true),
-        .color = eval(color3{38,29,166})
+        .color = eval(color3{175,25,35})
         });
 
     
 #include "test.h"
 
-    primitive[2].Set(Primitive{
-        .pos = eval(pos2{181.984f,275.326f}),
-        .size = eval(size2{92.1959f,135.2084f}),
-        .Angle = eval(angle(343.4f)),
-        .type = eval(ptype::roundbox),
+    primitive[2].Set({
+        .pos = eval(pos2{86.98f,155.33f}),
+        .size = eval(size2{68.0787f,99.8398f}),
+        .Angle = eval(angle(310.9f)),
+        .type = eval(ptype::circle),
         .show = eval(true),
-        .color = eval(color3{37,35,188})
+        .color = eval(color3{64,54,215})
         });
 
 }

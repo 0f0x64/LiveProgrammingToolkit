@@ -1,6 +1,6 @@
 #if LivePT_TriggerButton == VK_LBUTTON
 #define LPT_WM_BUTTONUP   WM_LBUTTONUP
-#elif LivePT_TRIGGER_BUTTON == VK_MBUTTON
+#elif LivePT_TriggerButton == VK_MBUTTON
 #define LPT_WM_BUTTONUP   WM_MBUTTONUP
 #endif
 
