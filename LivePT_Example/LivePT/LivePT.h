@@ -30,6 +30,9 @@
     #include <tlhelp32.h>
     #include <functional>
     #include <unordered_set>
+    #include <typeindex>
+    #include <chrono>
+    #include <thread>
 
     #pragma comment(lib, "dbghelp.lib")
     #include <dbghelp.h>
@@ -138,79 +141,109 @@ namespace LivePT {
         const size_t totalParams = params.size();
         if (totalParams == 0) return;
 
-        // Выделяем память под кэш метаданных заранее, чтобы избежать реаллокаций в куче
-        std::unordered_map<std::string, decltype(params[0].structInfo.members)> structMetadataCache;
-        structMetadataCache.reserve(8); // Задаем хэш-таблице стартовую емкость (для pos2, color3, size2 и т.д.)
+        // Фиксируем вход, чтобы не плодить потоки на каждом кадре
+        isWarmedUp = true;
 
-        std::string typeNameAnsi;
-        typeNameAnsi.reserve(64); // Кэшируем буфер строки, чтобы не аллоцировать память на каждом шаге цикла
+        // 🔥 ВЫНОСИМ ТЯЖЕЛЫЙ ПАРСИНГ PDB В ФОНОВЫЙ ПОТОК ПРОЦЕССОРА 🔥
+        std::thread warmupThread([totalParams]() {
+            // Перезапрашиваем ссылку на параметры внутри потока
+            auto& localParams = LivePT::getParamDesc();
 
-        for (size_t i = 0; i < totalParams; ++i) {
-            auto& p = params[i]; // Работаем строго по ссылке, убираем копирование тяжелых структур
+            std::unordered_map<std::type_index, decltype(localParams[0].structInfo.members)> structMetadataCache;
+            structMetadataCache.reserve(8);
 
-            // Быстрый отсев: если это enum, или структура уже прогрета, или значения нет — мгновенный пропуск
-            if (p.enumInfo.isEnum || p.structInfo.isStruct || !p.value.has_value()) {
-                continue;
-            }
+            static const std::type_index typeFloat = typeid(float);
+            static const std::type_index typeInt = typeid(int);
+            static const std::type_index typeBool = typeid(bool);
+            static const std::type_index typeDouble = typeid(double);
+            static const std::type_index typeChar = typeid(char);
+            static const std::type_index typeUChar = typeid(unsigned char);
 
-            // Получаем ANSI имя типа из рантайма C++
-            typeNameAnsi = p.value.type().name();
-            if (typeNameAnsi.empty()) continue;
+            for (size_t i = 0; i < totalParams; ++i) {
+                auto& p = localParams[i];
 
-            // Ассемблерно-быстрая очистка префиксов MSVC без вызова тяжелого .erase() по центру строки
-            const char* typePtr = typeNameAnsi.c_str();
-            if (strncmp(typePtr, "struct ", 7) == 0) typePtr += 7;
-            else if (strncmp(typePtr, "class ", 6) == 0) typePtr += 6;
-
-            // Отсекаем примитивные типы за 1 такт процессора
-            if (*typePtr == 'f' && strcmp(typePtr, "float") == 0) continue;
-            if (*typePtr == 'i' && strcmp(typePtr, "int") == 0) continue;
-            if (*typePtr == 'b' && strcmp(typePtr, "bool") == 0) continue;
-            if (*typePtr == 'd' && strcmp(typePtr, "double") == 0) continue;
-            if (*typePtr == 'c' && strcmp(typePtr, "char") == 0) continue;
-
-            // СВЕРХБЫСТРЫЙ КЭШ: проверяем, делали ли мы уже этот тип
-            auto it = structMetadataCache.find(typePtr);
-            if (it != structMetadataCache.end()) {
-                p.structInfo.members = it->second; // Мгновенное блочное копирование вектора из L1/L2 кэша процессора
-                p.structInfo.isStruct = true;
-                continue;
-            }
-
-            // Если тип встретился впервые — парсим PDB-символы через DbgHelp
-            size_t len = strlen(typePtr);
-            std::wstring wTypeName(len, L'\0');
-            MultiByteToWideChar(CP_ACP, 0, typePtr, static_cast<int>(len), wTypeName.data(), static_cast<int>(len));
-
-            std::vector<std::string> fNames;
-            std::vector<DWORD> fOffsets;
-            std::vector<DWORD> fSizes;
-            std::vector<std::string> fTypes;
-
-            if (LoadStructMetadataDirect(wTypeName.c_str(), fNames, fOffsets, fSizes, fTypes)) {
-                decltype(p.structInfo.members) loadedMembers;
-                const size_t fieldsCount = fOffsets.size();
-                loadedMembers.reserve(fieldsCount); // Исключаем реаллокации при пуше полей
-
-                for (size_t k = 0; k < fieldsCount; ++k) {
-                    loadedMembers.push_back({ std::move(fNames[k]), fOffsets[k], fSizes[k], std::move(fTypes[k]) });
+                if (p.enumInfo.isEnum || p.structInfo.isStruct || !p.value.has_value()) {
+                    continue;
                 }
 
-                p.structInfo.members = loadedMembers;
-                p.structInfo.isStruct = true;
+                std::type_index currentTypeInfo = p.value.type();
 
-                // Сохраняем готовую структуру полей в кэш для всех последующих аналогичных типов
-                structMetadataCache.emplace(typePtr, std::move(loadedMembers));
+                if (currentTypeInfo == typeFloat || currentTypeInfo == typeInt ||
+                    currentTypeInfo == typeBool || currentTypeInfo == typeDouble ||
+                    currentTypeInfo == typeChar || currentTypeInfo == typeUChar) {
+                    continue;
+                }
+
+                auto it = structMetadataCache.find(currentTypeInfo);
+                if (it != structMetadataCache.end()) {
+                    p.structInfo.members = it->second;
+                    p.structInfo.isStruct = true;
+                    continue;
+                }
+
+                std::string typeNameAnsi = currentTypeInfo.name();
+                if (typeNameAnsi.empty()) continue;
+
+                const char* typePtr = typeNameAnsi.c_str();
+                if (strncmp(typePtr, "struct ", 7) == 0) typePtr += 7;
+                else if (strncmp(typePtr, "class ", 6) == 0) typePtr += 6;
+
+                size_t len = strlen(typePtr);
+                std::wstring wTypeName(len, L'\0');
+                MultiByteToWideChar(CP_ACP, 0, typePtr, static_cast<int>(len), wTypeName.data(), static_cast<int>(len));
+
+                std::vector<std::string> fNames;
+                std::vector<DWORD> fOffsets;
+                std::vector<DWORD> fSizes;
+                std::vector<std::string> fTypes;
+
+                // Тяжелый вызов DbgHelp выполняется в фоне и не фризит UI-поток отрисовки кадра!
+                if (LoadStructMetadataDirect(wTypeName.c_str(), fNames, fOffsets, fSizes, fTypes)) {
+                    decltype(p.structInfo.members) loadedMembers;
+                    const size_t fieldsCount = fOffsets.size();
+                    loadedMembers.reserve(fieldsCount);
+
+                    for (size_t k = 0; k < fieldsCount; ++k) {
+                        loadedMembers.push_back({ std::move(fNames[k]), fOffsets[k], fSizes[k], std::move(fTypes[k]) });
+                    }
+
+                    p.structInfo.members = loadedMembers;
+                    p.structInfo.isStruct = true;
+
+                    structMetadataCache.emplace(currentTypeInfo, std::move(loadedMembers));
+                }
             }
-        }
+            Log("[LivePT Async Warmup] Background PDB parsing completed. Library is fully ready.");
+            });
 
-        isWarmedUp = true;
-        Log("[LivePT Hyper-Warmup] Complete. Processing speed optimized to the limit.");
+        // Отвязываем поток, чтобы он работал независимо и завершился сам
+        warmupThread.detach();
+    }
+
+    void TimeMeansure()
+    {
+        static bool isFirstFrame = true;
+        if (isFirstFrame) {
+            auto startTime = std::chrono::high_resolution_clock::now();
+
+            // Сам вызов чистой функции прогрева
+            LivePT::WarmupAllDatabaseParams();
+
+            auto endTime = std::chrono::high_resolution_clock::now();
+            auto durationMicro = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime).count();
+            double durationMilli = durationMicro / 1000.0;
+
+            LivePT::Log("[LivePT External Profile] Warmup execution time: " +
+                std::to_string(durationMilli) + " ms (" + std::to_string(durationMicro) + " us).");
+
+            isFirstFrame = false;
+        }
     }
 
     void ProcessEdit()
     {
-        WarmupAllDatabaseParams();
+        //WarmupAllDatabaseParams();
+        TimeMeansure();
 
         #if LivePT_WindowManagement
             GetWindowManager().Tick();

@@ -137,11 +137,11 @@ void UpdateSceneParams() {
 
     primitive[2].Set(Primitive{
         .pos = eval(pos2{154.88f,234.32f}),
-        .size = eval(size2{123.4657f,181.0666f}),
+        .size = eval(size2{108.6498f,159.3386f}),
         .Angle = eval(angle(334.4f)),
         .type = eval(ptype::roundbox),
         .show = eval(true),
-        .color = eval(color3{44,49,148})
+        .color = eval(color3{51,57,173})
         });
 
 }
