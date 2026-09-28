@@ -16,6 +16,9 @@
     <Filter Include="Source Files\LivePT">
       <UniqueIdentifier>{0e625540-e0b7-4cda-afbb-d3c2b44299b0}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\Widgets">
+      <UniqueIdentifier>{815dc008-2452-4a1b-b358-ea08264f232c}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="framework.h">
@@ -51,20 +54,20 @@
     <ClInclude Include="LivePT\windowManagement.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="colorPicker.h">
-      <Filter>Source Files</Filter>
-    </ClInclude>
     <ClInclude Include="test.h">
       <Filter>Source Files</Filter>
     </ClInclude>
     <ClInclude Include="LivePT\uiCallBackBridge.h">
       <Filter>Source Files\LivePT</Filter>
     </ClInclude>
-    <ClInclude Include="PosController.h">
-      <Filter>Source Files</Filter>
+    <ClInclude Include="Widgets\AngleController.h">
+      <Filter>Source Files\Widgets</Filter>
     </ClInclude>
-    <ClInclude Include="AngleController.h">
-      <Filter>Source Files</Filter>
+    <ClInclude Include="Widgets\colorPicker.h">
+      <Filter>Source Files\Widgets</Filter>
+    </ClInclude>
+    <ClInclude Include="Widgets\PosController.h">
+      <Filter>Source Files\Widgets</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

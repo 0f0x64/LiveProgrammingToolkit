@@ -5,8 +5,6 @@
 #include "LivePT/LivePT.h" // incude it for using lib
 // ------------------------------------------------------------
 
-
-
 #define TIMER_ID 1
 
 //simple class for demo purposes
@@ -18,7 +16,7 @@ struct color3 {
     unsigned char b;
 };
 
-#include "colorPicker.h"
+#include "Widgets\colorPicker.h"
 LPT_REGISTER_TYPE(color3, LivePT::MyColorPickerCallback);
 
 struct pos2 {
@@ -26,7 +24,7 @@ struct pos2 {
     float y;
 };
 
-#include "posController.h"
+#include "Widgets\posController.h"
 LPT_REGISTER_TYPE(pos2, LivePT::MyPosPickerCallback);
 
 struct size2 {
@@ -35,7 +33,7 @@ struct size2 {
 };
 
 typedef float angle;
-#include "AngleController.h"
+#include "Widgets\AngleController.h"
 LPT_REGISTER_TYPE(angle, LivePT::MyAnglePickerCallback);
 
 class Primitive {
@@ -55,7 +53,6 @@ public:
     }
     void Set(const Primitive& in) { *this = in; }
 
-    // Fully encapsulated rendering method (accepts any array size)
     template <size_t N>
     static void DrawScene(HWND hwnd, HDC hdc, const Primitive(&arr)[N]) {
         RECT r;
@@ -66,7 +63,6 @@ public:
         HBITMAP memBM = CreateCompatibleBitmap(hdc, w, h);
         HBITMAP oldBM = (HBITMAP)SelectObject(memDC, memBM);
 
-        // ВАЖНО: Включаем расширенный графический режим для поддержки матриц поворота
         SetGraphicsMode(memDC, GM_ADVANCED);
 
         HBRUSH hDarkBrush = CreateSolidBrush(RGB(30, 30, 32));
@@ -76,7 +72,6 @@ public:
         for (const auto& p : arr) {
             if (!p.show) continue;
 
-            // Вычисляем центр фигуры на экране
             int posX = (w / 2) + p.pos.x;
             int posY = (h / 2) + p.pos.y;
             size2 size = p.size;
@@ -84,40 +79,30 @@ public:
             HBRUSH hBrush = CreateSolidBrush(RGB(p.color.r, p.color.g, p.color.b));
             HBRUSH hOldBrush = (HBRUSH)SelectObject(memDC, hBrush);
 
-            // ================== МАТРИЦА ПОВОРОТА (Win32 XFORM) ==================
-            // Переводим угол из градусов в радианы. 
-            // Предположим, у вашего класса Primitive появится поле float angle;
-            // Если его пока нет, временно захардкодим 0.0f или добавьте его в класс.
-            float angleVal = p.Angle; // Сюда пойдет p.angle;
+            float angleVal = p.Angle; 
             float radians = angleVal * (3.14159265f / 180.0f);
             float cosA = std::cos(radians);
             float sinA = std::sin(radians);
 
             XFORM xForm;
-            // Матрица смещения центра координат в точку posX, posY и поворота холста
+
             xForm.eM11 = cosA;  xForm.eM12 = sinA;
             xForm.eM21 = -sinA; xForm.eM22 = cosA;
             xForm.eDx = (float)posX;
             xForm.eDy = (float)posY;
 
-            // Сохраняем старую матрицу трансформации холста
             XFORM oldForm;
             GetWorldTransform(memDC, &oldForm);
 
-            // Применяем нашу матрицу поворота
             SetWorldTransform(memDC, &xForm);
 
-            // Так как мы сместили центр холста в (posX, posY), 
-            // рисуем фигуру строго в локальных координатах вокруг нуля (0, 0)!
             switch (p.type) {
             case ptype::circle:   Ellipse(memDC, -size.x, -size.y, size.x, size.y); break;
             case ptype::box:      Rectangle(memDC, -size.x, -size.y, size.x, size.y); break;
             case ptype::roundbox: RoundRect(memDC, -size.x, -size.y, size.x, size.y, 40, 40); break;
             }
 
-            // Восстанавливаем старую матрицу трансформации для следующей фигуры
             SetWorldTransform(memDC, &oldForm);
-            // ====================================================================
 
             SelectObject(memDC, hOldBrush);
             DeleteObject(hBrush);
@@ -131,36 +116,32 @@ public:
 
 };
 
-
 // Global instance array of primitives
 Primitive primitive[3];
-
-
 
 // =================== USER SPACE ===================
 
 void UpdateSceneParams() {
 
     primitive[0].Set(Primitive{
-        .pos = eval(pos2{-227.88f,-367.14f}),
-        .size = eval(size2{119.435f,113.675f}),
+        .pos = eval(pos2{-221.88f,-250.14f}),
+        .size = eval(size2{121.8237f,115.9485f}),
         .Angle = eval(0),
         .type = eval(ptype::circle),
         .show = eval(true),
-
-        .color = eval(color3{174,49,35})
+        .color = eval(color3{174,41,47})
         });
 
     
 #include "test.h"
 
     primitive[2].Set(Primitive{
-        .pos = eval(pos2{-171.00f,170.00f}),
-        .size = eval(size2{115.3995f,106.2135f}),
+        .pos = eval(pos2{203.00f,232.00f}),
+        .size = eval(size2{117.3235f,112.5863f}),
         .Angle = eval(angle(334.4f)),
         .type = eval(ptype::roundbox),
         .show = eval(true),
-        .color = eval(color3{31,22,165})
+        .color = eval(color3{56,40,158})
         });
 
 }

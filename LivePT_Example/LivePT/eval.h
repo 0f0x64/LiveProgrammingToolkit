@@ -204,24 +204,21 @@ namespace LivePT {
                     paramDesc[target_id].typeMinBound = minB;
                     paramDesc[target_id].typeMaxBound = maxB;
 
-                    // МОДЕРНИЗИРОВАННЫЙ БЛОК: Умеет читать и "45.9", и "angle(45.9f)"
                     paramDesc[target_id].stringUpdater = [](std::any& targetAny, const std::string& textValue) {
                         std::string cleanText = textValue;
 
-                        // ТОЧЕЧНЫЙ ФИКС: Если радар или редактор прислали строку вида "angle(45.9f)"
+
                         size_t openBracket = cleanText.find('(');
                         size_t closeBracket = cleanText.rfind(')');
                         if (openBracket != std::string::npos && closeBracket != std::string::npos && closeBracket > openBracket) {
-                            // Вырезаем только число внутри круглых скобок: "45.9f"
+
                             cleanText = cleanText.substr(openBracket + 1, closeBracket - openBracket - 1);
                         }
 
-                        // Счищаем суффиксы float (f, F), если они есть на конце
                         while (!cleanText.empty() && (cleanText.back() == 'f' || cleanText.back() == 'F')) {
                             cleanText.pop_back();
                         }
 
-                        // Теперь стандартный поток ss спокойно прочитает чистое число
                         std::stringstream ss(cleanText);
                         TargetType parsedValue;
                         if (ss >> parsedValue) {
@@ -230,7 +227,7 @@ namespace LivePT {
                         };
                 }
                 else {
-                    // МОДЕРНИЗИРОВАННЫЙ БЛОК ДЕСЕРИАЛИЗАЦИИ СТРУКТУР (ВЫСОКОПРОИЗВОДИТЕЛЬНЫЙ ЩИТ)
+
                     paramDesc[target_id].stringUpdater = [](std::any& targetAny, const std::string& textValue) {
                         size_t openBrace = textValue.find('{');
                         size_t closeBrace = textValue.rfind('}');
@@ -312,7 +309,6 @@ namespace LivePT {
                             if (member.offset + member.size <= sizeof(TargetType)) {
                                 char* fieldAddress = byteBase + member.offset;
 
-                                // Очистка суффиксов литералов C++ (f, F, u, L, ULL), чтобы не ломать std::from_chars
                                 while (!token.empty() && (token.back() == 'f' || token.back() == 'F' ||
                                     token.back() == 'u' || token.back() == 'U' ||
                                     token.back() == 'l' || token.back() == 'L')) {
@@ -322,7 +318,6 @@ namespace LivePT {
                                 const char* strStart = token.data();
                                 const char* strEnd = token.data() + token.size();
 
-                                // --- ИНПЛЭЙС НАКАТ ИЗМЕНЕНИЙ НА БАЗЕ NOEXCEPT STD::FROM_CHARS ---
                                 if (member.typeName == "float") {
                                     float val = 0.0f;
                                     auto [ptr, ec] = std::from_chars(strStart, strEnd, val);
@@ -352,7 +347,7 @@ namespace LivePT {
                                     }
                                 }
                                 else if (member.typeName == "char" || member.typeName == "unsigned char" || member.typeName == "signed char") {
-                                    int val = 0; // from_chars не поддерживает парсинг напрямую в char как число
+                                    int val = 0; 
                                     auto [ptr, ec] = std::from_chars(strStart, strEnd, val);
                                     if (ec == std::errc() && ptr == strEnd) {
                                         if (member.typeName == "char") *reinterpret_cast<char*>(fieldAddress) = static_cast<char>(val);

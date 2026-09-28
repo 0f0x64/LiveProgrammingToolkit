@@ -146,8 +146,6 @@
     </Manifest>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="AngleController.h" />
-    <ClInclude Include="colorPicker.h" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="LivePT\DbgHelpRef.h" />
     <ClInclude Include="LivePT\enumMenu.h" />
@@ -158,10 +156,12 @@
     <ClInclude Include="LivePT\vsEditor.h" />
     <ClInclude Include="LivePT\windowManagement.h" />
     <ClInclude Include="LivePT_Example.h" />
-    <ClInclude Include="PosController.h" />
     <ClInclude Include="Resource.h" />
     <ClInclude Include="targetver.h" />
     <ClInclude Include="test.h" />
+    <ClInclude Include="Widgets\AngleController.h" />
+    <ClInclude Include="Widgets\colorPicker.h" />
+    <ClInclude Include="Widgets\PosController.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="LivePT_Example.cpp" />

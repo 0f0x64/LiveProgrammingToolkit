@@ -15,16 +15,12 @@ namespace LivePT {
     inline void HandleMouseDrag(const POINT& pt, bool ctrl, bool shift);
     inline void HandleMouseUp();
 
-    // РАСШИРЕНИЕ ДЛЯ ПРОПОРЦИОНАЛЬНОГО ДРАГА СТРУКТУР
     struct ExtractedArg {
         std::string text;
         long startColOffset;
         long endColOffset;
     };
 
-    
-
-    // Токенизатор аргументов внутри фигурных скобок с учетом вложенности
     inline std::vector<ExtractedArg> TokenizeCallArguments(const std::wstring& lineText, size_t openBracketPos) {
         std::vector<ExtractedArg> args;
         if (openBracketPos == std::wstring::npos) return args;
@@ -84,11 +80,9 @@ namespace LivePT {
         std::string oldValueStr = "";
         std::string lastValueStr = "";
 
-        // ДОБАВЛЕНО: Состояние пропорционального драга типа структуры
         bool isProportionalStructDrag = false;
         std::vector<float> originalStructValues;
     };
-
 
     static DragState g_dragState;
 
@@ -101,7 +95,6 @@ namespace LivePT {
 
     static PendingVsWrite g_pendingWrite;
 
-    // Сохраняем оригинальную сигнатуру с тремя параметрами, чтобы компилятор не ругался
     inline void PushPendingWrite(long line, long startCol, const std::string& text) {
         g_pendingWrite.line = line;
         g_pendingWrite.startCol = startCol;
@@ -109,8 +102,6 @@ namespace LivePT {
         g_pendingWrite.hasPending = true;
     }
 
-    // Восстанавливаем оригинальную функцию FlushPendingWritesToVS без аргументов (принимает 0 параметров).
-    // Теперь она вызывается каждый кадр из ProcessEdit() в главном потоке и мгновенно пишет в VS!
     inline void FlushPendingWritesToVS() {
         if (g_pendingWrite.hasPending && !g_pendingWrite.codeText.empty()) {
             long newCursorPhysicalCol = g_pendingWrite.startCol + static_cast<long>(g_pendingWrite.codeText.length());
@@ -469,7 +460,6 @@ namespace LivePT {
         int id = g_dragState.targetParamId;
         if (id == -1 || id >= static_cast<int>(paramDesc.size()) || !paramDesc[id].structInfo.isStruct) return;
 
-        // Вычисляем дельту мыши от точки клика
         int deltaY = -(pt.y - g_dragState.oldMouseY);
 
         CComVariant vtActiveDoc;
@@ -477,21 +467,15 @@ namespace LivePT {
 
         std::wstring currentLineText = DownloadCurrentLineText(vtActiveDoc.pdispVal);
 
-        // ================== ТОЧЕЧНЫЙ ФИКС ДЛЯ ДВУХ МАКРОСОВ НА СТРОКЕ ==================
-        // Нам нужно найти '{' именно ТЕКУЩЕГО макроса, а не самый первый на строке.
-        // Используем g_dragState.dragStartCol как опорную точку, так как она хранит
-        // позицию открывающей КРУГЛОЙ скобки '(' текущего макроса eval(...)
         size_t openBrace = std::wstring::npos;
         if (g_dragState.dragStartCol > 0 && static_cast<size_t>(g_dragState.dragStartCol) <= currentLineText.length()) {
             openBrace = currentLineText.find(L'{', g_dragState.dragStartCol - 1);
         }
         if (openBrace == std::wstring::npos) openBrace = currentLineText.find(L'{');
         if (openBrace == std::wstring::npos) { VariantClear(&vtActiveDoc); return; }
-        // ==============================================================================
 
         auto args = TokenizeCallArguments(currentLineText, openBrace);
 
-        // РЕВЕРСИВНЫЙ ЦИКЛ: С КОНЦА В НАЧАЛО
         for (size_t reverseIdx = args.size(); reverseIdx > 0; --reverseIdx) {
             size_t i = reverseIdx - 1;
 
@@ -557,8 +541,6 @@ namespace LivePT {
         VariantClear(&vtActiveDoc);
     }
 
-
-
     inline bool HandleMouseDown(const POINT& pt) {
         if (!initVsEditor()) return false;
 
@@ -610,7 +592,6 @@ namespace LivePT {
             int id = g_dragState.targetParamId;
             long cursorColIdx = column - 1;
 
-            // 1. ОБРАБОТКА ЕНАМОВ ПРИ ДАБЛКЛИКЕ
             if (id != -1 && paramDesc[id].enumInfo.isEnum) {
                 if (isDoubleClick) {
                     if (ParseMacroValueBoundaries(fileText, line, targetEvalAbsolutePos)) {
@@ -622,28 +603,23 @@ namespace LivePT {
                 return false;
             }
 
-            // 2. ОБРАБОТКА КАСТОМНЫХ СТРУКТУР ПРИ ДАБЛКЛИКЕ / ПРОПОРЦИОНАЛЬНЫЙ ДРАГ ТИПА
             if (id != -1 && !paramDesc[id].enumInfo.isEnum) {
 
-                // Вычисляем точное начало текущей строки в байтах
                 size_t lineStartOffset = 0; long currentLineIdx = 1;
                 while (currentLineIdx < line) {
                     lineStartOffset = fileText.find(L'\n', lineStartOffset) + 1;
                     currentLineIdx++;
                 }
 
-                // Локальная позиция текущего слова eval на этой строке
                 size_t localEvalPosInLine = std::wstring::npos;
                 if (targetEvalAbsolutePos != std::wstring::npos && targetEvalAbsolutePos >= lineStartOffset) {
                     localEvalPosInLine = targetEvalAbsolutePos - lineStartOffset;
                 }
 
-                // Ищем открывающую фигурую скобку СТРОГО после нашего eval, а не с начала строки
                 size_t openBracePos = (localEvalPosInLine != std::wstring::npos)
                     ? currentLineText.find(L'{', localEvalPosInLine)
                     : currentLineText.find(L'{');
 
-                // Ищем закрывающую круглую скобку ) нашего макроса eval(...)
                 std::wstring macroName = GetConfiguredMacroName();
                 size_t openBracketPos = (localEvalPosInLine != std::wstring::npos)
                     ? currentLineText.find(L'(', localEvalPosInLine + macroName.length())
@@ -657,7 +633,6 @@ namespace LivePT {
                     }
                 }
 
-                // Проверяем, что клик пришелся СТРОГО внутрь зоны инициализации типа
                 if (openBracePos != std::wstring::npos && cursorColIdx < static_cast<long>(openBracePos)) {
 
                     long startValidZone = (localEvalPosInLine != std::wstring::npos) ? static_cast<long>(localEvalPosInLine) : 0;
@@ -673,7 +648,6 @@ namespace LivePT {
 
                         StartUndoTransaction(L"LiveWheel Live Edit");
 
-                        // Вырезаем аргументы строго внутри фигурных скобок ИМЕННО ЭТОЙ структуры
                         size_t closeBracePos = currentLineText.find(L'}', openBracePos);
                         std::wstring innerArgsW = L"";
                         if (closeBracePos != std::wstring::npos && closeBracePos > openBracePos) {
@@ -721,10 +695,36 @@ namespace LivePT {
                     }
                 }
 
-                // ОБРАБОТКА ДАБЛКЛИКА ДЛЯ КАСТОМНЫХ ОКРУЖЕНИЙ (ЦВЕТОВЫЕ ПАЛИТРЫ И Т.Д.)
                 if (isDoubleClick) {
                     g_dragState.isProportionalStructDrag = false;
                     if (ParseMacroValueBoundaries(fileText, line, targetEvalAbsolutePos)) {
+
+                        if (paramDesc[id].value.type() == typeid(bool)) {
+                            bool currentBoolVal = std::any_cast<bool>(paramDesc[id].value);
+                            bool newBoolVal = !currentBoolVal; 
+
+                            std::string newValueStr = newBoolVal ? "true" : "false";
+
+                            long newCursorRelPos = static_cast<long>(newValueStr.length()) - g_dragState.initialCursorAnchorOffset;
+                            if (newCursorRelPos < 0) newCursorRelPos = 0;
+                            long newCursorPhysicalCol = g_dragState.dragStartCol + newCursorRelPos;
+
+                            StartUndoTransaction(L"LiveWheel Toggle Bool");
+                            ReplaceTextInActiveVS(g_dragState.dragLine, g_dragState.dragStartCol, g_dragState.dragStartCol + static_cast<long>(g_dragState.currentTextLength), newValueStr, newCursorPhysicalCol);
+                            EndUndoTransaction();
+
+                            g_dragState.currentTextLength = newValueStr.length();
+                            g_dragState.oldValueStr = newValueStr;
+
+                            paramDesc[id].value = std::any(newBoolVal);
+                            UpdateParamValue(id, newValueStr);
+
+                            SaveActiveDocument();
+                            g_dragState.targetParamId = -1;
+                            VariantClear(&vtActiveDoc);
+                            return false;
+                        }
+
                         std::string typeNameStr = paramDesc[id].value.type().name();
                         auto& registry = GetTypeCallbackRegistry();
 
@@ -744,8 +744,6 @@ namespace LivePT {
                 }
             }
 
-
-            // 3. ПАРСИНГ ОБЫЧНЫХ ЧИСЕЛ ДЛЯ ДРАГА
             if (!g_dragState.isProportionalStructDrag && cursorColIdx >= 0 && cursorColIdx < static_cast<long>(currentLineText.length())) {
                 long startCol = cursorColIdx;
                 long endCol = cursorColIdx;
@@ -871,8 +869,6 @@ namespace LivePT {
         }
     }
 
-
-    // ОБНОВЛЕННЫЙ МЕТОД HANDLE_MOUSE_DRAG
     inline void HandleMouseDrag(const POINT& pt, bool ctrl, bool shift) {
         if (!g_dragState.isDragging && !g_dragState.isProportionalStructDrag) return;
 
@@ -888,7 +884,6 @@ namespace LivePT {
         }
     }
 
-    // ОБНОВЛЕННЫЙ МЕТОД HANDLE_MOUSE_UP
     inline void HandleMouseUp() {
         if (!g_dragState.isDragging && !g_dragState.isProportionalStructDrag) {
             if (g_hShieldWnd) {

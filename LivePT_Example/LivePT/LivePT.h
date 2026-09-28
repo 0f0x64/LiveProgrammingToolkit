@@ -51,20 +51,18 @@ namespace LivePT {
             std::string marker = "//EVAL_NAME_MARKER - DO'NT TOUCH THIS LINE";
 
             while (std::getline(file, line)) {
-                // Нашли маркер в собственном тексте
-                if (line.find(marker) != std::string::npos) {
-                    // ИСПРАВЛЕНО: Читаем файл дальше в цикле, пока не найдем строку с "#define"
-                    while (std::getline(file, line)) {
-                        // Чистим пробелы и табы по краям строки
-                        line.erase(0, line.find_first_not_of(" \t\r\n"));
-                        if (line.empty()) continue; // Пропускаем пустые строки
 
-                        // Если это строка макроса
+                if (line.find(marker) != std::string::npos) {
+
+                    while (std::getline(file, line)) {
+
+                        line.erase(0, line.find_first_not_of(" \t\r\n"));
+                        if (line.empty()) continue; 
+
                         if (line.rfind("#define", 0) == 0) {
-                            line.erase(0, 7); // Стираем "#define"
+                            line.erase(0, 7); 
                             line.erase(0, line.find_first_not_of(" \t\r\n"));
 
-                            // Вырезаем токен до первой скобки, пробела или таба
                             size_t endPos = line.find_first_of(" \t(");
                             if (endPos != std::string::npos) {
                                 std::string name = line.substr(0, endPos);

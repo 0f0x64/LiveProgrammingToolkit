@@ -1,11 +1,3 @@
-// colorPicker.h — Часть 1 (Логика и Алгоритмы)
-#pragma once
-#include <windows.h>
-#include <string>
-#include <functional>
-#include <cmath>
-#include <algorithm>
-
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
@@ -39,9 +31,6 @@ namespace LivePT {
 
     static ColorPickerContext g_pickerCtx;
 
-    // ЖЕСТКИЙ ФИКС ЦВЕТОВ: Внутренняя структура StretchDIBits при стандартном сжатии BI_RGB
-    // требует физического расположения каналов в памяти как Blue-Green-Red (BGR).
-    // Помещаем Red в самый старший доступный байт, а Blue — в самый младший. Теперь цвета идеальны!
     inline DWORD HsvToGdiColor(float H, float S, float V) {
         float r = 0, g = 0, b = 0;
         if (S == 0) {
@@ -70,7 +59,7 @@ namespace LivePT {
 
     inline color3 HsvToRgbStruct(float H, float S, float V) {
         DWORD gdiColor = HsvToGdiColor(H, S, V);
-        // Возвращаем в вашу программу чистый, неперевернутый RGB под C++ структуры
+
         return color3{
             static_cast<unsigned char>((gdiColor >> 16) & 0xFF),
             static_cast<unsigned char>((gdiColor >> 8) & 0xFF),
@@ -114,34 +103,27 @@ namespace LivePT {
 
         UpdateLiveCode();
     }
-}
-// colorPicker.h — Часть 2 (Интерфейс Win32 API и Курсор)
-namespace LivePT {
 
     inline LRESULT CALLBACK ColorPickerWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
         switch (uMsg) {
         case WM_SETCURSOR: {
-            // ТОЧЕЧНЫЙ ФИКС КУРСОРОВ: Проверяем координаты мыши относительно центра круга
+
             POINT pt;
             GetCursorPos(&pt);
             ScreenToClient(hwnd, &pt);
 
-            // Вычисляем расстояние от курсора до центра цветового диска
             int dx = pt.x - g_pickerCtx.centerX;
             int dy = pt.y - g_pickerCtx.centerY;
             float distance = std::sqrt(static_cast<float>(dx * dx + dy * dy));
 
-            // Если мышь СТРОГО внутри круглого спектра — включаем крестик
             if (distance <= g_pickerCtx.radius) {
                 SetCursor(LoadCursor(NULL, IDC_CROSS));
                 return TRUE;
             }
 
-            // Во всех остальных зонах окна (слайдер яркости, превью, фон) — возвращаем стрелку
             SetCursor(LoadCursor(NULL, IDC_ARROW));
             return TRUE;
         }
-
 
         case WM_KEYDOWN:
             if (wParam == VK_ESCAPE) {
@@ -163,7 +145,7 @@ namespace LivePT {
             int w = lpDrawItem->rcItem.right - lpDrawItem->rcItem.left;
             int h = lpDrawItem->rcItem.bottom - lpDrawItem->rcItem.top;
 
-            std::vector<DWORD> pixelBuffer(w * h, 0x0030302D); // Цвет фона палитры в формате GDI (0x00BBGGRR)
+            std::vector<DWORD> pixelBuffer(w * h, 0x0030302D); 
 
             BITMAPINFO bmi = {};
             bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
@@ -221,7 +203,7 @@ namespace LivePT {
             HDC hdc = BeginPaint(hwnd, &ps);
 
             RECT previewRect = { 162, 8, 207, 122 };
-            // Для FrameRect/FillRect используем COLORREF (формат 0x00BBGGRR), собираемый стандартным макросом RGB()
+
             HBRUSH hPreviewBrush = CreateSolidBrush(RGB(g_pickerCtx.currentRGB.r, g_pickerCtx.currentRGB.g, g_pickerCtx.currentRGB.b));
             FillRect(hdc, &previewRect, hPreviewBrush);
             DeleteObject(hPreviewBrush);

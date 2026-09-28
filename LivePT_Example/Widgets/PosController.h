@@ -1,17 +1,4 @@
-// posPicker.h — Часть 1 (Логика трекпада)
-#pragma once
-#include <windows.h>
-#include <string>
-#include <functional>
 #include <cmath>
-
-// Макрос авторегистрации для типа pos2 (вызывается глобально под структурой)
-#define LPT_REGISTER_POS(Type, Callback) \
-    namespace LivePT { void MyPosPickerCallback(const pos2&, std::function<void(std::string)>); } \
-    static inline bool _lpt_init_##Type = []() { \
-        LivePT::RegisterTypeDoubleClickCallback<Type>(Callback); \
-        return true; \
-    }();
 
 namespace LivePT {
 
@@ -23,7 +10,7 @@ namespace LivePT {
         std::function<void(std::string)> vsUpdaterCallback = nullptr;
 
         bool isTracking = false;
-        bool isCursorHidden = false; // Флаг для контроля состояния курсора
+        bool isCursorHidden = false; 
         POINT lastMousePos = { 0, 0 };
 
         const int width = 140;
@@ -41,8 +28,7 @@ namespace LivePT {
         InvalidateRect(g_posCtx.hWindow, NULL, FALSE);
     }
 }
-// posPicker.h — Часть 2 (Интерфейс Win32 API)
-// posPicker.h — Часть 2 (Интерфейс Win32 API)
+
 namespace LivePT {
 
     inline LRESULT CALLBACK PosPickerWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
@@ -79,23 +65,18 @@ namespace LivePT {
             HBITMAP memBM = CreateCompatibleBitmap(hdc, w, h);
             HBITMAP oldBM = (HBITMAP)SelectObject(memDC, memBM);
 
-            // ФОН: Глубокий матовый темно-серый цвет
             HBRUSH hBg = CreateSolidBrush(RGB(30, 30, 32));
             FillRect(memDC, &lpDrawItem->rcItem, hBg);
             DeleteObject(hBg);
 
-            // ТОЧЕЧНЫЙ ФИКС: Создаем ОДНУ сплошную тонкую кисть нейтрального серого цвета
-            // для всей графики (и для сетки, и для центрального перекрестия)
             HPEN hMutedPen = CreatePen(PS_SOLID, 1, RGB(55, 55, 58));
             HPEN oldPen = (HPEN)SelectObject(memDC, hMutedPen);
 
-            // 1. Рисуем строгую однотонную сетку с шагом 20 пикселей (без пунктиров)
             for (int i = 20; i < w; i += 20) {
                 MoveToEx(memDC, i, 0, NULL); LineTo(memDC, i, h);
                 MoveToEx(memDC, 0, i, NULL); LineTo(memDC, w, i);
             }
 
-            // 2. Рисуем центральное перекрестие прицела той же самой серой кистью
             int cx = w / 2;
             int cy = h / 2;
             MoveToEx(memDC, cx - 8, cy, NULL); LineTo(memDC, cx + 8, cy);
