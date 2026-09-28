@@ -127,7 +127,7 @@ void UpdateSceneParams() {
         .pos = eval(pos2{-259.5996f,-292.6638f}),
         .size = eval(size2{150.7454f,137.3907f}),
         .Angle = eval(0),
-        .type = eval(ptype::circle),
+        .type = eval(ptype::box),
         .show = eval(true),
         .color = eval(color3{38,29,166})
         });
