@@ -744,6 +744,7 @@ namespace LivePT {
                 }
             }
 
+            // === ЛОГИКА ДРАГА ОБЫЧНЫХ ЧИСЕЛ ===
             if (!g_dragState.isProportionalStructDrag && cursorColIdx >= 0 && cursorColIdx < static_cast<long>(currentLineText.length())) {
                 long startCol = cursorColIdx;
                 long endCol = cursorColIdx;
@@ -768,17 +769,33 @@ namespace LivePT {
                     std::wstring numW = currentLineText.substr(startCol, endCol - startCol);
                     std::string cleanText(numW.begin(), numW.end());
 
-                    g_dragState.dragLine = line;
-                    g_dragState.dragStartCol = startCol + 1;
-                    g_dragState.currentTextLength = cleanText.length();
-                    g_dragState.oldMouseY = pt.y;
+                    //  СИНТАКСИЧЕСКАЯ ЗАЩИТА КОДА 
+                    // Проверяем символы строго СЛЕВА и СПРАВА от найденного числа.
+                    // Если рядом стоит буква или знак подчеркивания, значит это ЧАСТЬ ИМЕНИ ТИПА (как color3 или pos2).
+                    // Менять её как обычное число нельзя!
+                    bool isLeftValid = (startCol == 0 || (!iswalnum(currentLineText[startCol - 1]) && currentLineText[startCol - 1] != L'_'));
+                    bool isRightValid = (endCol >= static_cast<long>(currentLineText.length()) || (!iswalnum(currentLineText[endCol]) && currentLineText[endCol] != L'_' && currentLineText[endCol] != L'f' && currentLineText[endCol] != L'F'));
 
-                    size_t relativeCursorIdx = cursorColIdx - startCol;
-                    InitNumericDragState(relativeCursorIdx, cleanText);
+                    // Дополнительно: если число состоит только из одной цифры, стоящей вплотную к букве (например, '3' в color3)
+                    if (isLeftValid && isRightValid) {
+                        g_dragState.dragLine = line;
+                        g_dragState.dragStartCol = startCol + 1;
+                        g_dragState.currentTextLength = cleanText.length();
+                        g_dragState.oldMouseY = pt.y;
 
-                    clickedInsideNumber = true;
+                        size_t relativeCursorIdx = cursorColIdx - startCol;
+                        InitNumericDragState(relativeCursorIdx, cleanText);
+
+                        clickedInsideNumber = true;
+                    }
+                    else {
+                        // Клик пришелся на имя типа (color3) из-за лага фокуса. 
+                        // Блокируем числовой драг, предотвращая поломку кода.
+                        clickedInsideNumber = false;
+                    }
                 }
             }
+
 
             VariantClear(&vtActiveDoc);
         }
