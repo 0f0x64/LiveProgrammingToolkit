@@ -1,6 +1,6 @@
 #include <cmath>
 
-namespace LivePT {
+namespace Widgets {
 
     struct PosPickerContext {
         HWND hWindow = NULL;
@@ -27,9 +27,7 @@ namespace LivePT {
         }
         InvalidateRect(g_posCtx.hWindow, NULL, FALSE);
     }
-}
 
-namespace LivePT {
 
     inline LRESULT CALLBACK PosPickerWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
         switch (uMsg) {
@@ -164,7 +162,7 @@ namespace LivePT {
         return DefWindowProcA(hwnd, uMsg, wParam, lParam);
     }
 
-    inline void MyPosPickerCallback(const pos2& initialPos, std::function<void(std::string)> vsUpdater) {
+    inline void pos2Callback(const pos2& initialPos, std::function<void(std::string)> vsUpdater) {
         g_posCtx.currentPos = initialPos;
         g_posCtx.vsUpdaterCallback = vsUpdater;
 

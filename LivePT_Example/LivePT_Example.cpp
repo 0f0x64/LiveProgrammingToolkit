@@ -16,16 +16,16 @@ struct color3 {
     unsigned char b;
 };
 
-#include "Widgets\colorPicker.h"
-LPT_REGISTER_TYPE(color3, LivePT::MyColorPickerCallback);
+#include "Widgets\color3.h"
+LPT_REGISTER_TYPE(color3, Widgets::color3Callback);
 
 struct pos2 {
     float x;
     float y;
 };
 
-#include "Widgets\posController.h"
-LPT_REGISTER_TYPE(pos2, LivePT::MyPosPickerCallback);
+#include "Widgets\pos2.h"
+LPT_REGISTER_TYPE(pos2, Widgets::pos2Callback);
 
 struct size2 {
     float x;
@@ -33,8 +33,8 @@ struct size2 {
 };
 
 typedef float angle;
-#include "Widgets\AngleController.h"
-LPT_REGISTER_TYPE(angle, LivePT::MyAnglePickerCallback);
+#include "Widgets\angle.h"
+LPT_REGISTER_TYPE(angle, Widgets::angleCallback);
 
 class Primitive {
 public:
@@ -136,10 +136,10 @@ void UpdateSceneParams() {
 #include "test.h"
 
     primitive[2].Set({
-        .pos = eval(pos2{86.98f,155.33f}),
-        .size = eval(size2{68.0787f,99.8398f}),
-        .Angle = eval(angle(310.9f)),
-        .type = eval(ptype::circle),
+        .pos = eval(pos2{138.29f,105.69f}),
+        .size = eval(size2{75.5868f,63.9446f}),
+        .Angle = eval(angle(338.0f)),
+        .type = eval(ptype::box),
         .show = eval(true),
         .color = eval(color3{64,54,215})
         });

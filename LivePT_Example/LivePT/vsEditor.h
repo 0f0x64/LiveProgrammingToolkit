@@ -1,7 +1,5 @@
 namespace LivePT {
 
-    
-
     static IDispatch* pDTE = nullptr;
 
     inline std::wstring DownloadCurrentLineText(IDispatch* pActiveDoc);
@@ -19,6 +17,11 @@ namespace LivePT {
         str.resize(size_needed - 1);
 
         return str;
+    }
+
+    inline std::wstring ConvertAnsiToWString(const std::string& ansiStr) {
+        if (ansiStr.empty()) return L"";
+        return std::wstring(ansiStr.begin(), ansiStr.end());
     }
 
     HRESULT AutoWrap(int autoType, VARIANT* pvResult, IDispatch* pDisp, LPCOLESTR ptName, int cArgs...) {
@@ -161,29 +164,28 @@ namespace LivePT {
         }
 
     bool initVsEditor()
-        {
-            if (pDTE) return true;
+    {
+        if (pDTE) return true;
 
-            DWORD parentPid = GetStudioProcessId();
-            Log("Target Studio PID: " + std::to_string(parentPid));
+        DWORD parentPid = GetStudioProcessId();
 
-            pDTE = GetDTEByPid(parentPid);
-            if (!pDTE) {
-                Log("Failed to connect to the host Visual Studio instance.");
-                return false;
-            }
-
-            Log("Connected to Visual Studio successfully!");
-            return true;
+        pDTE = GetDTEByPid(parentPid);
+        if (!pDTE) {
+            Log("Failed to connect to the host Visual Studio instance.");
+            return false;
         }
+
+        Log("Connected to Visual Studio successfully!");
+        return true;
+    }
 
     void ResetDTEConnection() {
-            if (pDTE) {
-                pDTE->Release();
-                pDTE = nullptr;
-                Log("[EnvDTE] Connection lost. pDTE reset.");
-            }
+        if (pDTE) {
+            pDTE->Release();
+            pDTE = nullptr;
+            Log("[EnvDTE] Connection lost. pDTE reset.");
         }
+    }
 
     void StartUndoTransaction(const std::wstring & name) {
 
@@ -214,7 +216,6 @@ namespace LivePT {
                 }
             }
         }
-
 
     inline long GetVSTabSize() {
         static long cachedTabSize = 4;
@@ -381,7 +382,7 @@ namespace LivePT {
         const auto& params = LivePT::getParamDesc();
         const auto& p = params[targetId];
 
-        std::wstring macroName = GetConfiguredMacroName();
+        std::wstring macroName = ConvertAnsiToWString(paramDesc[targetId].funcName);
 
         size_t lineStartOffset = 0;
         long currentLineIdx = 1;

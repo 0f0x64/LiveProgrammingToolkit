@@ -23,6 +23,7 @@ namespace LivePT {
     };
 
     struct ref {
+        std::string funcName;
         std::any value;
         bool loaded = false;
         std::string fileName;
@@ -103,7 +104,7 @@ namespace LivePT {
         }
     };
 
-    inline int RegisterEvalPreMain(const char* file, std::any value, int line, int column, EnumTypeDesc enumDesc) {
+    inline int RegisterEvalPreMain(const char* file, std::any value, int line, int column, EnumTypeDesc enumDesc, const char* funcName) {
         std::string absolutePath = NormalizePath(file);
 
         static std::unordered_map<std::string, std::map<StaticOrderKey, int>> fileCompileTree;
@@ -117,6 +118,7 @@ namespace LivePT {
 
         int paramID = static_cast<int>(paramDesc.size());
         paramDesc.push_back({
+            .funcName = funcName,
             .value = value,
             .loaded = false,
             .fileName = absolutePath,
@@ -153,28 +155,31 @@ namespace LivePT {
     };
     template <size_t N> FixedString(const char(&str)[N]) -> FixedString<N>;
 
-    template <typename T, FixedString<260> AbsoluteFile, int Line, int Column>
+    template <typename T, FixedString<260> AbsoluteFile, int Line, int Column, FixedString<64> funcName>
     struct GlobalEvalRegistry {
         static inline const int cached_id = []() {
             if constexpr (std::is_enum_v<T>) {
-                return RegisterEvalPreMain(AbsoluteFile.c_str(), std::any{ static_cast<int>(T{}) }, Line, Column, EnumTypeDesc{ .isEnum = true });
+                return RegisterEvalPreMain(AbsoluteFile.c_str(), std::any{ static_cast<int>(T{}) }, Line, Column, 
+                    EnumTypeDesc{ .isEnum = true },funcName.c_str());
             }
             else {
                 if constexpr (std::is_default_constructible_v<T>) {
-                    return RegisterEvalPreMain(AbsoluteFile.c_str(), std::any{ T{} }, Line, Column, EnumTypeDesc{ false });
+                    return RegisterEvalPreMain(AbsoluteFile.c_str(), std::any{ T{} }, Line, Column, 
+                        EnumTypeDesc{ false }, funcName.c_str());
                 }
                 else {
-                    return RegisterEvalPreMain(AbsoluteFile.c_str(), std::any{}, Line, Column, EnumTypeDesc{ false });
+                    return RegisterEvalPreMain(AbsoluteFile.c_str(), std::any{}, Line, Column, 
+                        EnumTypeDesc{ false }, funcName.c_str());
                 }
             }
             }();
     };
 
-    template <typename TargetType, FixedString<260> AbsoluteFile, int Line, int Column>
+    template <typename TargetType, FixedString<260> AbsoluteFile, int Line, int Column, FixedString<64> funcName>
     struct EvalSyntaxShield {
         template <typename TLiteral>
         inline static TargetType Get(TLiteral literalValue) {
-            int target_id = GlobalEvalRegistry<TargetType, AbsoluteFile, Line, Column>::cached_id;
+            int target_id = GlobalEvalRegistry<TargetType, AbsoluteFile, Line, Column, funcName>::cached_id;
 
             if (target_id < 0 || target_id >= static_cast<int>(paramDesc.size())) {
                 return static_cast<TargetType>(literalValue);
@@ -258,7 +263,7 @@ namespace LivePT {
                             innerArgs += c;
                         }
 
-                        int globalId = GlobalEvalRegistry<TargetType, AbsoluteFile, Line, Column>::cached_id;
+                        int globalId = GlobalEvalRegistry<TargetType, AbsoluteFile, Line, Column, funcName>::cached_id;
                         if (!paramDesc[globalId].structInfo.isStruct) {
                             std::string typeNameAnsi = textValue.substr(0, openBrace);
                             typeNameAnsi.erase(0, typeNameAnsi.find_first_not_of(" \t\r\n"));
@@ -416,7 +421,7 @@ namespace LivePT {
     };
 
 
-    template <typename LiteralType, FixedString<260> AbsoluteFile, int Line, int Column>
+    template <typename LiteralType, FixedString<260> AbsoluteFile, int Line, int Column, FixedString<64> funcName>
     struct LazyTypeDetector {
         LiteralType rawValue;
 
@@ -425,15 +430,15 @@ namespace LivePT {
         template <typename TargetType>
         inline operator TargetType() const {
             if constexpr (std::is_enum_v<LiteralType>) {
-                return static_cast<TargetType>(EvalSyntaxShield<LiteralType, AbsoluteFile, Line, Column>::Get(rawValue));
+                return static_cast<TargetType>(EvalSyntaxShield<LiteralType, AbsoluteFile, Line, Column, funcName>::Get(rawValue));
             }
             else {
-                return EvalSyntaxShield<TargetType, AbsoluteFile, Line, Column>::Get(rawValue);
+                return EvalSyntaxShield<TargetType, AbsoluteFile, Line, Column, funcName>::Get(rawValue);
             }
         }
 
         inline operator LiteralType() const {
-            return EvalSyntaxShield<LiteralType, AbsoluteFile, Line, Column>::Get(rawValue);
+            return EvalSyntaxShield<LiteralType, AbsoluteFile, Line, Column, funcName>::Get(rawValue);
         }
 
         template <typename TTarget>

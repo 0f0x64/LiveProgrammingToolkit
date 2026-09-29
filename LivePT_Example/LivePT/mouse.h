@@ -1,4 +1,4 @@
-#if LivePT_TriggerButton == VK_LBUTTON
+#if LivePT_MouseButton == VK_LBUTTON
 #define LPT_WM_BUTTONUP   WM_LBUTTONUP
 #elif LivePT_TriggerButton == VK_MBUTTON
 #define LPT_WM_BUTTONUP   WM_MBUTTONUP
@@ -568,7 +568,7 @@ namespace LivePT {
 
             std::wstring currentLineText = DownloadCurrentLineText(vtActiveDoc.pdispVal);
 
-            EvalContext evalCtx = GetCurrentRawIdUnderCursor(fileText, line, column, currentLineText);
+            EvalContext evalCtx = GetCurrentRawIdUnderCursor(currentFile,fileText, line, column, currentLineText);
 
             if (evalCtx.rawId != -1 && evalCtx.absolutePos != std::wstring::npos) {
                 targetEvalAbsolutePos = evalCtx.absolutePos;
@@ -620,7 +620,7 @@ namespace LivePT {
                     ? currentLineText.find(L'{', localEvalPosInLine)
                     : currentLineText.find(L'{');
 
-                std::wstring macroName = GetConfiguredMacroName();
+                std::wstring macroName = ConvertAnsiToWString(paramDesc[id].funcName);
                 size_t openBracketPos = (localEvalPosInLine != std::wstring::npos)
                     ? currentLineText.find(L'(', localEvalPosInLine + macroName.length())
                     : std::wstring::npos;
@@ -974,7 +974,7 @@ namespace LivePT {
         POINT pt;
         GetCursorPos(&pt);
 
-        bool buttonDown = (GetAsyncKeyState(LivePT_TriggerButton) & 0x8000) != 0;
+        bool buttonDown = (GetAsyncKeyState(LivePT_MouseButton) & 0x8000) != 0;
         bool ctrl = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
         bool shift = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
 

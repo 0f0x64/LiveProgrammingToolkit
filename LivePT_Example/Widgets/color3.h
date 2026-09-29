@@ -2,7 +2,7 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-namespace LivePT {
+namespace Widgets {
 
     struct ColorPickerContext {
         HWND hWindow = NULL;
@@ -270,7 +270,7 @@ namespace LivePT {
         return DefWindowProcA(hwnd, uMsg, wParam, lParam);
     }
 
-    inline void MyColorPickerCallback(const color3& initialColor, std::function<void(std::string)> vsUpdater) {
+    inline void color3Callback(const color3& initialColor, std::function<void(std::string)> vsUpdater) {
         g_pickerCtx.currentRGB = initialColor;
         g_pickerCtx.vsUpdaterCallback = vsUpdater;
 

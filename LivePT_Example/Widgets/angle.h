@@ -1,6 +1,6 @@
 #include <cmath>
 
-namespace LivePT {
+namespace Widgets {
 
     struct AnglePickerContext {
         HWND hWindow = NULL;
@@ -184,7 +184,7 @@ namespace LivePT {
         return DefWindowProcA(hwnd, uMsg, wParam, lParam);
     }
 
-    inline void MyAnglePickerCallback(float initialAngle, std::function<void(std::string)> vsUpdater) {
+    inline void angleCallback(float initialAngle, std::function<void(std::string)> vsUpdater) {
         g_angleCtx.currentAngle = initialAngle;
         g_angleCtx.vsUpdaterCallback = vsUpdater;
 

@@ -1,9 +1,9 @@
 // User space settings
 
-#define LivePT_WheelEditMode true // true for mouse drag, switch, enums with context menu
+#define LivePT_Mouse true // true for mouse drag, switch, enums with context menu
 #define LivePT_WindowManagement true //auto split screen on single monitor
 #define LivePT_AppToSecondaryDisplay false //auto move your app to second monitor
-#define LivePT_TriggerButton VK_LBUTTON  // you can use VK_MBUTTON for alternative
+#define LivePT_MouseButton VK_LBUTTON  // you can use VK_MBUTTON for alternative
 
 // -------------------
 
@@ -40,7 +40,11 @@
 
 namespace LivePT {
 
-    inline std::wstring GetConfiguredMacroName() {
+    inline std::wstring GetConfiguredMacroName3() {
+        return std::wstring(L"eval");
+    }
+
+    inline std::wstring GetConfiguredMacroName2() {
         static const std::wstring cachedMacroName = []() {
             constexpr auto location = std::source_location::current();
             std::string selfPath = location.file_name();
@@ -93,8 +97,8 @@ namespace LivePT {
     #include "uiCallBackBridge.h"
     #include "vsEditor.h"
 
-    #if LivePT_WheelEditMode
-        #include "liveWheelEdit.h"
+    #if LivePT_Mouse
+        #include "mouse.h"
     #endif
 
     #if LivePT_WindowManagement
@@ -246,7 +250,7 @@ namespace LivePT {
             GetWindowManager().Tick();
         #endif
 
-        #if LivePT_WheelEditMode
+        #if LivePT_Mouse
             FlushPendingWritesToVS();
             Update();
         #endif
@@ -256,14 +260,18 @@ namespace LivePT {
 
 }
 
-//EVAL_NAME_MARKER - DO'NT TOUCH THIS LINE
-#define eval(...) \
+
+#define LPT_EVAL_INTERNAL(MacroNameStr, ...) \
     LivePT::LazyTypeDetector< \
         std::decay_t<decltype(__VA_ARGS__)>, \
         LivePT::FixedString<260>{__FILE__}, \
         static_cast<int>(__LINE__), \
-        static_cast<int>(__builtin_COLUMN()) \
+        static_cast<int>(__builtin_COLUMN()), \
+        LivePT::FixedString<64>{MacroNameStr} \
     >(__VA_ARGS__)
+
+//EVAL_NAME_MARKER - DO'NT TOUCH THIS LINE
+#define eval(...) LPT_EVAL_INTERNAL("eval", __VA_ARGS__)
 
 
 #else
