@@ -1,8 +1,18 @@
+#pragma once
+#include <windows.h>
+#include <cmath>
+#include <functional>
+#include <string>
+#include <vector>
+#include <any>
+#include <algorithm>
+#include <type_traits>
+
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
 
-namespace LivePT {
+namespace Widgets {
 
     struct ColorPickerContext {
         HWND hWindow = NULL;
@@ -11,6 +21,7 @@ namespace LivePT {
 
         color3 currentRGB = { 255, 255, 255 };
         std::function<void(std::string)> vsUpdaterCallback = nullptr;
+        std::function<void(unsigned char, unsigned char, unsigned char)> textGenerator = nullptr;
 
         bool isTrackingWheel = false;
         bool isTrackingValue = false;
@@ -30,6 +41,8 @@ namespace LivePT {
     };
 
     static ColorPickerContext g_pickerCtx;
+}
+namespace Widgets {
 
     inline DWORD HsvToGdiColor(float H, float S, float V) {
         float r = 0, g = 0, b = 0;
@@ -59,7 +72,6 @@ namespace LivePT {
 
     inline color3 HsvToRgbStruct(float H, float S, float V) {
         DWORD gdiColor = HsvToGdiColor(H, S, V);
-
         return color3{
             static_cast<unsigned char>((gdiColor >> 16) & 0xFF),
             static_cast<unsigned char>((gdiColor >> 8) & 0xFF),
@@ -71,10 +83,8 @@ namespace LivePT {
         g_pickerCtx.currentRGB = HsvToRgbStruct(g_pickerCtx.currentHue, g_pickerCtx.currentSat, g_pickerCtx.currentValue);
         InvalidateRect(g_pickerCtx.hWindow, NULL, FALSE);
 
-        if (g_pickerCtx.vsUpdaterCallback) {
-            char buf[64]{};
-            sprintf_s(buf, "color3{%d,%d,%d}", g_pickerCtx.currentRGB.r, g_pickerCtx.currentRGB.g, g_pickerCtx.currentRGB.b);
-            g_pickerCtx.vsUpdaterCallback(buf);
+        if (g_pickerCtx.textGenerator) {
+            g_pickerCtx.textGenerator(g_pickerCtx.currentRGB.r, g_pickerCtx.currentRGB.g, g_pickerCtx.currentRGB.b);
         }
     }
 
@@ -107,7 +117,6 @@ namespace LivePT {
     inline LRESULT CALLBACK ColorPickerWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
         switch (uMsg) {
         case WM_SETCURSOR: {
-
             POINT pt;
             GetCursorPos(&pt);
             ScreenToClient(hwnd, &pt);
@@ -124,7 +133,6 @@ namespace LivePT {
             SetCursor(LoadCursor(NULL, IDC_ARROW));
             return TRUE;
         }
-
         case WM_KEYDOWN:
             if (wParam == VK_ESCAPE) {
                 DestroyWindow(hwnd);
@@ -145,7 +153,7 @@ namespace LivePT {
             int w = lpDrawItem->rcItem.right - lpDrawItem->rcItem.left;
             int h = lpDrawItem->rcItem.bottom - lpDrawItem->rcItem.top;
 
-            std::vector<DWORD> pixelBuffer(w * h, 0x0030302D); 
+            std::vector<DWORD> pixelBuffer(w * h, 0x0030302D);
 
             BITMAPINFO bmi = {};
             bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
@@ -269,16 +277,37 @@ namespace LivePT {
         }
         return DefWindowProcA(hwnd, uMsg, wParam, lParam);
     }
+}
+namespace Widgets {
 
-    inline void MyColorPickerCallback(const color3& initialColor, std::function<void(std::string)> vsUpdater) {
-        g_pickerCtx.currentRGB = initialColor;
+    template <typename T>
+    inline void color3Callback(const std::any& anyValue, std::function<void(std::string)> vsUpdater) {
+        const T* pInstance = std::any_cast<T>(&anyValue);
+        if (!pInstance) return;
+
+        auto [val1, val2, val3] = *pInstance;
+
+        float rNorm = 0.0f, gNorm = 0.0f, bNorm = 0.0f;
+        using FieldType = decltype(val1);
+
+        if constexpr (std::is_floating_point_v<FieldType>) {
+            rNorm = std::clamp(static_cast<float>(val1), 0.0f, 1.0f);
+            gNorm = std::clamp(static_cast<float>(val2), 0.0f, 1.0f);
+            bNorm = std::clamp(static_cast<float>(val3), 0.0f, 1.0f);
+        }
+        else {
+            rNorm = std::clamp(static_cast<float>(val1) / 255.0f, 0.0f, 1.0f);
+            gNorm = std::clamp(static_cast<float>(val2) / 255.0f, 0.0f, 1.0f);
+            bNorm = std::clamp(static_cast<float>(val3) / 255.0f, 0.0f, 1.0f);
+        }
+
+        g_pickerCtx.currentRGB.r = static_cast<unsigned char>(rNorm * 255.0f);
+        g_pickerCtx.currentRGB.g = static_cast<unsigned char>(gNorm * 255.0f);
+        g_pickerCtx.currentRGB.b = static_cast<unsigned char>(bNorm * 255.0f);
         g_pickerCtx.vsUpdaterCallback = vsUpdater;
 
-        float r = initialColor.r / 255.0f;
-        float g = initialColor.g / 255.0f;
-        float b = initialColor.b / 255.0f;
-        float maxVal = (std::max)({ r, g, b });
-        float minVal = (std::min)({ r, g, b });
+        float maxVal = (std::max)({ rNorm, gNorm, bNorm });
+        float minVal = (std::min)({ rNorm, gNorm, bNorm });
         float delta = maxVal - minVal;
 
         g_pickerCtx.currentValue = maxVal;
@@ -288,11 +317,26 @@ namespace LivePT {
             g_pickerCtx.currentHue = 0.0f;
         }
         else {
-            if (maxVal == r) g_pickerCtx.currentHue = 60.0f * (std::fmod(((g - b) / delta), 6.0f));
-            else if (maxVal == g) g_pickerCtx.currentHue = 60.0f * (((b - r) / delta) + 2.0f);
-            else if (maxVal == b) g_pickerCtx.currentHue = 60.0f * (((r - g) / delta) + 4.0f);
+            if (maxVal == rNorm) g_pickerCtx.currentHue = 60.0f * (std::fmod(((gNorm - bNorm) / delta), 6.0f));
+            else if (maxVal == gNorm) g_pickerCtx.currentHue = 60.0f * (((bNorm - rNorm) / delta) + 2.0f);
+            else if (maxVal == bNorm) g_pickerCtx.currentHue = 60.0f * (((rNorm - gNorm) / delta) + 4.0f);
             if (g_pickerCtx.currentHue < 0.0f) g_pickerCtx.currentHue += 360.0f;
         }
+
+        g_pickerCtx.textGenerator = [vsUpdater](unsigned char r, unsigned char g, unsigned char b) {
+            char buf[64]{};
+            std::string typeName = typeid(T).name();
+            if (typeName.rfind("struct ", 0) == 0) typeName = typeName.substr(7);
+            if (typeName.rfind("class ", 0) == 0)  typeName = typeName.substr(6);
+
+            if constexpr (std::is_floating_point_v<FieldType>) {
+                sprintf_s(buf, "%s{%.2ff,%.2ff,%.2ff}", typeName.c_str(), r / 255.0f, g / 255.0f, b / 255.0f);
+            }
+            else {
+                sprintf_s(buf, "%s{%d,%d,%d}", typeName.c_str(), r, g, b);
+            }
+            vsUpdater(buf);
+            };
 
         if (g_pickerCtx.hWindow && IsWindow(g_pickerCtx.hWindow)) {
             InvalidateRect(g_pickerCtx.hWindow, NULL, FALSE);
@@ -302,7 +346,6 @@ namespace LivePT {
 
         POINT mousePos;
         GetCursorPos(&mousePos);
-
         HINSTANCE hInst = GetModuleHandleA(NULL);
         const char* className = "LPT_CustomColorWheelWin";
 
@@ -336,11 +379,13 @@ namespace LivePT {
 
         g_pickerCtx.hValueStatic = CreateWindowExA(
             0, "STATIC", "", WS_CHILD | WS_VISIBLE | SS_OWNERDRAW,
-            g_pickerCtx.valLeft, g_pickerCtx.valTop, g_pickerCtx.valWidth, g_pickerCtx.valHeight, g_pickerCtx.hWindow, NULL, hInst, NULL); 
-        
-        ShowWindow(g_pickerCtx.hWindow, SW_SHOW); 
-        UpdateWindow(g_pickerCtx.hWindow); 
-        SetForegroundWindow(g_pickerCtx.hWindow); 
+            g_pickerCtx.valLeft, g_pickerCtx.valTop, g_pickerCtx.valWidth, g_pickerCtx.valHeight,
+            g_pickerCtx.hWindow, NULL, hInst, NULL
+        );
+
+        ShowWindow(g_pickerCtx.hWindow, SW_SHOW);
+        UpdateWindow(g_pickerCtx.hWindow);
+        SetForegroundWindow(g_pickerCtx.hWindow);
         SetFocus(g_pickerCtx.hWindow);
     }
 }

@@ -16,25 +16,28 @@ struct color3 {
     unsigned char b;
 };
 
-#include "Widgets\colorPicker.h"
-LPT_REGISTER_TYPE(color3, LivePT::MyColorPickerCallback);
+#include "Widgets\color3.h"
+LPT_REGISTER_TYPE(color3, Widgets::color3Callback);
 
 struct pos2 {
     float x;
     float y;
 };
 
-#include "Widgets\posController.h"
-LPT_REGISTER_TYPE(pos2, LivePT::MyPosPickerCallback);
+#include "Widgets\pos2.h"
+LPT_REGISTER_TYPE(pos2, Widgets::pos2Callback);
 
 struct size2 {
-    float x;
-    float y;
+    float w;
+    float h;
 };
 
+LPT_REGISTER_TYPE(size2, Widgets::pos2Callback);
+
+
 typedef float angle;
-#include "Widgets\AngleController.h"
-LPT_REGISTER_TYPE(angle, LivePT::MyAnglePickerCallback);
+#include "Widgets\angle.h"
+LPT_REGISTER_TYPE(angle, Widgets::angleCallback);
 
 class Primitive {
 public:
@@ -97,9 +100,9 @@ public:
             SetWorldTransform(memDC, &xForm);
 
             switch (p.type) {
-            case ptype::circle:   Ellipse(memDC, -size.x, -size.y, size.x, size.y); break;
-            case ptype::box:      Rectangle(memDC, -size.x, -size.y, size.x, size.y); break;
-            case ptype::roundbox: RoundRect(memDC, -size.x, -size.y, size.x, size.y, 40, 40); break;
+            case ptype::circle:   Ellipse(memDC, -size.w, -size.h, size.w, size.h); break;
+            case ptype::box:      Rectangle(memDC, -size.w, -size.h, size.w, size.h); break;
+            case ptype::roundbox: RoundRect(memDC, -size.w, -size.h, size.w, size.h, 40, 40); break;
             }
 
             SetWorldTransform(memDC, &oldForm);
@@ -124,24 +127,24 @@ Primitive primitive[3];
 void UpdateSceneParams() {
 
     primitive[0].Set(Primitive{
-        .pos = eval(pos2{-259.5996f,-292.6638f}),
-        .size = eval(size2{150.7454f,137.3907f}),
-        .Angle = eval(0),
+        .pos = eval(pos2{-215.60f,-188.66f}),
+        .size = eval(size2{147.75f,218.39f}),
+        .Angle = eval(angle(-16)),
         .type = eval(ptype::box),
         .show = eval(true),
-        .color = eval(color3{38,29,166})
+        .color = eval(color3{176,38,50})
         });
 
     
 #include "test.h"
 
     primitive[2].Set(Primitive{
-        .pos = eval(pos2{181.984f,275.326f}),
-        .size = eval(size2{92.1959f,135.2084f}),
-        .Angle = eval(angle(343.4f)),
+        .pos = eval(pos2{208.98f,184.33f}),
+        .size = eval(size2{105.242f,140.6021f}),
+        .Angle = eval(angle(273.5f)),
         .type = eval(ptype::roundbox),
         .show = eval(true),
-        .color = eval(color3{37,35,188})
+        .color = eval(color3{36,32,164})
         });
 
 }

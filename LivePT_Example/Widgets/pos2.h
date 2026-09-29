@@ -1,6 +1,14 @@
+#pragma once
+#include <windows.h>
 #include <cmath>
+#include <functional>
+#include <string>
+#include <any>
+#include <type_traits>
 
-namespace LivePT {
+// Базовая структура, которая используется внутри WinAPI для отрисовки
+
+namespace Widgets {
 
     struct PosPickerContext {
         HWND hWindow = NULL;
@@ -8,9 +16,10 @@ namespace LivePT {
 
         pos2 currentPos = { 0.0f, 0.0f };
         std::function<void(std::string)> vsUpdaterCallback = nullptr;
+        std::function<void(float, float)> textGenerator = nullptr; // Динамический генератор текста кода
 
         bool isTracking = false;
-        bool isCursorHidden = false; 
+        bool isCursorHidden = false;
         POINT lastMousePos = { 0, 0 };
 
         const int width = 140;
@@ -20,16 +29,12 @@ namespace LivePT {
     static PosPickerContext g_posCtx;
 
     inline void UpdatePosCode() {
-        if (g_posCtx.vsUpdaterCallback) {
-            char buf[64]{};
-            sprintf_s(buf, "pos2{%.2ff,%.2ff}", g_posCtx.currentPos.x, g_posCtx.currentPos.y);
-            g_posCtx.vsUpdaterCallback(buf);
+        if (g_posCtx.textGenerator) {
+            // Вызываем генератор, который помнит исходный тип структуры и правила ее форматирования
+            g_posCtx.textGenerator(g_posCtx.currentPos.x, g_posCtx.currentPos.y);
         }
         InvalidateRect(g_posCtx.hWindow, NULL, FALSE);
     }
-}
-
-namespace LivePT {
 
     inline LRESULT CALLBACK PosPickerWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
         switch (uMsg) {
@@ -82,7 +87,6 @@ namespace LivePT {
             MoveToEx(memDC, cx - 8, cy, NULL); LineTo(memDC, cx + 8, cy);
             MoveToEx(memDC, cx, cy - 8, NULL); LineTo(memDC, cx, cy + 8);
 
-            // 3. Рисуем внешнюю контурную рамку окна для идеальной геометрии
             RECT borderRect = { 0, 0, w, h };
             FrameRect(memDC, &borderRect, (HBRUSH)GetStockObject(NULL_BRUSH));
 
@@ -164,9 +168,39 @@ namespace LivePT {
         return DefWindowProcA(hwnd, uMsg, wParam, lParam);
     }
 
-    inline void MyPosPickerCallback(const pos2& initialPos, std::function<void(std::string)> vsUpdater) {
-        g_posCtx.currentPos = initialPos;
+    template <typename T>
+    inline void pos2Callback(const std::any& anyValue, std::function<void(std::string)> vsUpdater) {
+        const T* pInstance = std::any_cast<T>(&anyValue);
+        if (!pInstance) return;
+
+        // 1. Автоматическая распаковка полей структуры (будь то x/y, w/h или a/b)
+        auto [val1, val2] = *pInstance;
+
+        // 2. Инициализация состояния
+        g_posCtx.currentPos.x = static_cast<float>(val1);
+        g_posCtx.currentPos.y = static_cast<float>(val2);
         g_posCtx.vsUpdaterCallback = vsUpdater;
+
+        // 3. Создаем лямбду, которая запоминает исходный тип данных T
+        g_posCtx.textGenerator = [vsUpdater](float newX, float newY) {
+            char buf[128]{};
+            using FieldType = decltype(val1);
+
+            // Получаем чистое имя типа структуры для подстановки в строку кода
+            std::string typeName = typeid(T).name();
+            if (typeName.rfind("struct ", 0) == 0) typeName = typeName.substr(7);
+            if (typeName.rfind("class ", 0) == 0)  typeName = typeName.substr(6);
+
+            // Компилятор сам выберет нужный формат строки в зависимости от типа полей
+            if constexpr (std::is_floating_point_v<FieldType>) {
+                sprintf_s(buf, "%s{%.2ff,%.2ff}", typeName.c_str(), newX, newY);
+            }
+            else {
+                sprintf_s(buf, "%s{%d,%d}", typeName.c_str(), static_cast<int>(newX), static_cast<int>(newY));
+            }
+
+            vsUpdater(buf);
+            };
 
         if (g_posCtx.hWindow && IsWindow(g_posCtx.hWindow)) {
             SetActiveWindow(g_posCtx.hWindow);

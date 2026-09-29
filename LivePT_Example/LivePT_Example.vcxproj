@@ -159,9 +159,9 @@
     <ClInclude Include="Resource.h" />
     <ClInclude Include="targetver.h" />
     <ClInclude Include="test.h" />
-    <ClInclude Include="Widgets\AngleController.h" />
-    <ClInclude Include="Widgets\colorPicker.h" />
-    <ClInclude Include="Widgets\PosController.h" />
+    <ClInclude Include="Widgets\angle.h" />
+    <ClInclude Include="Widgets\color3.h" />
+    <ClInclude Include="Widgets\pos2.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="LivePT_Example.cpp" />

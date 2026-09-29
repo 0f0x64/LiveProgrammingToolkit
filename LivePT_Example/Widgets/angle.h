@@ -1,13 +1,20 @@
+#pragma once
+#include <windows.h>
 #include <cmath>
+#include <functional>
+#include <string>
+#include <any>
+#include <type_traits>
 
-namespace LivePT {
+namespace Widgets {
 
     struct AnglePickerContext {
         HWND hWindow = NULL;
         HWND hRadarStatic = NULL;
 
-        float currentAngle = 0.0f; 
+        float currentAngle = 0.0f;
         std::function<void(std::string)> vsUpdaterCallback = nullptr;
+        std::function<void(float)> textGenerator = nullptr;
 
         bool isTracking = false;
         bool isCursorHidden = false;
@@ -22,14 +29,11 @@ namespace LivePT {
     static AnglePickerContext g_angleCtx;
 
     inline void UpdateAngleCode() {
-        if (g_angleCtx.vsUpdaterCallback) {
-            char buf[64]{};
+        float visualAngle = std::fmod(g_angleCtx.currentAngle, 360.0f);
+        if (visualAngle < 0.0f) visualAngle += 360.0f;
 
-            float visualAngle = std::fmod(g_angleCtx.currentAngle, 360.0f);
-            if (visualAngle < 0.0f) visualAngle += 360.0f;
-
-            sprintf_s(buf, "angle(%.1ff)", visualAngle);
-            g_angleCtx.vsUpdaterCallback(buf);
+        if (g_angleCtx.textGenerator) {
+            g_angleCtx.textGenerator(visualAngle);
         }
         InvalidateRect(g_angleCtx.hWindow, NULL, FALSE);
     }
@@ -44,7 +48,6 @@ namespace LivePT {
         float targetDeg = angleRad * (180.0f / 3.14159265f);
 
         if (GetAsyncKeyState(VK_SHIFT) & 0x8000) {
-
             float diff = targetDeg - g_angleCtx.currentAngle;
             while (diff > 180.0f) diff -= 360.0f;
             while (diff < -180.0f) diff += 360.0f;
@@ -56,12 +59,14 @@ namespace LivePT {
 
         UpdateAngleCode();
     }
+}
+namespace Widgets {
 
     inline LRESULT CALLBACK AnglePickerWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
         switch (uMsg) {
         case WM_SETCURSOR:
             if (g_angleCtx.isTracking) {
-                SetCursor(NULL); 
+                SetCursor(NULL);
                 return TRUE;
             }
             SetCursor(LoadCursor(NULL, IDC_CROSS));
@@ -104,8 +109,10 @@ namespace LivePT {
             Ellipse(memDC, g_angleCtx.centerX - g_angleCtx.radius / 2, g_angleCtx.centerY - g_angleCtx.radius / 2,
                 g_angleCtx.centerX + g_angleCtx.radius / 2, g_angleCtx.centerY + g_angleCtx.radius / 2);
 
-            MoveToEx(memDC, g_angleCtx.centerX - g_angleCtx.radius, g_angleCtx.centerY, NULL); LineTo(memDC, g_angleCtx.centerX + g_angleCtx.radius, g_angleCtx.centerY);
-            MoveToEx(memDC, g_angleCtx.centerX, g_angleCtx.centerY - g_angleCtx.radius, NULL); LineTo(memDC, g_angleCtx.centerX, g_angleCtx.centerY + g_angleCtx.radius);
+            MoveToEx(memDC, g_angleCtx.centerX - g_angleCtx.radius, g_angleCtx.centerY, NULL);
+            LineTo(memDC, g_angleCtx.centerX + g_angleCtx.radius, g_angleCtx.centerY);
+            MoveToEx(memDC, g_angleCtx.centerX, g_angleCtx.centerY - g_angleCtx.radius, NULL);
+            LineTo(memDC, g_angleCtx.centerX, g_angleCtx.centerY + g_angleCtx.radius);
 
             SelectObject(memDC, hOldB);
             SelectObject(memDC, oldPen);
@@ -115,7 +122,6 @@ namespace LivePT {
             oldPen = (HPEN)SelectObject(memDC, hNeedlePen);
 
             float rad = g_angleCtx.currentAngle * (3.14159265f / 180.0f);
-
             int needleX = g_angleCtx.centerX + static_cast<int>(std::cos(rad) * g_angleCtx.radius);
             int needleY = g_angleCtx.centerY + static_cast<int>(std::sin(rad) * g_angleCtx.radius);
 
@@ -144,7 +150,6 @@ namespace LivePT {
                 g_angleCtx.isTracking = true;
                 SetCapture(hwnd);
                 if (!g_angleCtx.isCursorHidden) {
-                    //ShowCursor(FALSE);
                     g_angleCtx.isCursorHidden = true;
                 }
                 ProcessRadarClick(pt.x, pt.y);
@@ -183,10 +188,50 @@ namespace LivePT {
         }
         return DefWindowProcA(hwnd, uMsg, wParam, lParam);
     }
+}
+namespace Widgets {
 
-    inline void MyAnglePickerCallback(float initialAngle, std::function<void(std::string)> vsUpdater) {
-        g_angleCtx.currentAngle = initialAngle;
+    template <typename T>
+    inline void angleCallback(const std::any& anyValue, std::function<void(std::string)> vsUpdater) {
+        const T* pInstance = std::any_cast<T>(&anyValue);
+        if (!pInstance) return;
+
+        float valExtracted = 0.0f;
+
+        if constexpr (std::is_class_v<T>) {
+            auto [val] = *pInstance;
+            valExtracted = static_cast<float>(val);
+        }
+        else {
+            valExtracted = static_cast<float>(*pInstance);
+        }
+
+        g_angleCtx.currentAngle = valExtracted;
         g_angleCtx.vsUpdaterCallback = vsUpdater;
+
+        g_angleCtx.textGenerator = [vsUpdater](float finalAngle) {
+            char buf[64]{};
+            std::string typeName = typeid(T).name();
+            if (typeName.rfind("struct ", 0) == 0) typeName = typeName.substr(7);
+            if (typeName.rfind("class ", 0) == 0)  typeName = typeName.substr(6);
+
+            if constexpr (std::is_fundamental_v<T>) {
+                if (typeName == "float" || typeName == "double") {
+                    typeName = "angle";
+                }
+                sprintf_s(buf, "%s(%.1ff)", typeName.c_str(), finalAngle);
+            }
+            else {
+                using FieldType = decltype(valExtracted);
+                if constexpr (std::is_floating_point_v<FieldType>) {
+                    sprintf_s(buf, "%s{%.1ff}", typeName.c_str(), finalAngle);
+                }
+                else {
+                    sprintf_s(buf, "%s{%d}", typeName.c_str(), static_cast<int>(finalAngle));
+                }
+            }
+            vsUpdater(buf);
+            };
 
         if (g_angleCtx.hWindow && IsWindow(g_angleCtx.hWindow)) {
             InvalidateRect(g_angleCtx.hWindow, NULL, FALSE);
@@ -196,7 +241,6 @@ namespace LivePT {
 
         POINT mousePos;
         GetCursorPos(&mousePos);
-
         HINSTANCE hInst = GetModuleHandleA(NULL);
         const char* className = "LPT_CustomAngleRadarWin";
 
