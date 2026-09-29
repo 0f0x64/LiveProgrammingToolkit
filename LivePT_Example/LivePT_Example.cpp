@@ -15,7 +15,6 @@ struct color3 {
     unsigned char g;
     unsigned char b;
 };
-
 #include "Widgets\color3.h"
 LPT_REGISTER_TYPE(color3, Widgets::color3Callback);
 
@@ -23,7 +22,6 @@ struct pos2 {
     float x;
     float y;
 };
-
 #include "Widgets\pos2.h"
 LPT_REGISTER_TYPE(pos2, Widgets::pos2Callback);
 
@@ -31,125 +29,120 @@ struct size2 {
     float w;
     float h;
 };
-
 LPT_REGISTER_TYPE(size2, Widgets::pos2Callback);
-
 
 typedef float angle;
 #include "Widgets\angle.h"
 LPT_REGISTER_TYPE(angle, Widgets::angleCallback);
 
-class Primitive {
-public:
+struct {
+    HWND hWnd;
+    HDC memDC;
+    int w;
+    int h;
+} gc;
 
-
+struct Primitive {
     pos2 pos;
     size2 size;
     angle Angle;
     ptype type = ptype::circle;
     bool show;
     color3 color;
-
-    // Unified setters using C++20 aggregate initialization rules
-    void Set(pos2 pos, size2 size, angle Angle,ptype form, bool showObj, color3 color) {
-        *this = { pos, size, Angle, form, showObj, color };
-    }
-    void Set(const Primitive& in) { *this = in; }
-
-    template <size_t N>
-    static void DrawScene(HWND hwnd, HDC hdc, const Primitive(&arr)[N]) {
-        RECT r;
-        GetClientRect(hwnd, &r);
-        int w = r.right - r.left, h = r.bottom - r.top;
-
-        HDC memDC = CreateCompatibleDC(hdc);
-        HBITMAP memBM = CreateCompatibleBitmap(hdc, w, h);
-        HBITMAP oldBM = (HBITMAP)SelectObject(memDC, memBM);
-
-        SetGraphicsMode(memDC, GM_ADVANCED);
-
-        HBRUSH hDarkBrush = CreateSolidBrush(RGB(30, 30, 32));
-        FillRect(memDC, &r, hDarkBrush);
-        DeleteObject(hDarkBrush);
-
-        for (const auto& p : arr) {
-            if (!p.show) continue;
-
-            int posX = (w / 2) + p.pos.x;
-            int posY = (h / 2) + p.pos.y;
-            size2 size = p.size;
-
-            HBRUSH hBrush = CreateSolidBrush(RGB(p.color.r, p.color.g, p.color.b));
-            HBRUSH hOldBrush = (HBRUSH)SelectObject(memDC, hBrush);
-
-            float angleVal = p.Angle; 
-            float radians = angleVal * (3.14159265f / 180.0f);
-            float cosA = std::cos(radians);
-            float sinA = std::sin(radians);
-
-            XFORM xForm;
-
-            xForm.eM11 = cosA;  xForm.eM12 = sinA;
-            xForm.eM21 = -sinA; xForm.eM22 = cosA;
-            xForm.eDx = (float)posX;
-            xForm.eDy = (float)posY;
-
-            XFORM oldForm;
-            GetWorldTransform(memDC, &oldForm);
-
-            SetWorldTransform(memDC, &xForm);
-
-            switch (p.type) {
-            case ptype::circle:   Ellipse(memDC, -size.w, -size.h, size.w, size.h); break;
-            case ptype::box:      Rectangle(memDC, -size.w, -size.h, size.w, size.h); break;
-            case ptype::roundbox: RoundRect(memDC, -size.w, -size.h, size.w, size.h, 40, 40); break;
-            }
-
-            SetWorldTransform(memDC, &oldForm);
-
-            SelectObject(memDC, hOldBrush);
-            DeleteObject(hBrush);
-        }
-
-        BitBlt(hdc, 0, 0, w, h, memDC, 0, 0, SRCCOPY);
-        SelectObject(memDC, oldBM);
-        DeleteObject(memBM);
-        DeleteDC(memDC);
-    }
-
 };
 
-// Global instance array of primitives
-Primitive primitive[3];
+int drawCounter = 0;
+int curSel = -1;
 
-// =================== USER SPACE ===================
+bool IsPrimitiveSelected(int posX, int posY, HWND hwnd) {
+    POINT mousePos;
+    if (!GetCursorPos(&mousePos)) {
+        return false;
+    }
 
-void UpdateSceneParams() {
+    if (!ScreenToClient(hwnd, &mousePos)) {
+        return false;
+    }
 
-    primitive[0].Set(Primitive{
-        .pos = eval(pos2{-215.60f,-188.66f}),
-        .size = eval(size2{147.75f,218.39f}),
-        .Angle = eval(angle(-16)),
-        .type = eval(ptype::box),
-        .show = eval(true),
-        .color = eval(color3{176,38,50})
-        });
+    int dx = mousePos.x - posX;
+    int dy = mousePos.y - posY;
 
-    
-#include "test.h"
+    if ((dx * dx + dy * dy) > 100) {
+        return false;
+    }
 
-    primitive[2].Set(Primitive{
-        .pos = eval(pos2{208.98f,184.33f}),
-        .size = eval(size2{105.242f,140.6021f}),
-        .Angle = eval(angle(273.5f)),
-        .type = eval(ptype::roundbox),
-        .show = eval(true),
-        .color = eval(color3{36,32,164})
-        });
+    if ((GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0) {
 
+        while (GetAsyncKeyState(VK_LBUTTON))
+        {
+            Sleep(16);
+        }
+        curSel = drawCounter;
+        return true;
+    }
+
+    return false;
 }
 
-// ================ END OF USER SPACE ================
+
+void Draw(Primitive p, std::source_location location = std::source_location::current()) {
+
+    int posX = (gc.w / 2) + p.pos.x;
+    int posY = (gc.h / 2) + p.pos.y;
+
+    auto sel = IsPrimitiveSelected(posX,posY, gc.hWnd);
+
+    if (sel) LivePT::OpenFileAndMoveCursorToLocation(location);
+
+    HBRUSH hBrush = CreateSolidBrush(RGB(p.color.r, p.color.g, p.color.b));
+    HBRUSH hOldBrush = (HBRUSH)SelectObject(gc.memDC, hBrush);
+
+    float angleVal = p.Angle;
+    float radians = angleVal * (3.14159265f / 180.0f);
+    float cosA = std::cos(radians);
+    float sinA = std::sin(radians);
+
+    XFORM xForm;
+
+    xForm.eM11 = cosA;  xForm.eM12 = sinA;
+    xForm.eM21 = -sinA; xForm.eM22 = cosA;
+    xForm.eDx = (float)posX;
+    xForm.eDy = (float)posY;
+
+    XFORM oldForm;
+    GetWorldTransform(gc.memDC, &oldForm);
+
+    SetWorldTransform(gc.memDC, &xForm);
+    if (p.show)
+    {
+        switch (p.type) {
+        case ptype::circle:   Ellipse(gc.memDC, -p.size.w, -p.size.h, p.size.w, p.size.h); break;
+        case ptype::box:      Rectangle(gc.memDC, -p.size.w, -p.size.h, p.size.w, p.size.h); break;
+        case ptype::roundbox: RoundRect(gc.memDC, -p.size.w, -p.size.h, p.size.w, p.size.h, 40, 40); break;
+        }
+    }
+
+    SelectObject(gc.memDC, hOldBrush);
+    DeleteObject(hBrush);
+
+    if (curSel == drawCounter)
+    {
+        hBrush = CreateSolidBrush(RGB(255, 255, 255));
+    }
+    else
+    {
+        hBrush = CreateSolidBrush(RGB(122, 122, 122));
+    }
+    hOldBrush = (HBRUSH)SelectObject(gc.memDC, hBrush);
+    Ellipse(gc.memDC, -12, -12, 12, 12);
+    SelectObject(gc.memDC, hOldBrush);
+    DeleteObject(hBrush);
+
+
+    SetWorldTransform(gc.memDC, &oldForm);
+
+    drawCounter++;
+}
 
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     switch (uMsg) {
@@ -171,8 +164,55 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         PAINTSTRUCT ps;
         HDC hdc = BeginPaint(hwnd, &ps);
 
-        UpdateSceneParams();
-        Primitive::DrawScene(hwnd, hdc, primitive);
+        RECT r;
+        GetClientRect(hwnd, &r);
+        int w = r.right - r.left, h = r.bottom - r.top;
+
+        HDC memDC = CreateCompatibleDC(hdc);
+        HBITMAP memBM = CreateCompatibleBitmap(hdc, w, h);
+        HBITMAP oldBM = (HBITMAP)SelectObject(memDC, memBM);
+
+        gc = { hwnd, memDC, w, h };
+
+        SetGraphicsMode(memDC, GM_ADVANCED);
+
+        HBRUSH hDarkBrush = CreateSolidBrush(RGB(30, 30, 32));
+        FillRect(memDC, &r, hDarkBrush);
+        DeleteObject(hDarkBrush);
+
+        drawCounter = 0;
+
+        Draw({
+            .pos =      eval(pos2{-210.1621f,-186.4966f}),
+            .size =     eval(size2{76.2323f,77.6994f}),
+            .Angle =    eval(angle(34.2f)),
+            .type =     eval(ptype::box),
+            .show =     eval(true),
+            .color =    eval(color3{160,37,7})
+        });
+
+        Draw({
+            .pos =      eval(pos2{74.2497f,-105.7953f}),
+            .size =     eval(size2{53.3315f,90.662f}),
+            .Angle =    eval(angle(342.3f)),
+            .type =     eval(ptype::circle),
+            .show =     eval(true),
+            .color =    eval(color3{20,104,27})
+        });
+
+        Draw({
+            .pos =      eval(pos2{166.98f,230.33f}),
+            .size =     eval(size2{64.6043f,74.1054f}),
+            .Angle =    eval(angle(302.3f)),
+            .type =     eval(ptype::box),
+            .show =     eval(true),
+            .color =    eval(color3{36,32,164})
+        });
+
+        BitBlt(hdc, 0, 0, w, h, memDC, 0, 0, SRCCOPY);
+        SelectObject(memDC, oldBM);
+        DeleteObject(memBM);
+        DeleteDC(memDC);
 
         EndPaint(hwnd, &ps);
         return 0;

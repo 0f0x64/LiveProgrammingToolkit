@@ -747,4 +747,45 @@ namespace LivePT {
         VariantClear(&vtActiveDoc);
     }
     
+
+    void OpenFileAndMoveCursorToLocation(const std::source_location& location) {
+        if (!LivePT::initVsEditor() || !LivePT::pDTE) {
+            LivePT::Log("OpenFileAndMoveCursorToLocation: Visual Studio DTE is not initialized.");
+            return;
+        }
+
+        std::string filePath = location.file_name();
+        std::wstring wFilePath(filePath.begin(), filePath.end());
+        long line = static_cast<long>(location.line());
+
+        CComVariant vtItem;
+        CComVariant vtItemObjects;
+        HRESULT hr = LivePT::AutoWrap(DISPATCH_PROPERTYGET, &vtItemObjects, LivePT::pDTE, L"ItemOperations", 0);
+        if (SUCCEEDED(hr) && vtItemObjects.pdispVal) {
+            CComBSTR bstrPath(wFilePath.c_str());
+            CComBSTR bstrKind(L"{761074E1-B530-11D0-A865-00A0C911145F}"); // vsViewKindTextView
+
+            hr = LivePT::AutoWrap(DISPATCH_METHOD, &vtItem, vtItemObjects.pdispVal, L"OpenFile", 2, CComVariant(bstrKind), CComVariant(bstrPath));
+        }
+
+        CComVariant vtDocuments;
+        hr = LivePT::AutoWrap(DISPATCH_PROPERTYGET, &vtDocuments, LivePT::pDTE, L"Documents", 0);
+        if (FAILED(hr) || !vtDocuments.pdispVal) return;
+
+        CComVariant vtDoc;
+        CComBSTR bstrPathKey(wFilePath.c_str());
+        hr = LivePT::AutoWrap(DISPATCH_PROPERTYGET, &vtDoc, vtDocuments.pdispVal, L"Item", 1, CComVariant(bstrPathKey));
+        if (FAILED(hr) || !vtDoc.pdispVal) return;
+
+        LivePT::AutoWrap(DISPATCH_METHOD, NULL, vtDoc.pdispVal, L"Activate", 0);
+
+        CComVariant vtSelection;
+        hr = LivePT::AutoWrap(DISPATCH_PROPERTYGET, &vtSelection, vtDoc.pdispVal, L"Selection", 0);
+        if (SUCCEEDED(hr) && vtSelection.vt == VT_DISPATCH && vtSelection.pdispVal) {
+            LivePT::AutoWrap(DISPATCH_METHOD, NULL, vtSelection.pdispVal, L"MoveToLineAndOffset", 3,
+                CComVariant(line),
+                CComVariant(1L),
+                CComVariant(0L));
+        }
+    }
 }

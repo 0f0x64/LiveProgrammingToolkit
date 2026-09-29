@@ -1,6 +1,6 @@
 // User space settings
 
-#define LivePT_WheelEditMode true // true for mouse drag, switch, enums with context menu
+#define LivePT_Mouse true // true for mouse drag, switch, enums with context menu
 #define LivePT_WindowManagement true //auto split screen on single monitor
 #define LivePT_AppToSecondaryDisplay false //auto move your app to second monitor
 #define LivePT_TriggerButton VK_LBUTTON  // you can use VK_MBUTTON for alternative
@@ -93,8 +93,8 @@ namespace LivePT {
     #include "uiCallBackBridge.h"
     #include "vsEditor.h"
 
-    #if LivePT_WheelEditMode
-        #include "liveWheelEdit.h"
+    #if LivePT_Mouse
+        #include "mouse.h"
     #endif
 
     #if LivePT_WindowManagement
@@ -246,7 +246,7 @@ namespace LivePT {
             GetWindowManager().Tick();
         #endif
 
-        #if LivePT_WheelEditMode
+        #if LivePT_Mouse
             FlushPendingWritesToVS();
             Update();
         #endif
