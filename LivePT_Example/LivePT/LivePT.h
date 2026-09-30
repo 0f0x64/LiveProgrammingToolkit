@@ -95,6 +95,7 @@ namespace LivePT {
 
     #if LivePT_Mouse
         #include "mouse.h"
+        #include "drugLogic.h"
     #endif
 
     #if LivePT_WindowManagement

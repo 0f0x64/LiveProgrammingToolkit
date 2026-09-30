@@ -17,6 +17,7 @@ struct color3 {
 };
 #include "Widgets\color3.h"
 LPT_REGISTER_TYPE(color3, Widgets::color3Callback);
+LPT_REGISTER_DRAG(color3, LivePT::color3DragMath);
 
 struct pos2 {
     float x;
@@ -24,12 +25,14 @@ struct pos2 {
 };
 #include "Widgets\pos2.h"
 LPT_REGISTER_TYPE(pos2, Widgets::pos2Callback);
+LPT_REGISTER_DRAG(pos2, LivePT::pos2DragMath);
 
 struct size2 {
     float w;
     float h;
 };
 LPT_REGISTER_TYPE(size2, Widgets::pos2Callback);
+LPT_REGISTER_DRAG(size2, LivePT::size2DragMath);
 
 typedef float angle;
 #include "Widgets\angle.h"
@@ -197,17 +200,17 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         });
 
         Draw({
-            .pos =      eval(pos2{70.2497f,-105.7953f}),
-            .size =     eval(size2{64.1978f,109.1344f}),
-            .Angle =    eval(angle(353.3f)),
-            .type =     eval(ptype::circle),
+            .pos =      eval(pos2{227.82f, -198.4501f}),
+            .size =     eval(size2{87.3067f, 99.3431f}),
+            .Angle =    eval(angle(354.1f)),
+            .type =     eval(ptype::box),
             .show =     eval(true),
-            .color =    eval(color3{27,140,36})
+            .color =    eval(color3{153, 190, 157})
         });
 
         Draw({
-            .pos =      eval(pos2{166.98f,230.33f}),
-            .size =     eval(size2{64.6043f,74.1054f}),
+            .pos =      eval(pos2{-122.5249f, 224.5584f}),
+            .size =     eval(size2{68.1575f,78.1812f}),
             .Angle =    eval(angle(302.3f)),
             .type =     eval(ptype::box),
             .show =     eval(true),
@@ -233,6 +236,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
 
     const char CLASS_NAME[] = "WindowClass";
+
+    //LivePT::InitLivePTCallbacks();
     
     auto hUser32 = GetModuleHandleA("user32.dll");
     typedef BOOL(WINAPI* PfnSetProcessDpiAwarenessContext)(DPI_AWARENESS_CONTEXT);

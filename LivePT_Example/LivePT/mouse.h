@@ -61,6 +61,7 @@ namespace LivePT {
     struct DragState {
         bool isDragging = false;
         int targetParamId = -1;
+        int oldMouseX = 0;
         int oldMouseY = 0;
         int lastValue = 0;
         int oldValue = 0;
@@ -82,6 +83,8 @@ namespace LivePT {
 
         bool isProportionalStructDrag = false;
         std::vector<float> originalStructValues;
+        bool isCursorHidden = false;  // Флаг того, что системный курсор сейчас спрятан
+        POINT lockMousePos = { 0, 0 }; // Точка старта драга, куда курсор принудительно возвращается
     };
 
     static DragState g_dragState;
@@ -460,86 +463,105 @@ namespace LivePT {
         int id = g_dragState.targetParamId;
         if (id == -1 || id >= static_cast<int>(paramDesc.size()) || !paramDesc[id].structInfo.isStruct) return;
 
-        int deltaY = -(pt.y - g_dragState.oldMouseY);
+        // 1. Поиск зарегистрированного колбека по типу из std::any (RTTI)
+        std::string typeName = paramDesc[id].value.type().name();
+        if (typeName.find("struct ") == 0) typeName = typeName.substr(7);
+        else if (typeName.find("class ") == 0) typeName = typeName.substr(6);
 
+        auto& registry = GetCustomDragRegistry();
+        auto it = registry.find(typeName);
+
+        // Если тип не зарегистрирован извне — полностью игнорируем drag
+        if (it == registry.end()) return;
+
+        DragMathCallback mathCallback = it->second;
+
+        // 2. Расчет покадровой дельты мыши
+        DragMathInput input;
+        input.mouseFrameDeltaX = pt.x - g_dragState.lockMousePos.x;
+        input.mouseFrameDeltaY = -(pt.y - g_dragState.lockMousePos.y);
+        input.ctrl = ctrl;
+        input.shift = shift;
+
+        if (input.mouseFrameDeltaX != 0 || input.mouseFrameDeltaY != 0) {
+            mathCallback(g_dragState.originalStructValues, input);
+            SetCursorPos(g_dragState.lockMousePos.x, g_dragState.lockMousePos.y);
+        }
+
+        // 3. Инфраструктура Visual Studio API
         CComVariant vtActiveDoc;
         if (FAILED(AutoWrap(DISPATCH_PROPERTYGET, &vtActiveDoc, pDTE, L"ActiveDocument", 0)) || !vtActiveDoc.pdispVal) return;
 
         std::wstring currentLineText = DownloadCurrentLineText(vtActiveDoc.pdispVal);
-
-        size_t openBrace = std::wstring::npos;
-        if (g_dragState.dragStartCol > 0 && static_cast<size_t>(g_dragState.dragStartCol) <= currentLineText.length()) {
-            openBrace = currentLineText.find(L'{', g_dragState.dragStartCol - 1);
-        }
+        size_t openBrace = currentLineText.find(L'{', g_dragState.dragStartCol > 0 ? g_dragState.dragStartCol - 1 : 0);
         if (openBrace == std::wstring::npos) openBrace = currentLineText.find(L'{');
         if (openBrace == std::wstring::npos) { VariantClear(&vtActiveDoc); return; }
 
         auto args = TokenizeCallArguments(currentLineText, openBrace);
+        if (args.empty()) { VariantClear(&vtActiveDoc); return; }
 
-        for (size_t reverseIdx = args.size(); reverseIdx > 0; --reverseIdx) {
-            size_t i = reverseIdx - 1;
+        std::string fullResultString = "";
+        for (size_t i = 0; i < args.size(); ++i) {
+            std::string elementText = args[i].text;
 
-            if (i >= g_dragState.originalStructValues.size() || i >= paramDesc[id].structInfo.members.size()) continue;
-
-            if (g_dragState.originalStructValues[i] != -999999.0f) {
-                std::string newText = "";
+            if (i < g_dragState.originalStructValues.size() && g_dragState.originalStructValues[i] != -999999.0f) {
                 char buf[64]{};
 
-                const auto& member = paramDesc[id].structInfo.members[i];
-                float startVal = g_dragState.originalStructValues[i];
+                // ОПРЕДЕЛЯЕМ ФОРМАТ ПО БАЗОВОМУ ТИПУ ПОЛЯ СТРУКТУРЫ (как в строке 247 вашего исходного кода)
+                bool isIntegerMember = false;
+                if (i < paramDesc[id].structInfo.members.size()) {
+                    const auto& member = paramDesc[id].structInfo.members[i];
+                    isIntegerMember = (member.typeName == "char" ||
+                        member.typeName == "unsigned char" ||
+                        member.typeName == "signed char" ||
+                        member.typeName == "int" ||
+                        member.typeName == "unsigned int" ||
+                        member.typeName == "long");
+                }
 
-                if (member.typeName == "char" || member.typeName == "unsigned char" || member.typeName == "signed char" ||
-                    member.typeName == "int" || member.typeName == "unsigned int" || member.typeName == "long")
-                {
-                    float multiplier = 1.0f + (deltaY * 0.005f);
-                    if (multiplier < 0.0f) multiplier = 0.0f;
-
-                    float computedVal = startVal * multiplier;
-                    if (startVal == 0.0f) {
-                        float speedScale = ctrl ? 5.0f : (shift ? 0.2f : 1.0f);
-                        computedVal += static_cast<float>(deltaY) * speedScale;
-                    }
-
-                    int intVal = static_cast<int>(computedVal + 0.5f);
-
-                    if (member.typeName == "unsigned char") {
-                        if (intVal > 255) intVal = 255;
-                        if (intVal < 0) intVal = 0;
-                    }
+                if (isIntegerMember) {
+                    // Округляем float к ближайшему целому числу
+                    int intVal = static_cast<int>(g_dragState.originalStructValues[i] + (g_dragState.originalStructValues[i] >= 0.0f ? 0.5f : -0.5f));
 
                     sprintf_s(buf, "%d", intVal);
-                    newText = buf;
+                    elementText = buf;
                 }
-                else
-                {
-                    float multiplier = 1.0f + (deltaY * 0.005f);
-                    if (multiplier < 0.0f) multiplier = 0.0f;
+                else {
+                    // Стандартный float (дописываем суффикс f и чистим нули)
+                    sprintf_s(buf, "%.4f", g_dragState.originalStructValues[i]);
+                    elementText = buf;
 
-                    float floatVal = startVal * multiplier;
-                    if (startVal == 0.0f) {
-                        float speedScale = ctrl ? 0.1f : (shift ? 0.001f : 0.01f);
-                        floatVal += static_cast<float>(deltaY) * speedScale;
+                    while (elementText.length() > 2 && elementText.back() == '0' && elementText[elementText.length() - 2] != '.') {
+                        elementText.pop_back();
                     }
-
-                    sprintf_s(buf, "%.4f", floatVal);
-                    newText = buf;
-
-                    while (newText.length() > 2 && newText.back() == '0' && newText[newText.length() - 2] != '.') {
-                        newText.pop_back();
-                    }
-                    newText += "f";
+                    elementText += "f";
                 }
+            }
 
-                long startCol = args[i].startColOffset;
-                long endCol = args[i].endColOffset;
-
-                ReplaceTextInActiveVS(g_dragState.dragLine, startCol, endCol, newText, startCol + static_cast<long>(newText.length()));
-                UpdateParamValue(id, newText);
+            fullResultString += elementText;
+            if (i < args.size() - 1) {
+                fullResultString += ", ";
             }
         }
 
+        long totalStartCol = args.front().startColOffset;
+        long totalEndCol = args.back().endColOffset;
+
+        ReplaceTextInActiveVS(
+            g_dragState.dragLine,
+            totalStartCol,
+            totalEndCol,
+            fullResultString,
+            totalStartCol + static_cast<long>(fullResultString.length())
+        );
+
+        UpdateParamValue(id, fullResultString);
         VariantClear(&vtActiveDoc);
     }
+
+
+
+
 
     inline bool HandleMouseDown(const POINT& pt) {
         if (!initVsEditor()) return false;
@@ -641,6 +663,7 @@ namespace LivePT {
 
                         g_dragState.isProportionalStructDrag = true;
                         g_dragState.dragLine = line;
+                        g_dragState.oldMouseX = pt.x;
                         g_dragState.oldMouseY = pt.y;
                         g_dragState.originalStructValues.clear();
 
@@ -688,6 +711,12 @@ namespace LivePT {
                             else {
                                 g_dragState.originalStructValues.push_back(-999999.0f);
                             }
+                        }
+
+                        g_dragState.lockMousePos = pt; // Запоминаем точку клика структуры
+                        if (!g_dragState.isCursorHidden) {
+                            ShowCursor(FALSE); // Скрываем системный курсор
+                            g_dragState.isCursorHidden = true;
                         }
 
                         VariantClear(&vtActiveDoc);
@@ -781,10 +810,17 @@ namespace LivePT {
                         g_dragState.dragLine = line;
                         g_dragState.dragStartCol = startCol + 1;
                         g_dragState.currentTextLength = cleanText.length();
+                        g_dragState.oldMouseX = pt.x;
                         g_dragState.oldMouseY = pt.y;
 
                         size_t relativeCursorIdx = cursorColIdx - startCol;
                         InitNumericDragState(relativeCursorIdx, cleanText);
+
+                        g_dragState.lockMousePos = pt; // Запоминаем точку клика числа
+                        if (!g_dragState.isCursorHidden) {
+                            ShowCursor(FALSE); // Скрываем системный курсор
+                            g_dragState.isCursorHidden = true;
+                        }
 
                         clickedInsideNumber = true;
                     }
@@ -819,8 +855,33 @@ namespace LivePT {
             size_t dotPos = g_dragState.oldValueStr.find('.');
             std::string newValueStr;
 
+            const std::type_info* pTypeInfo = nullptr;
+            int targetId = g_dragState.targetParamId;
+            if (targetId != -1 && targetId < static_cast<int>(paramDesc.size())) {
+                pTypeInfo = &paramDesc[targetId].value.type();
+            }
+
             if (dotPos == std::string::npos) {
+
+                int intVal = g_dragState.newValue;
+                if (pTypeInfo) {
+                    if (*pTypeInfo == typeid(unsigned char)) {
+                        intVal = std::clamp(intVal, 0, 255);
+                    }
+                    else if (*pTypeInfo == typeid(char) || *pTypeInfo == typeid(signed char)) {
+                        intVal = std::clamp(intVal, -128, 127);
+                    }
+                    else if (*pTypeInfo == typeid(unsigned short)) {
+                        intVal = std::clamp(intVal, 0, 65535);
+                    }
+                    else if (*pTypeInfo == typeid(short)) {
+                        intVal = std::clamp(intVal, -32768, 32767);
+                    }
+                }
+                g_dragState.newValue = intVal;
+                
                 char modified[100];
+
                 _itoa_s(g_dragState.newValue, modified, sizeof(modified), 10);
                 newValueStr = modified;
             }
@@ -877,7 +938,6 @@ namespace LivePT {
             g_dragState.currentTextLength = newValueStr.length();
             g_dragState.oldValueStr = newValueStr;
 
-            int targetId = g_dragState.targetParamId;
             if (targetId != -1) {
                 UpdateParamValue(targetId, newValueStr);
                 g_dragState.lastValueStr = newValueStr;
@@ -915,6 +975,12 @@ namespace LivePT {
             return;
         }
 
+        // === ВОЗВРАЩАЕМ КУРСОРУ ВИДИМОСТЬ ===
+        if (g_dragState.isCursorHidden) {
+            ShowCursor(TRUE);
+            g_dragState.isCursorHidden = false;
+        }
+
         EndUndoTransaction();
         SaveActiveDocument();
 
@@ -934,6 +1000,8 @@ namespace LivePT {
             g_vsThreadId = 0;
         }
     }
+ // namespace LivePT
+
 
 
     inline bool IsCursorOverActiveVSWindow() {
