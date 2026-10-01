@@ -474,6 +474,7 @@ namespace LivePT {
     }
 
     static std::wstring g_lastLineTextBuffer = L"";
+    static std::wstring g_currentFileFullText = L"";
     static long g_lastLine = -1;
     static long g_lastCol = -1;
 
@@ -677,6 +678,7 @@ namespace LivePT {
         }
     }
 
+    std::string g_currentActiveFile = "";
 
     inline void vsEditor() {
 
@@ -693,6 +695,7 @@ namespace LivePT {
 
         IDispatch* pActiveDoc = vtActiveDoc.pdispVal;
         std::string currentActiveFile = GetActiveDocumentPath(pActiveDoc);
+        g_currentActiveFile = currentActiveFile;
         if (currentActiveFile.empty()) { VariantClear(&vtActiveDoc); return; }
 
         long line = 0, column = 0;
@@ -713,6 +716,8 @@ namespace LivePT {
 
         std::wstring fileText = DownloadDocumentText(pActiveDoc);
         if (fileText.empty()) { VariantClear(&vtActiveDoc); return; }
+
+        g_currentFileFullText = fileText;
 
         BuildRawToRuntimeMapLinear(currentActiveFile, fileText);
 
@@ -829,4 +834,105 @@ namespace LivePT {
                 CComVariant(0L));
         }
     }
+
+    inline bool IsCursorInsideFunctionCall(const std::source_location& location) {
+        // 1. Быстрая нормализация пути текущего проверяемого вызова
+        std::string activeFile = LivePT::NormalizePath(location.file_name());
+
+        // Глобальное состояние "активного окна с курсором", вычисленное ОДИН РАЗ
+        static std::string cachedActiveFile = "";
+        static long cachedVSLine = -1;
+
+        // Границы функции Draw, внутри которой СЕЙЧАС физически стоит курсор в VS
+        static long validStartLine = -1;
+        static long validEndLine = -1;
+
+        // 2. РАННИЙ ВОЗВРАТ ДЛЯ ВСЕХ 100500 ОБЪЕКТОВ С ЛЮБЫМИ УСЛОВИЯМИ
+        if (cachedActiveFile == g_currentActiveFile && cachedVSLine == g_lastLine) {
+            // Объект подсвечивается ТОЛЬКО если его строка совпадает с началом вызова под курсором
+            return (validStartLine != -1 && static_cast<long>(location.line()) == validStartLine);
+        }
+
+        // --- СЮДА МЫ ЗАХОДИМ СТРОГО 1 РАЗ НА ВЕСЬ КАДР, КОГДА КУРСОР РЕАЛЬНО СДВИНУЛСЯ ---
+        cachedActiveFile = g_currentActiveFile;
+        cachedVSLine = g_lastLine;
+        validStartLine = -1;
+        validEndLine = -1;
+
+        // Если курсор сейчас в другом файле или текст пуст — выходим сразу
+        if (activeFile != g_currentActiveFile || g_currentFileFullText.empty()) {
+            return false;
+        }
+
+        //Log("cache");
+
+        // 3. НАХОДИМ СМЕЩЕНИЕ ТЕКУЩЕЙ СТРОКИ КУРСОРA
+        size_t cursorLineOffset = 0;
+        long currentLineIdx = 1;
+        while (currentLineIdx < g_lastLine && cursorLineOffset < g_currentFileFullText.length()) {
+            size_t nextNL = g_currentFileFullText.find(L'\n', cursorLineOffset);
+            if (nextNL != std::wstring::npos) {
+                cursorLineOffset = nextNL + 1;
+                currentLineIdx++;
+            }
+            else break;
+        }
+
+        // Берем конец строки курсора для корректного старта поиска rfind
+        size_t nextLineNL = g_currentFileFullText.find(L'\n', cursorLineOffset);
+        size_t scanOffset = (nextLineNL != std::wstring::npos) ? nextLineNL : g_currentFileFullText.length();
+
+        // 4. ИЩЕМ НАЧАЛО ВЫЗОВА DRAW НАЗАД ОТ КУРСОРA
+        // Ищем ключевое слово "Draw", чтобы не спотыкаться об внутренние скобки eval(
+        size_t drawOffset = g_currentFileFullText.rfind(L"Draw", scanOffset);
+        if (drawOffset != std::wstring::npos) {
+
+            // Вычисляем номер строки начала вызова (foundStartLine)
+            long foundStartLine = 1;
+            size_t lineCheckOffset = 0;
+            while (lineCheckOffset < drawOffset && lineCheckOffset < g_currentFileFullText.length()) {
+                size_t nextNL = g_currentFileFullText.find(L'\n', lineCheckOffset);
+                if (nextNL != std::wstring::npos && nextNL < drawOffset) {
+                    foundStartLine++;
+                    lineCheckOffset = nextNL + 1;
+                }
+                else break;
+            }
+
+            // Проверяем, что найденный Draw действительно находится выше или на строке курсора
+            if (foundStartLine <= g_lastLine) {
+
+                // 5. ИЩЕМ ЗАКРЫВАЮЩУЮ ТОЧКУ С ЗАПЯТОЙ ВПЕРЕД ПОСЛЕ НАЧАЛА DRAW!
+                size_t callEndOffset = g_currentFileFullText.find(L';', drawOffset);
+                if (callEndOffset != std::wstring::npos) {
+
+                    // Вычисляем номер строки конца вызова (foundEndLine), перебирая \n от начала Draw до ;
+                    long foundEndLine = foundStartLine;
+                    size_t lineEndCheckOffset = drawOffset;
+                    while (lineEndCheckOffset < callEndOffset && lineEndCheckOffset < g_currentFileFullText.length()) {
+                        size_t nextNL = g_currentFileFullText.find(L'\n', lineEndCheckOffset);
+                        if (nextNL != std::wstring::npos && nextNL < callEndOffset) {
+                            foundEndLine++;
+                            lineEndCheckOffset = nextNL + 1;
+                        }
+                        else break;
+                    }
+
+                    // 6. ПРОВЕРЯЕМ ПОПАДАНИЕ КУРСОРA В ДИАПАЗОН СТРОК
+                    if (g_lastLine >= foundStartLine && g_lastLine <= foundEndLine) {
+                        validStartLine = foundStartLine;
+                        validEndLine = foundEndLine;
+                    }
+                }
+            }
+        }
+
+        // Результат для самого первого зашедшего вызова в текущем кадре изменения
+        return (validStartLine != -1 && static_cast<long>(location.line()) == validStartLine);
+    }
+
+
+
+
+
 }

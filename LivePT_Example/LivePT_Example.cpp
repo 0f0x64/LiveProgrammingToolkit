@@ -87,8 +87,6 @@ bool IsPrimitiveSelected(int posX, int posY, HWND hwnd) {
     return false;
 }
 
-bool pleaseOpen = false;
-std::source_location loc;
 
 void Draw(Primitive p, std::source_location location = std::source_location::current()) {
 
@@ -98,9 +96,10 @@ void Draw(Primitive p, std::source_location location = std::source_location::cur
     auto sel = IsPrimitiveSelected(posX,posY, gc.hWnd);
 
     if (sel) {
-        loc = location;
-        pleaseOpen = true;
+        LivePT::OpenFileAndMoveCursorToLocation(location);
     }
+
+    BOOL highlight = LivePT::IsCursorInsideFunctionCall(location);
 
     HBRUSH hBrush = CreateSolidBrush(RGB(p.color.r, p.color.g, p.color.b));
     HBRUSH hOldBrush = (HBRUSH)SelectObject(gc.memDC, hBrush);
@@ -133,7 +132,8 @@ void Draw(Primitive p, std::source_location location = std::source_location::cur
     SelectObject(gc.memDC, hOldBrush);
     DeleteObject(hBrush);
 
-    if (curSel == drawCounter)
+    //if (curSel == drawCounter || highlight)
+    if (highlight)
     {
         hBrush = CreateSolidBrush(RGB(255, 255, 255));
     }
@@ -191,30 +191,30 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         drawCounter = 0;
 
         Draw({
-            .pos =      eval(pos2{-192.1621f,-210.4966f}),
+            .pos =      eval(pos2{-218.16f,-200.50f}),
             .size =     eval(size2{76.2323f,77.6994f}),
             .Angle =    eval(angle(34.2f)),
-            .type =     eval(ptype::box),
+            .type =     eval(ptype::circle),
             .show =     eval(true),
             .color =    eval(color3{177,41,7})
         });
 
         Draw({
-            .pos =      eval(pos2{197.82f, -198.4501f}),
-            .size =     eval(size2{106.3067f, 99.3431f}),
-            .Angle =    eval(angle(35.0f)),
-            .type =     eval(ptype::box),
+            .pos =      eval(pos2{196.5201f, -262.9499f}),
+            .size =     eval(size2{96.47f,96.56f}),
+            .Angle =    eval(angle(115.7f)),
+            .type =     eval(ptype::roundbox),
             .show =     eval(true),
-            .color =    eval(color3{130,4,156})
+            .color =    eval(color3{90, 80, 36})
         });
 
         Draw({
-            .pos =      eval(pos2{-122.5249f, 224.5584f}),
-            .size =     eval(size2{68.1575f,78.1812f}),
+            .pos =      eval(pos2{-104.8249f, 174.1584f}),
+            .size =     eval(size2{68.1575f, 78.1812f}),
             .Angle =    eval(angle(302.3f)),
             .type =     eval(ptype::box),
             .show =     eval(true),
-            .color =    eval(color3{42,37,191})
+            .color =    eval(color3{43,40,191})
         });
 
         BitBlt(hdc, 0, 0, w, h, memDC, 0, 0, SRCCOPY);
@@ -279,19 +279,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         }
         else {
 
-            if (pleaseOpen)
-            {
-                LivePT::OpenFileAndMoveCursorToLocation(loc);
-                pleaseOpen = false;
-                SetForegroundWindow(hwnd);
-                SetFocus(hwnd);
-            }
-
             DWORD currentTick = GetTickCount();
             if (currentTick - lastUpdate > 16) { // ~60 FPS update limit
                 lastUpdate = currentTick;
                 LivePT::ProcessEdit();// don't forget this call
-
             }
         }
     }
