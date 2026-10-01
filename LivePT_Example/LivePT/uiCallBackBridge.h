@@ -7,6 +7,8 @@
 
 namespace LivePT {
 
+    static inline bool isAnyWidgetTracking = false;
+
     // Callback принимает std::any, чтобы код ядра не зависел от конкретных типов данных
     using InternalDoubleClickCallback = std::function<void(const std::any&, std::function<void(std::string)>)>;
 

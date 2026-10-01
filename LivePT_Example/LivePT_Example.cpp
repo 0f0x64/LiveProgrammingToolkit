@@ -17,7 +17,7 @@ struct color3 {
 };
 #include "Widgets\color3.h"
 LPT_REGISTER_TYPE(color3, Widgets::color3Callback);
-LPT_REGISTER_DRAG(color3, LivePT::color3DragMath);
+LPT_REGISTER_DRAG(color3, DrugLogic::color3Drag);
 
 struct pos2 {
     float x;
@@ -25,14 +25,14 @@ struct pos2 {
 };
 #include "Widgets\pos2.h"
 LPT_REGISTER_TYPE(pos2, Widgets::pos2Callback);
-LPT_REGISTER_DRAG(pos2, LivePT::pos2DragMath);
+LPT_REGISTER_DRAG(pos2, DrugLogic::pos2Drag);
 
 struct size2 {
     float w;
     float h;
 };
 LPT_REGISTER_TYPE(size2, Widgets::pos2Callback);
-LPT_REGISTER_DRAG(size2, LivePT::size2DragMath);
+LPT_REGISTER_DRAG(size2, DrugLogic::size2Drag);
 
 typedef float angle;
 #include "Widgets\angle.h"
@@ -200,12 +200,12 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         });
 
         Draw({
-            .pos =      eval(pos2{227.82f, -198.4501f}),
-            .size =     eval(size2{87.3067f, 99.3431f}),
-            .Angle =    eval(angle(354.1f)),
+            .pos =      eval(pos2{197.82f, -198.4501f}),
+            .size =     eval(size2{106.3067f, 99.3431f}),
+            .Angle =    eval(angle(35.0f)),
             .type =     eval(ptype::box),
             .show =     eval(true),
-            .color =    eval(color3{153, 190, 157})
+            .color =    eval(color3{130,4,156})
         });
 
         Draw({

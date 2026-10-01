@@ -855,32 +855,11 @@ namespace LivePT {
             size_t dotPos = g_dragState.oldValueStr.find('.');
             std::string newValueStr;
 
-            const std::type_info* pTypeInfo = nullptr;
             int targetId = g_dragState.targetParamId;
-            if (targetId != -1 && targetId < static_cast<int>(paramDesc.size())) {
-                pTypeInfo = &paramDesc[targetId].value.type();
-            }
 
             if (dotPos == std::string::npos) {
 
-                int intVal = g_dragState.newValue;
-                if (pTypeInfo) {
-                    if (*pTypeInfo == typeid(unsigned char)) {
-                        intVal = std::clamp(intVal, 0, 255);
-                    }
-                    else if (*pTypeInfo == typeid(char) || *pTypeInfo == typeid(signed char)) {
-                        intVal = std::clamp(intVal, -128, 127);
-                    }
-                    else if (*pTypeInfo == typeid(unsigned short)) {
-                        intVal = std::clamp(intVal, 0, 65535);
-                    }
-                    else if (*pTypeInfo == typeid(short)) {
-                        intVal = std::clamp(intVal, -32768, 32767);
-                    }
-                }
-                g_dragState.newValue = intVal;
-                
-                char modified[100];
+                 char modified[100];
 
                 _itoa_s(g_dragState.newValue, modified, sizeof(modified), 10);
                 newValueStr = modified;

@@ -45,28 +45,28 @@
     <ClInclude Include="LivePT\vsEditor.h">
       <Filter>Source Files\LivePT</Filter>
     </ClInclude>
-    <ClInclude Include="LivePT\DbgHelpRef.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="LivePT\windowManagement.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="LivePT\uiCallBackBridge.h">
       <Filter>Source Files\LivePT</Filter>
     </ClInclude>
-    <ClInclude Include="LivePT\mouse.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="LivePT\drugLogic.h">
+      <Filter>Source Files\LivePT</Filter>
     </ClInclude>
     <ClInclude Include="Widgets\angle.h">
-      <Filter>Header Files</Filter>
+      <Filter>Source Files\Widgets</Filter>
     </ClInclude>
     <ClInclude Include="Widgets\color3.h">
-      <Filter>Header Files</Filter>
+      <Filter>Source Files\Widgets</Filter>
     </ClInclude>
     <ClInclude Include="Widgets\pos2.h">
-      <Filter>Header Files</Filter>
+      <Filter>Source Files\Widgets</Filter>
     </ClInclude>
-    <ClInclude Include="LivePT\drugLogic.h">
+    <ClInclude Include="LivePT\DbgHelpRef.h">
+      <Filter>Source Files\LivePT</Filter>
+    </ClInclude>
+    <ClInclude Include="LivePT\mouse.h">
+      <Filter>Source Files\LivePT</Filter>
+    </ClInclude>
+    <ClInclude Include="LivePT\windowManagement.h">
       <Filter>Source Files\LivePT</Filter>
     </ClInclude>
   </ItemGroup>
