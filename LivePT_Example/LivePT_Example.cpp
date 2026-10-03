@@ -16,7 +16,7 @@ struct color3 {
     unsigned char b;
 };
 #include "Widgets\color3.h"
-LPT_REGISTER_TYPE(color3, Widgets::color3Callback);
+//LPT_REGISTER_TYPE(color3, Widgets::color3Callback);
 LPT_REGISTER_DRAG(color3, DrugLogic::color3Drag);
 
 struct pos2 {
@@ -24,19 +24,19 @@ struct pos2 {
     float y;
 };
 #include "Widgets\pos2.h"
-LPT_REGISTER_TYPE(pos2, Widgets::pos2Callback);
+LPT_REGISTER_TYPE("pos2", Widgets::pos2Callback);
 LPT_REGISTER_DRAG(pos2, DrugLogic::pos2Drag);
 
 struct size2 {
     float w;
     float h;
 };
-LPT_REGISTER_TYPE(size2, Widgets::pos2Callback);
+//LPT_REGISTER_TYPE(size2, Widgets::pos2Callback);
 LPT_REGISTER_DRAG(size2, DrugLogic::size2Drag);
 
 typedef float angle;
 #include "Widgets\angle.h"
-LPT_REGISTER_TYPE(angle, Widgets::angleCallback);
+LPT_REGISTER_TYPE("angle", Widgets::angleCallback);
 
 struct {
     HWND hWnd;
@@ -191,30 +191,37 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         drawCounter = 0;
 
         Draw({
-            .pos =      eval(pos2{-218.16f,-200.50f}),
-            .size =     eval(size2{76.2323f,77.6994f}),
-            .Angle =    eval(angle(34.2f)),
+            .pos =      eval(pos2{
+                .x = -139,
+                .y = -271
+                }),
+            .size =     eval(size2{96,   197}),
+            .Angle =    eval(angle(87.0f)),
             .type =     eval(ptype::circle),
             .show =     eval(true),
-            .color =    eval(color3{177,41,7})
-        });
+            .color = eval(color3{
+                .r=197, 
+                .g=62,  
+                .b =36
+                }) 
+         });
 
         Draw({
-            .pos =      eval(pos2{196.5201f, -262.9499f}),
-            .size =     eval(size2{96.47f,96.56f}),
-            .Angle =    eval(angle(115.7f)),
+            .pos =      eval(pos2{310.01f, 115.90f}),
+            .size =     eval(size2{117.47f,94.56f}),
+            .Angle =    eval(angle(67.7f)),
             .type =     eval(ptype::roundbox),
             .show =     eval(true),
-            .color =    eval(color3{90, 80, 36})
+            .color =    eval(color3{14, 111,41})
         });
 
         Draw({
-            .pos =      eval(pos2{-104.8249f, 174.1584f}),
-            .size =     eval(size2{68.1575f, 78.1812f}),
-            .Angle =    eval(angle(302.3f)),
-            .type =     eval(ptype::box),
+            .pos =      eval(pos2{10.1f,216.1584f}),
+            .size =     eval(size2{168.1575f, 78.1812f}),
+            .Angle =    eval(angle(5.3f)),
+            .type =     eval(ptype::roundbox),
             .show =     eval(true),
-            .color =    eval(color3{43,40,191})
+            .color =    eval(color3{26, 40,      191})
         });
 
         BitBlt(hdc, 0, 0, w, h, memDC, 0, 0, SRCCOPY);

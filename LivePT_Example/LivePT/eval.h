@@ -68,13 +68,46 @@ namespace LivePT {
         }
 
         if (paramDesc[id].enumInfo.isEnum) {
-            std::string cleanName = newValue;
-            size_t lastCols = cleanName.rfind("::");
-            if (lastCols != std::string::npos) {
-                cleanName = cleanName.substr(lastCols + 2);
+            if (paramDesc[id].enumInfo.elements.empty()) {
+                std::wstring wEnumName = L"";
+
+                // Находим имя типа энума (например, "ptype") из пришедшей строки "ptype::box"
+                size_t lastCols = newValue.rfind("::");
+                if (lastCols != std::string::npos) {
+                    std::string pureTypeName = newValue.substr(0, lastCols);
+                    wEnumName = std::wstring(pureTypeName.begin(), pureTypeName.end());
+                }
+
+                if (!wEnumName.empty()) {
+                    std::vector<std::string> parsedNames;
+                    std::vector<int> parsedValues;
+
+                    // Вызываем твой прямой PDB-парсер
+                    if (LoadEnumMetadataDirect(wEnumName.c_str(), parsedNames, parsedValues)) {
+                        for (size_t i = 0; i < parsedNames.size(); ++i) {
+                            EnumElementDesc gameElem{ parsedValues[i], parsedNames[i] };
+                            paramDesc[id].enumInfo.elements.push_back(gameElem);
+                        }
+                    }
+                }
             }
+
+            // Очищаем пришедшее значение для прецизионного сравнения токенов
+            std::string cleanNewValue = newValue;
+            size_t lastColsNew = cleanNewValue.rfind("::");
+            if (lastColsNew != std::string::npos) {
+                cleanNewValue = cleanNewValue.substr(lastColsNew + 2); // Получаем "box"
+            }
+
+            // Теперь этот цикл гарантированно отработает со старта, так как база наполнена!
             for (const auto& elem : paramDesc[id].enumInfo.elements) {
-                if (elem.name == cleanName) {
+                std::string cleanElemName = elem.name;
+                size_t lastColsElem = cleanElemName.rfind("::");
+                if (lastColsElem != std::string::npos) {
+                    cleanElemName = cleanElemName.substr(lastColsElem + 2); // Получаем "box" из PDB
+                }
+
+                if (elem.name == newValue || cleanElemName == cleanNewValue || elem.name == cleanNewValue) {
                     paramDesc[id].value = elem.value;
                     return;
                 }
@@ -103,10 +136,15 @@ namespace LivePT {
         }
     };
 
+    inline std::unordered_map<std::string, std::map<StaticOrderKey, int>>& GetFileCompileTree() {
+        static std::unordered_map<std::string, std::map<StaticOrderKey, int>> fileCompileTree;
+        return fileCompileTree;
+    }
+
     inline int RegisterEvalPreMain(const char* file, std::any value, int line, int column, EnumTypeDesc enumDesc) {
         std::string absolutePath = NormalizePath(file);
 
-        static std::unordered_map<std::string, std::map<StaticOrderKey, int>> fileCompileTree;
+        auto& fileCompileTree = GetFileCompileTree();
 
         StaticOrderKey key{ line, column };
         auto& fileMap = fileCompileTree[absolutePath];

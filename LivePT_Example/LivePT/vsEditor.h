@@ -1,6 +1,6 @@
 namespace LivePT {
 
-
+    int GetMouseDragTargetParamId();
 
     static IDispatch* pDTE = nullptr;
 
@@ -370,19 +370,17 @@ namespace LivePT {
         return static_cast<long>(visualCol) + 1;
     }
 
-    inline void ParseAndStoreParamValue(const std::wstring& fileText, const std::string& currentActiveFile, int validRuntimeId) {
+    inline void ParseAndStoreParamValueDirect(const std::wstring& fileText, int targetId) {
+        if (fileText.empty() || targetId < 0 || targetId >= static_cast<int>(paramDesc.size())) {
+            //Log("[LivePT Debug] ParseDirect: Early abort due to empty text or bad targetId: " + std::to_string(targetId));
+            return;
+        }
 
-        if (validRuntimeId == -1 || fileText.empty()) return;
-
-        std::string vsLookupKey = LivePT::NormalizePath(currentActiveFile.c_str()) + ":" + std::to_string(validRuntimeId);
-        int targetId = getID(vsLookupKey);
-        if (targetId == -1) return;
-
-        const auto& params = LivePT::getParamDesc();
-        const auto& p = params[targetId];
-
+        auto& p = paramDesc[targetId];
         std::wstring macroName = GetConfiguredMacroName();
+        long tabSize = GetVSTabSize();
 
+        // 1. Находим физическое смещение начала строки p.line
         size_t lineStartOffset = 0;
         long currentLineIdx = 1;
         while (currentLineIdx < p.line && lineStartOffset < fileText.length()) {
@@ -391,16 +389,15 @@ namespace LivePT {
                 lineStartOffset = nextNL + 1;
                 currentLineIdx++;
             }
-            else {
-                break;
-            }
+            else break;
         }
 
+        // 2. Выделяем текст этой строки
         size_t nextNL = fileText.find(L'\n', lineStartOffset);
         if (nextNL == std::wstring::npos) nextNL = fileText.length();
         std::wstring lineText = fileText.substr(lineStartOffset, nextNL - lineStartOffset);
 
-        long tabSize = GetVSTabSize();
+        // 3. Вычисляем физический символ по p.column
         long currentVisualCol = 1;
         size_t paramCharIdx = lineText.length();
         for (size_t i = 0; i < lineText.length(); ++i) {
@@ -409,22 +406,13 @@ namespace LivePT {
         }
         size_t anchorOffset = lineStartOffset + paramCharIdx;
 
-        if (anchorOffset >= fileText.length()) return;
-
-        size_t evalAbsolutePos = std::wstring::npos;
-        size_t rfindPos = fileText.rfind(macroName, anchorOffset);
-        if (rfindPos != std::wstring::npos) {
-            bool validLeft = (rfindPos == 0 || (!iswalnum(fileText[rfindPos - 1]) && fileText[rfindPos - 1] != L'_'));
-            bool validRight = (rfindPos + macroName.length() >= fileText.length() || (!iswalnum(fileText[rfindPos + macroName.length()]) && fileText[rfindPos + macroName.length()] != L'_'));
-            if (validLeft && validRight) {
-                evalAbsolutePos = rfindPos;
-            }
-        }
-        if (evalAbsolutePos == std::wstring::npos) {
-            evalAbsolutePos = anchorOffset;
+        if (anchorOffset >= fileText.length()) {
+            //Log("[LivePT Debug] ParseDirect: Anchor offset out of file bounds.");
+            return;
         }
 
-        size_t openBracket = fileText.find(L'(', evalAbsolutePos);
+        // 4. Вырезаем аргументы внутри круглых скобок eval(...)
+        size_t openBracket = fileText.find(L'(', anchorOffset);
         size_t closeBracket = FindCloseBracket(fileText, openBracket);
 
         if (openBracket != std::wstring::npos && closeBracket != std::wstring::npos && closeBracket > openBracket) {
@@ -434,9 +422,19 @@ namespace LivePT {
             innerValueA.erase(0, innerValueA.find_first_not_of(" \t\r\n"));
             innerValueA.erase(innerValueA.find_last_not_of(" \t\r\n") + 1);
 
+            // КРИТИЧЕСКИЙ ЛОГ ВЫРЕЗАНИЯ СТРОКИ
+            /*Log("[LivePT Debug CUT] TargetParamId: " + std::to_string(targetId) +
+                " | Macro base coords: " + std::to_string(p.line) + ":" + std::to_string(p.column) +
+                " | Cut text to lambda: '" + innerValueA + "'");
+                */
+            // Обновляем рантайм-переменную в памяти движка игры
             UpdateParamValue(targetId, innerValueA);
         }
+        else {
+            //Log("[LivePT Debug] ParseDirect: Failed to resolve parenthesis geometry around anchor.");
+        }
     }
+
 
     inline std::wstring DownloadCurrentLineText(IDispatch* pActiveDoc) {
         std::wstring lineText = L"";
@@ -473,10 +471,10 @@ namespace LivePT {
         return lineText;
     }
 
-    static std::wstring g_lastLineTextBuffer = L"";
+//    static std::wstring g_lastLineTextBuffer = L"";
     static std::wstring g_currentFileFullText = L"";
-    static long g_lastLine = -1;
-    static long g_lastCol = -1;
+//    static long g_lastLine = -1;
+//    static long g_lastCol = -1;
 
     inline bool isMouseDragging();
 
@@ -490,198 +488,61 @@ namespace LivePT {
     static long g_cachedEvalCol = -1;
     static std::wstring g_cachedEvalTextHash = L"";
 
-    inline EvalContext GetCurrentRawIdUnderCursor(const std::wstring& fileText, long cursorLine, long cursorColumn, const std::wstring& currentLineText) {
-        EvalContext ctx;
-        if (fileText.empty()) return ctx;
+    std::string g_currentActiveFile = "";
+    //static long          g_lastLineCount = -1;
+    //static size_t        g_lastLineLength = 0;
 
-        std::wstring macroName = GetConfiguredMacroName();
+    static std::string   g_lastActiveFile = "";
+    static long          g_lastLineCount = -1;
+    static size_t        g_lastLineLength = 0;
+    static long          g_lastLine = -1;
+    static long          g_lastCol = -1;
+    static std::wstring  g_lastLineTextBuffer = L"";
 
-        size_t lineStartOffset = 0;
-        long currentLineIdx = 1;
-        while (currentLineIdx < cursorLine && lineStartOffset < fileText.length()) {
-            size_t nextNL = fileText.find(L'\n', lineStartOffset);
-            if (nextNL != std::wstring::npos) {
-                lineStartOffset = nextNL + 1;
-                currentLineIdx++;
+    inline int FindParamIdByStrictGeometry(const std::string& normalizedFile, long cursorLine, long cursorColumn) {
+        auto& params = LivePT::getParamDesc();
+        int targetParamId = -1;
+
+        // Линейно идем по локальным каунтерам файла от 0 до конца.
+        // registry гарантирует нам идеальный порядок макросов строго сверху вниз!
+        for (int localId = 0; ; ++localId) {
+
+            // Собираем точный ключ, в котором намертво зашито имя файла
+            std::string vsLookupKey = normalizedFile + ":" + std::to_string(localId);
+            int paramId = LivePT::getID(vsLookupKey);
+
+            // Если getID вернул -1, значит, макросы в текущем файле закончились — выходим
+            if (paramId == -1) break;
+
+            if (paramId < 0 || paramId >= static_cast<int>(params.size())) continue;
+
+            // Достаем честные координаты макроса, которые почистил диск и двигает Шифт
+            const auto& p = params[paramId];
+
+            // Проверяем, находится ли макрос ДО текущего положения курсора Visual Studio
+            if (p.line < cursorLine || (p.line == cursorLine && p.column <= cursorColumn)) {
+                // Каждый следующий localId находится ближе к курсору, чем предыдущий.
+                // Перезаписываем его как последний левый элемент.
+                targetParamId = paramId;
             }
             else {
+                // Как только наткнулись на макрос, который стоит строго НИЖЕ или ПРАВЕЕ курсора,
+                // немедленно прерываем цикл. 
+                // Предыдущий сохраненный targetParamId — это 100% макрос-родитель, поглотивший курсор.
                 break;
             }
         }
 
-        size_t nextNL = fileText.find(L'\n', lineStartOffset);
-        if (nextNL == std::wstring::npos) nextNL = fileText.length();
-        std::wstring lineText = fileText.substr(lineStartOffset, nextNL - lineStartOffset);
-
-        long currentVisualCol = 1;
-        long tabSize = GetVSTabSize();
-        size_t cursorCharIdx = lineText.length();
-        for (size_t i = 0; i < lineText.length(); ++i) {
-            if (currentVisualCol >= cursorColumn) { cursorCharIdx = i; break; }
-            currentVisualCol += (lineText[i] == L'\t') ? (tabSize - ((currentVisualCol - 1) % tabSize)) : 1;
-        }
-        size_t globalCursorOffset = lineStartOffset + cursorCharIdx;
-
-        size_t searchOrigin = globalCursorOffset;
-        size_t targetMacroStart = std::wstring::npos;
-
-        while (searchOrigin > 0) {
-            size_t rfindPos = fileText.rfind(macroName, searchOrigin);
-            if (rfindPos == std::wstring::npos) break;
-
-            bool validLeft = (rfindPos == 0 || (!iswalnum(fileText[rfindPos - 1]) && fileText[rfindPos - 1] != L'_'));
-            bool validRight = (rfindPos + macroName.length() >= fileText.length() || (!iswalnum(fileText[rfindPos + macroName.length()]) && fileText[rfindPos + macroName.length()] != L'_'));
-
-            if (validLeft && validRight) {
-                size_t openBracket = fileText.find(L'(', rfindPos + macroName.length());
-                if (openBracket != std::wstring::npos) {
-                    size_t closeBracket = FindCloseBracket(fileText, openBracket);
-
-                    if (closeBracket != std::wstring::npos) {
-
-                        if (globalCursorOffset >= rfindPos && globalCursorOffset <= openBracket + 1) {
-                            targetMacroStart = rfindPos;
-                            break;
-                        }
-
-                        if (globalCursorOffset > openBracket + 1 && globalCursorOffset <= closeBracket) {
-                            int bracketCount = 0;
-
-                            for (size_t k = openBracket; k < globalCursorOffset && k < fileText.length(); ++k) {
-                                if (fileText[k] == L'(') bracketCount++;
-                                if (fileText[k] == L')') bracketCount--;
-                            }
-
-                            if (bracketCount >= 1) {
-                                targetMacroStart = rfindPos;
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-            if (rfindPos == 0) break;
-            searchOrigin = rfindPos - 1;
-        }
-
-        if (targetMacroStart == std::wstring::npos) {
-            return ctx;
-        }
-
-        ctx.absolutePos = targetMacroStart;
-
-        int runningRawCounter = 0;
-        size_t currentOffset = 0;
-        while ((currentOffset = fileText.find(macroName, currentOffset)) != std::wstring::npos && currentOffset < targetMacroStart) {
-            bool validLeft = (currentOffset == 0 || (!iswalnum(fileText[currentOffset - 1]) && fileText[currentOffset - 1] != L'_'));
-            bool validRight = (currentOffset + macroName.length() >= fileText.length() || (!iswalnum(fileText[currentOffset + macroName.length()]) && fileText[currentOffset + macroName.length()] != L'_'));
-            if (validLeft && validRight) runningRawCounter++;
-            currentOffset += macroName.length();
-        }
-
-        ctx.rawId = runningRawCounter;
-        return ctx;
+        return targetParamId;
     }
 
-    static std::unordered_map<std::string, std::vector<int>> g_filesMapsCache;
-    static std::string g_cachedMapFilePath = "";
 
-    inline void BuildRawToRuntimeMapLinear(const std::string& targetFileName, const std::wstring& fileText) {
 
-        if (fileText.empty()) return;
+    inline void ShiftDatabaseCoordinates(const std::string& targetFile, long targetLine, long visualStartCol, int lineDelta, int columnDelta);
 
-        std::string normalizedPath = LivePT::NormalizePath(targetFileName.c_str());
-
-        if (g_filesMapsCache.find(normalizedPath) != g_filesMapsCache.end()) {
-            return;
-        }
-
-        const auto& params = LivePT::getParamDesc();
-        std::vector<int> tempMap;
-        int currentId = 0;
-
-        std::wstring macroName = GetConfiguredMacroName();
-
-        while (true) {
-            std::string lookupKey = normalizedPath + ":" + std::to_string(currentId);
-            int paramIndex = LivePT::getID(lookupKey);
-
-            if (paramIndex == -1) {
-                break;
-            }
-
-            const auto& p = params[paramIndex];
-
-            size_t lineStartOffset = 0;
-            long currentLineIdx = 1;
-            while (currentLineIdx < p.line && lineStartOffset < fileText.length()) {
-                size_t nextNL = fileText.find(L'\n', lineStartOffset);
-                if (nextNL != std::wstring::npos) {
-                    lineStartOffset = nextNL + 1;
-                    currentLineIdx++;
-                }
-                else {
-                    break;
-                }
-            }
-
-            size_t nextNL = fileText.find(L'\n', lineStartOffset);
-            if (nextNL == std::wstring::npos) nextNL = fileText.length();
-            std::wstring lineText = fileText.substr(lineStartOffset, nextNL - lineStartOffset);
-
-            long currentVisualCol = 1;
-            long tabSize = GetVSTabSize();
-            size_t paramCharIdx = lineText.length();
-            for (size_t i = 0; i < lineText.length(); ++i) {
-                if (currentVisualCol >= p.column) { paramCharIdx = i; break; }
-                currentVisualCol += (lineText[i] == L'\t') ? (tabSize - ((currentVisualCol - 1) % tabSize)) : 1;
-            }
-            size_t anchorOffset = lineStartOffset + paramCharIdx;
-
-            size_t currentMacroStart = std::wstring::npos;
-            if (anchorOffset != std::wstring::npos && anchorOffset < fileText.length()) {
-                size_t rfindPos = fileText.rfind(macroName, anchorOffset);
-                if (rfindPos != std::wstring::npos) {
-                    bool validLeft = (rfindPos == 0 || (!iswalnum(fileText[rfindPos - 1]) && fileText[rfindPos - 1] != L'_'));
-                    bool validRight = (rfindPos + macroName.length() >= fileText.length() || (!iswalnum(fileText[rfindPos + macroName.length()]) && fileText[rfindPos + macroName.length()] != L'_'));
-                    if (validLeft && validRight) {
-                        currentMacroStart = rfindPos;
-                    }
-                }
-            }
-            if (currentMacroStart == std::wstring::npos) {
-                currentMacroStart = anchorOffset;
-            }
-
-            int runningRawCounter = 0;
-            size_t currentOffset = 0;
-            while ((currentOffset = fileText.find(macroName, currentOffset)) != std::wstring::npos && currentOffset < currentMacroStart) {
-                bool validLeft = (currentOffset == 0 || (!iswalnum(fileText[currentOffset - 1]) && fileText[currentOffset - 1] != L'_'));
-                bool validRight = (currentOffset + macroName.length() >= fileText.length() || (!iswalnum(fileText[currentOffset + macroName.length()]) && fileText[currentOffset + macroName.length()] != L'_'));
-                if (validLeft && validRight) runningRawCounter++;
-                currentOffset += macroName.length();
-            }
-
-            int rawCounterId = runningRawCounter;
-            if (rawCounterId >= 0) {
-                if (rawCounterId >= static_cast<int>(tempMap.size())) {
-                    tempMap.resize(rawCounterId + 1, -1);
-                }
-                tempMap[rawCounterId] = currentId;
-            }
-
-            currentId++;
-        }
-
-        if (!tempMap.empty()) {
-            g_filesMapsCache[normalizedPath] = std::move(tempMap);
-        }
-    }
-
-    std::string g_currentActiveFile = "";
-
+    // === ЕДИНЫЙ ПОЛНОСТЬЮ ОЧИЩЕННЫЙ ДИСПЕТЧЕР LivePT ===
+        // === ЕДИНЫЙ ПОЛНОСТЬЮ ОЧИЩЕННЫЙ ДИСПЕТЧЕР СИНХРОНИЗАЦИИ LivePT ===
     inline void vsEditor() {
-
         if (!initVsEditor()) return;
 
         VARIANT vtActiveDoc; VariantInit(&vtActiveDoc);
@@ -702,55 +563,62 @@ namespace LivePT {
         if (!GetCursorCoordinates(pActiveDoc, line, column)) { VariantClear(&vtActiveDoc); return; }
 
         std::wstring currentLineText = DownloadCurrentLineText(pActiveDoc);
-
-        if (!LivePT::isMouseDragging()) {
-            if (line == g_lastLine && currentLineText == g_lastLineTextBuffer) {
-                VariantClear(&vtActiveDoc);
-                return;
-            }
-        }
-
-        g_lastLineTextBuffer = currentLineText;
-        g_lastLine = line;
-        g_lastCol = column;
-
         std::wstring fileText = DownloadDocumentText(pActiveDoc);
         if (fileText.empty()) { VariantClear(&vtActiveDoc); return; }
 
         g_currentFileFullText = fileText;
 
-        BuildRawToRuntimeMapLinear(currentActiveFile, fileText);
-
-        EvalContext evalCtx = GetCurrentRawIdUnderCursor(fileText, line, column, currentLineText);
-
-        int finalValidRuntimeId = -1;
-
-        if (evalCtx.rawId != -1 && evalCtx.absolutePos != std::wstring::npos) {
-            std::string normalizedPath = LivePT::NormalizePath(currentActiveFile.c_str());
-
-            auto it = g_filesMapsCache.find(normalizedPath);
-            if (it != g_filesMapsCache.end()) {
-                const auto& currentFileMap = it->second;
-
-                if (evalCtx.rawId >= 0 && evalCtx.rawId < static_cast<int>(currentFileMap.size())) {
-                    finalValidRuntimeId = currentFileMap[evalCtx.rawId];
-                }
-            }
-        }
+        long currentLineCount = static_cast<long>(std::count(fileText.begin(), fileText.end(), L'\n')) + 1;
+        size_t currentLineLength = currentLineText.length();
 
         std::string normalizedPath = LivePT::NormalizePath(currentActiveFile.c_str());
-        std::string vsLookupKey = normalizedPath + ":" + std::to_string(finalValidRuntimeId);
-        int targetId = getID(vsLookupKey);
 
-        if (finalValidRuntimeId != -1) {
+        if (currentActiveFile != g_lastActiveFile) {
+            g_lastActiveFile = currentActiveFile;
+            g_lastLine = line;
+            g_lastCol = column;
+            g_lastLineCount = currentLineCount;
+            g_lastLineLength = currentLineLength;
+            g_lastLineTextBuffer = currentLineText;
 
-            LivePT::getParamDesc()[targetId].line = static_cast<int>(line);
-            LivePT::getParamDesc()[targetId].column = static_cast<int>(column);
-            ParseAndStoreParamValue(fileText, currentActiveFile, finalValidRuntimeId);
+            VariantClear(&vtActiveDoc);
+            return;
+        }
+
+        bool wasChanged = (currentLineText != g_lastLineTextBuffer || currentLineCount != g_lastLineCount);
+
+        if (wasChanged) {
+            int lineDelta = static_cast<int>(currentLineCount - g_lastLineCount);
+            int columnDelta = static_cast<int>(currentLineLength - g_lastLineLength);
+            long visualStartCol = (column < g_lastCol) ? column : g_lastCol;
+
+            LivePT::ShiftDatabaseCoordinates(currentActiveFile, g_lastLine, visualStartCol, lineDelta, columnDelta);
+        }
+
+        g_lastLineTextBuffer = currentLineText;
+        g_lastLine = line;
+        g_lastCol = column;
+        g_lastLineCount = currentLineCount;
+        g_lastLineLength = currentLineLength;
+
+        // Поиск активного макроса по строгой геометрии
+        int finalParamDescId = FindParamIdByStrictGeometry(normalizedPath, line, column);
+
+        // КРИТИЧЕСКИЙ ЛОГ ПОДБОРA ГЕОМЕТРИИ
+        /*if (wasChanged || finalParamDescId != -1) {
+            Log("[LivePT Debug VS] Cursor at " + std::to_string(line) + ":" + std::to_string(column) +
+                " | detected finalParamDescId: " + std::to_string(finalParamDescId) +
+                " | wasChanged: " + (wasChanged ? "TRUE" : "FALSE"));
+        }*/
+
+        if (finalParamDescId != -1) {
+            ParseAndStoreParamValueDirect(fileText, finalParamDescId);
         }
 
         VariantClear(&vtActiveDoc);
     }
+
+
   
     inline void OpenFileAndMoveCursorToLocation(const std::source_location& location) {
         if (!LivePT::initVsEditor() || !LivePT::pDTE) {
@@ -817,7 +685,7 @@ namespace LivePT {
             CComVariant(bstrKind));
 
         if (FAILED(hr) || !vtTargetWindow.pdispVal) {
-            LivePT::Log("OpenFileAndMoveCursorToLocation: ItemOperations->OpenFile failed due to bad late binding order.");
+            //LivePT::Log("OpenFileAndMoveCursorToLocation: ItemOperations->OpenFile failed due to bad late binding order.");
             return;
         }
 

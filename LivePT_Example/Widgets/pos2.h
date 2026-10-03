@@ -155,6 +155,9 @@ namespace Widgets {
             }
             return 0;
         case WM_DESTROY:
+            LivePT::EndUndoTransaction();
+            LivePT::SaveActiveDocument();
+
             if (g_posCtx.isCursorHidden) {
                 ShowCursor(TRUE);
                 g_posCtx.isCursorHidden = false;
@@ -168,40 +171,87 @@ namespace Widgets {
         return DefWindowProcA(hwnd, uMsg, wParam, lParam);
     }
 
-    template <typename T>
     inline void pos2Callback(const std::any& anyValue, std::function<void(std::string)> vsUpdater) {
-        const T* pInstance = std::any_cast<T>(&anyValue);
-        if (!pInstance) return;
+        const std::string* pRawText = std::any_cast<std::string>(&anyValue);
+        if (!pRawText) return;
 
-        // 1. Автоматическая распаковка полей структуры (будь то x/y, w/h или a/b)
-        auto [val1, val2] = *pInstance;
+        std::string srcText = *pRawText;
 
-        // 2. Инициализация состояния
-        g_posCtx.currentPos.x = static_cast<float>(val1);
-        g_posCtx.currentPos.y = static_cast<float>(val2);
+        // 1. АНАЛИЗ СИНТАКСИСA
+        bool isMultiLine = (srcText.find('\n') != std::string::npos || srcText.find('\r') != std::string::npos);
+        bool hasExplicitX = (srcText.find(".x") != std::string::npos || srcText.find("x:") != std::string::npos);
+        bool hasExplicitY = (srcText.find(".y") != std::string::npos || srcText.find("y:") != std::string::npos);
+
+        // Детектируем, какие скобки использовал пользователь (фигурные или круглые)
+        wchar_t openChar = (srcText.find('{') != std::string::npos) ? '{' : '(';
+        wchar_t closeChar = (openChar == '{') ? '}' : ')';
+
+        // 2. ДЕСЕРИАЛИЗАЦИЯ: Извлекаем два числа
+        size_t openIdx = srcText.find(openChar);
+        size_t closeIdx = srcText.rfind(closeChar);
+        std::string inner = (openIdx != std::string::npos && closeIdx != std::string::npos && closeIdx > openIdx)
+            ? srcText.substr(openIdx + 1, closeIdx - openIdx - 1)
+            : srcText;
+
+        std::stringstream ss(inner);
+        std::string token;
+        float val1 = 0.0f, val2 = 0.0f;
+        int idx = 0;
+
+        while (std::getline(ss, token, ',')) {
+            size_t eqPos = token.find('=');
+            if (eqPos == std::string::npos) eqPos = token.find(':');
+            std::string valPart = (eqPos != std::string::npos) ? token.substr(eqPos + 1) : token;
+
+            valPart.erase(0, valPart.find_first_not_of(" \t\r\n.xyab="));
+            valPart.erase(valPart.find_last_not_of(" \t\r\nFfuUlL") + 1);
+            if (valPart.empty()) continue;
+
+            float val = 0.0f;
+            std::from_chars(valPart.data(), valPart.data() + valPart.size(), val);
+
+            if (idx == 0) val1 = val;
+            else if (idx == 1) val2 = val;
+            idx++;
+        }
+
+        g_posCtx.currentPos.x = val1;
+        g_posCtx.currentPos.y = val2;
         g_posCtx.vsUpdaterCallback = vsUpdater;
 
-        // 3. Создаем лямбду, которая запоминает исходный тип данных T
-        g_posCtx.textGenerator = [vsUpdater](float newX, float newY) {
-            char buf[128]{};
-            using FieldType = decltype(val1);
+        // 3. СИММЕТРИЧНЫЙ ГЕНЕРАТОР КОДA (Собирает строку вместе со скобками!)
+        g_posCtx.textGenerator = [vsUpdater, isMultiLine, hasExplicitX, hasExplicitY, openChar, closeChar](float newX, float newY) {
+            char buf[512]{};
+            char op = static_cast<char>(openChar);
+            char cl = static_cast<char>(closeChar);
 
-            // Получаем чистое имя типа структуры для подстановки в строку кода
-            std::string typeName = typeid(T).name();
-            if (typeName.rfind("struct ", 0) == 0) typeName = typeName.substr(7);
-            if (typeName.rfind("class ", 0) == 0)  typeName = typeName.substr(6);
-
-            // Компилятор сам выберет нужный формат строки в зависимости от типа полей
-            if constexpr (std::is_floating_point_v<FieldType>) {
-                sprintf_s(buf, "%s{%.2ff,%.2ff}", typeName.c_str(), newX, newY);
+            if (isMultiLine) {
+                // Генерируем красивый многострочный блок с табами
+                sprintf_s(buf, "%c\n\t\t\t\t%s = %.2ff,\n\t\t\t\t%s = %.2ff\n\t\t\t\t%c",
+                    op,
+                    hasExplicitX ? ".x" : "x", newX,
+                    hasExplicitY ? ".y" : "y", newY,
+                    cl);
             }
             else {
-                sprintf_s(buf, "%s{%d,%d}", typeName.c_str(), static_cast<int>(newX), static_cast<int>(newY));
+                // Генерируем компактный однострочный блок
+                if (hasExplicitX || hasExplicitY) {
+                    sprintf_s(buf, "%c%s = %.2ff, %s = %.2ff%c",
+                        op,
+                        hasExplicitX ? ".x" : "x", newX,
+                        hasExplicitY ? ".y" : "y", newY,
+                        cl);
+                }
+                else {
+                    sprintf_s(buf, "%c%.2ff, %.2ff%c", op, newX, newY, cl);
+                }
             }
 
             vsUpdater(buf);
             };
-
+        // =========================================================================
+        // [ТВОЙ ОРИГИНАЛЬНЫЙ WIN32 КОД ОКНА ТРЕКПАДА]: Полностью сохранен
+        // =========================================================================
         if (g_posCtx.hWindow && IsWindow(g_posCtx.hWindow)) {
             SetActiveWindow(g_posCtx.hWindow);
             return;
@@ -209,7 +259,6 @@ namespace Widgets {
 
         POINT mousePos;
         GetCursorPos(&mousePos);
-
         HINSTANCE hInst = GetModuleHandleA(NULL);
         const char* className = "LPT_Custom2DTrackpadWin";
 

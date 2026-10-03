@@ -92,6 +92,7 @@ namespace LivePT {
     #include "eval.h"
     #include "uiCallBackBridge.h"
     #include "vsEditor.h"
+    #include "consistency.h"
 
     #if LivePT_Mouse
         #include "mouse.h"
@@ -239,21 +240,107 @@ namespace LivePT {
         }
     }
 
+    inline void LogAllEvalCoordinates() {
+        // Получаем доступ к нашей глобальной мапе, собранной на этапе Pre-Main
+        auto& fileCompileTree = GetFileCompileTree();
+
+        Log("=================== [LivePT Map Dump Start] ===================");
+
+        int totalFiles = 0;
+        int totalEvals = 0;
+
+        // 1. Обходим файлы (порядок файлов случайный из-за unordered_map)
+        for (const auto& [filePath, fileMap] : fileCompileTree) {
+            totalFiles++;
+
+            Log("File: " + filePath);
+
+            // 2. Обходим внутренний map (гарантирует проход строго сверху вниз)
+            for (const auto& [staticKey, paramId] : fileMap) {
+                totalEvals++;
+
+                // Формируем красивую строку лога с координатами из мапы и Runtime ID
+                std::string logLine = "  -> [eval] Line: " + std::to_string(staticKey.line) +
+                    ", Column: " + std::to_string(staticKey.column) +
+                    " | ParamDescID: " + std::to_string(paramId);
+
+                Log(logLine);
+            }
+        }
+
+        Log("Total unique files: " + std::to_string(totalFiles) + ", Total eval macros: " + std::to_string(totalEvals));
+        Log("===================  [LivePT Map Dump End]  ===================");
+    }
+
+    inline void LogAllEvalCoordinates2() {
+        auto& fileCompileTree = GetFileCompileTree();
+        auto& params = LivePT::getParamDesc(); // Достаем наш рабочий вектор
+
+        Log("=================== [LivePT Map Dump Start] ===================");
+
+        int totalFiles = 0;
+        int totalEvals = 0;
+
+        for (const auto& [filePath, fileMap] : fileCompileTree) {
+            totalFiles++;
+            Log("File: " + filePath);
+
+            for (const auto& [staticKey, paramId] : fileMap) {
+                if (paramId < 0 || paramId >= static_cast<int>(params.size())) continue;
+
+                totalEvals++;
+
+                // БЕРЕМ ДАННЫЕ ИЗ ВЕКТОРА ПАРАМЕТРОВ, ГДЕ СРАБОТАЛА КОРРЕКЦИЯ!
+                const auto& p = params[paramId];
+
+                std::string logLine = "  -> [eval] Line: " + std::to_string(p.line) +
+                    ", Column: " + std::to_string(p.column) +
+                    " (Raw key was: " + std::to_string(staticKey.line) + ":" + std::to_string(staticKey.column) + ")" +
+                    " | ParamDescID: " + std::to_string(paramId) +
+                    " | Status: " + (p.loaded ? "ALIGNED" : "RAW");
+
+                Log(logLine);
+            }
+        }
+
+        Log("Total unique files: " + std::to_string(totalFiles) + ", Total eval macros: " + std::to_string(totalEvals));
+        Log("===================  [LivePT Map Dump End]  ===================");
+    }
+
     void ProcessEdit()
     {
+        AlignDatabaseFastFromDisk();
+
         Warmup();
 
-        #if LivePT_WindowManagement
-            GetWindowManager().Tick();
-        #endif
+#if LivePT_WindowManagement
+        GetWindowManager().Tick();
+#endif
 
-        #if LivePT_Mouse
-            FlushPendingWritesToVS();
-            Update();
-        #endif
+#if LivePT_Mouse
+        // 1. Сначала выгружаем обычные мышиные буферы
+        FlushPendingWritesToVS();
 
-            vsEditor();
+        // 2. ВЫГРУЖАЕМ БУФЕР ВИДЖЕТОВ: Строго один раз за кадр игры!
+        if (g_widgetBuffer.hasChanges && !g_widgetBuffer.codeText.empty()) {
+            long visualStart = g_widgetBuffer.startCol;
+            long visualEnd = visualStart + static_cast<long>(g_dragState.currentTextLength);
+            long newCursorCol = visualStart + static_cast<long>(g_widgetBuffer.codeText.length());
+
+            // Один тяжелый вызов в VS за кадр — это абсолютно незаметно для процессора!
+            ReplaceTextInActiveVS(g_widgetBuffer.line, visualStart, visualEnd, g_widgetBuffer.codeText, newCursorCol);
+
+            // Синхронизируем длину диапазона в памяти
+            g_dragState.currentTextLength = g_widgetBuffer.codeText.length();
+            g_widgetBuffer.hasChanges = false;
+        }
+
+        Update();
+#endif
+
+        vsEditor();
     }
+
 
 }
 

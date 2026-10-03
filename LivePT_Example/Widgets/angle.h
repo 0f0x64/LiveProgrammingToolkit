@@ -176,6 +176,9 @@ namespace Widgets {
             }
             return 0;
         case WM_DESTROY:
+            LivePT::EndUndoTransaction();
+            LivePT::SaveActiveDocument();
+
             if (g_angleCtx.isCursorHidden) {
                 ShowCursor(TRUE);
                 g_angleCtx.isCursorHidden = false;
@@ -191,48 +194,34 @@ namespace Widgets {
 }
 namespace Widgets {
 
-    template <typename T>
     inline void angleCallback(const std::any& anyValue, std::function<void(std::string)> vsUpdater) {
-        const T* pInstance = std::any_cast<T>(&anyValue);
-        if (!pInstance) return;
+        // Мышь прислала нам чистую строку потрохов, например "59.2f"
+        const std::string* pRawText = std::any_cast<std::string>(&anyValue);
+        if (!pRawText) return;
 
+        std::string cleanText = *pRawText;
+        while (!cleanText.empty() && (cleanText.back() == 'f' || cleanText.back() == 'F')) {
+            cleanText.pop_back();
+        }
+
+        // Парсим единственное число угла из текста
         float valExtracted = 0.0f;
-
-        if constexpr (std::is_class_v<T>) {
-            auto [val] = *pInstance;
-            valExtracted = static_cast<float>(val);
-        }
-        else {
-            valExtracted = static_cast<float>(*pInstance);
-        }
+        std::stringstream ss(cleanText);
+        ss >> valExtracted;
 
         g_angleCtx.currentAngle = valExtracted;
         g_angleCtx.vsUpdaterCallback = vsUpdater;
 
+        // Генератор текста кода собирает строку обратно:
         g_angleCtx.textGenerator = [vsUpdater](float finalAngle) {
             char buf[64]{};
-            std::string typeName = typeid(T).name();
-            if (typeName.rfind("struct ", 0) == 0) typeName = typeName.substr(7);
-            if (typeName.rfind("class ", 0) == 0)  typeName = typeName.substr(6);
-
-            if constexpr (std::is_fundamental_v<T>) {
-                if (typeName == "float" || typeName == "double") {
-                    typeName = "angle";
-                }
-                sprintf_s(buf, "%s(%.1ff)", typeName.c_str(), finalAngle);
-            }
-            else {
-                using FieldType = decltype(valExtracted);
-                if constexpr (std::is_floating_point_v<FieldType>) {
-                    sprintf_s(buf, "%s{%.1ff}", typeName.c_str(), finalAngle);
-                }
-                else {
-                    sprintf_s(buf, "%s{%d}", typeName.c_str(), static_cast<int>(finalAngle));
-                }
-            }
+            sprintf_s(buf, "%.1ff", finalAngle); // Только цифры!
             vsUpdater(buf);
             };
 
+
+
+        // Дальше твой оригинальный Win32-код создания окна CreateWindowExA...
         if (g_angleCtx.hWindow && IsWindow(g_angleCtx.hWindow)) {
             InvalidateRect(g_angleCtx.hWindow, NULL, FALSE);
             SetActiveWindow(g_angleCtx.hWindow);

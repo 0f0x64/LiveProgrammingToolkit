@@ -274,31 +274,65 @@ namespace Widgets {
             DestroyWindow(hwnd);
             g_pickerCtx.hWindow = NULL;
             return 0;
+        
+        case WM_DESTROY:
+            LivePT::EndUndoTransaction();
+            LivePT::SaveActiveDocument();
+
         }
         return DefWindowProcA(hwnd, uMsg, wParam, lParam);
     }
 }
 namespace Widgets {
 
-    template <typename T>
     inline void color3Callback(const std::any& anyValue, std::function<void(std::string)> vsUpdater) {
-        const T* pInstance = std::any_cast<T>(&anyValue);
-        if (!pInstance) return;
+        const std::string* pRawText = std::any_cast<std::string>(&anyValue);
+        if (!pRawText) return;
 
-        auto [val1, val2, val3] = *pInstance;
+        std::string srcText = *pRawText;
 
+        // 1. АНАЛИЗ СИНТАКСИСA И ФОРМАТА
+        bool isMultiLine = (srcText.find('\n') != std::string::npos || srcText.find('\r') != std::string::npos);
+        bool hasExplicitFields = (srcText.find(".r") != std::string::npos || srcText.find(".x") != std::string::npos);
+
+        bool isFloatingPoint = false;
+        if (srcText.find('.') != std::string::npos || srcText.find('f') != std::string::npos || srcText.find('F') != std::string::npos) {
+            isFloatingPoint = true;
+        }
+
+        // 2. ДЕСЕРИАЛИЗАЦИЯ: Вырезаем три компонента из любого форматирования
+        std::stringstream ss(srcText);
+        std::string token;
+        float rawVals[3] = { 0.0f, 0.0f, 0.0f };
+        int idx = 0;
+
+        while (std::getline(ss, token, ',')) {
+            if (idx >= 3) break;
+            size_t eqPos = token.find('=');
+            if (eqPos == std::string::npos) eqPos = token.find(':');
+            std::string valPart = (eqPos != std::string::npos) ? token.substr(eqPos + 1) : token;
+
+            valPart.erase(0, valPart.find_first_not_of(" \t\r\n.rgbxyz="));
+            valPart.erase(valPart.find_last_not_of(" \t\r\nFfuUlL") + 1);
+            if (valPart.empty()) continue;
+
+            float val = 0.0f;
+            std::from_chars(valPart.data(), valPart.data() + valPart.size(), val);
+            rawVals[idx] = val;
+            idx++;
+        }
+
+        // Конвертируем нормализованный RGB для колеса
         float rNorm = 0.0f, gNorm = 0.0f, bNorm = 0.0f;
-        using FieldType = decltype(val1);
-
-        if constexpr (std::is_floating_point_v<FieldType>) {
-            rNorm = std::clamp(static_cast<float>(val1), 0.0f, 1.0f);
-            gNorm = std::clamp(static_cast<float>(val2), 0.0f, 1.0f);
-            bNorm = std::clamp(static_cast<float>(val3), 0.0f, 1.0f);
+        if (isFloatingPoint) {
+            rNorm = std::clamp(rawVals[0], 0.0f, 1.0f);
+            gNorm = std::clamp(rawVals[1], 0.0f, 1.0f);
+            bNorm = std::clamp(rawVals[2], 0.0f, 1.0f);
         }
         else {
-            rNorm = std::clamp(static_cast<float>(val1) / 255.0f, 0.0f, 1.0f);
-            gNorm = std::clamp(static_cast<float>(val2) / 255.0f, 0.0f, 1.0f);
-            bNorm = std::clamp(static_cast<float>(val3) / 255.0f, 0.0f, 1.0f);
+            rNorm = std::clamp(rawVals[0] / 255.0f, 0.0f, 1.0f);
+            gNorm = std::clamp(rawVals[1] / 255.0f, 0.0f, 1.0f);
+            bNorm = std::clamp(rawVals[2] / 255.0f, 0.0f, 1.0f);
         }
 
         g_pickerCtx.currentRGB.r = static_cast<unsigned char>(rNorm * 255.0f);
@@ -306,16 +340,13 @@ namespace Widgets {
         g_pickerCtx.currentRGB.b = static_cast<unsigned char>(bNorm * 255.0f);
         g_pickerCtx.vsUpdaterCallback = vsUpdater;
 
+        // Перевод в HSV для ползунка яркости
         float maxVal = (std::max)({ rNorm, gNorm, bNorm });
         float minVal = (std::min)({ rNorm, gNorm, bNorm });
         float delta = maxVal - minVal;
-
         g_pickerCtx.currentValue = maxVal;
         g_pickerCtx.currentSat = (maxVal == 0.0f) ? 0.0f : (delta / maxVal);
-
-        if (delta == 0.0f) {
-            g_pickerCtx.currentHue = 0.0f;
-        }
+        if (delta == 0.0f) g_pickerCtx.currentHue = 0.0f;
         else {
             if (maxVal == rNorm) g_pickerCtx.currentHue = 60.0f * (std::fmod(((gNorm - bNorm) / delta), 6.0f));
             else if (maxVal == gNorm) g_pickerCtx.currentHue = 60.0f * (((bNorm - rNorm) / delta) + 2.0f);
@@ -323,21 +354,41 @@ namespace Widgets {
             if (g_pickerCtx.currentHue < 0.0f) g_pickerCtx.currentHue += 360.0f;
         }
 
-        g_pickerCtx.textGenerator = [vsUpdater](unsigned char r, unsigned char g, unsigned char b) {
-            char buf[64]{};
-            std::string typeName = typeid(T).name();
-            if (typeName.rfind("struct ", 0) == 0) typeName = typeName.substr(7);
-            if (typeName.rfind("class ", 0) == 0)  typeName = typeName.substr(6);
+        // 3. СИММЕТРИЧНЫЙ ГЕНЕРАТОР КОДA ДЛЯ ЦВЕТА
+        g_pickerCtx.textGenerator = [vsUpdater, isMultiLine, hasExplicitFields, isFloatingPoint](unsigned char r, unsigned char g, unsigned char b) {
+            char buf[512]{};
 
-            if constexpr (std::is_floating_point_v<FieldType>) {
-                sprintf_s(buf, "%s{%.2ff,%.2ff,%.2ff}", typeName.c_str(), r / 255.0f, g / 255.0f, b / 255.0f);
+            float outR = isFloatingPoint ? (r / 255.0f) : r;
+            float outG = isFloatingPoint ? (g / 255.0f) : g;
+            float outB = isFloatingPoint ? (b / 255.0f) : b;
+            const char* fmt = isFloatingPoint ? "%.2ff" : "%.0f";
+
+            if (isMultiLine) {
+                // Сборка многострочной структуры с табами
+                std::string line1 = hasExplicitFields ? ".r = " : "";
+                std::string line2 = hasExplicitFields ? ".g = " : "";
+                std::string line3 = hasExplicitFields ? ".b = " : "";
+
+                std::string masterFmt = "{\n\t\t\t\t" + line1 + fmt + ",\n\t\t\t\t" + line2 + fmt + ",\n\t\t\t\t" + line3 + fmt + "\n\t\t\t\t}";
+                sprintf_s(buf, masterFmt.c_str(), outR, outG, outB);
             }
             else {
-                sprintf_s(buf, "%s{%d,%d,%d}", typeName.c_str(), r, g, b);
+                // Сборка однострочной структуры
+                if (hasExplicitFields) {
+                    std::string masterFmt = "{" + std::string(".r = ") + fmt + ", .g = " + fmt + ", .b = " + fmt + "}";
+                    sprintf_s(buf, masterFmt.c_str(), outR, outG, outB);
+                }
+                else {
+                    std::string masterFmt = "{" + std::string(fmt) + ", " + fmt + ", " + fmt + "}";
+                    sprintf_s(buf, masterFmt.c_str(), outR, outG, outB);
+                }
             }
             vsUpdater(buf);
             };
 
+        // =========================================================================
+        // [ТВОЙ ОРИГИНАЛЬНЫЙ WIN32 КОД ОКНА ПАЛИТРЫ]: Полностью сохранен
+        // =========================================================================
         if (g_pickerCtx.hWindow && IsWindow(g_pickerCtx.hWindow)) {
             InvalidateRect(g_pickerCtx.hWindow, NULL, FALSE);
             SetActiveWindow(g_pickerCtx.hWindow);

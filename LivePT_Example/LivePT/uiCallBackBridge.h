@@ -7,30 +7,35 @@
 
 namespace LivePT {
 
-    // Callback принимает std::any, чтобы код ядра не зависел от конкретных типов данных
+    // Сигнатура коллбэка принимает std::any (строку аргументов) и vsUpdater
     using InternalDoubleClickCallback = std::function<void(const std::any&, std::function<void(std::string)>)>;
 
+    // Глобальный реестр связывает ЧИСТОЕ ТЕКСТОВОЕ ИМЯ типа с функцией виджета
     inline std::unordered_map<std::string, InternalDoubleClickCallback>& GetTypeCallbackRegistry() {
         static std::unordered_map<std::string, InternalDoubleClickCallback> instance;
         return instance;
     }
 
-    template <typename T>
-    inline void RegisterTypeDoubleClickCallback(std::function<void(const std::any&, std::function<void(std::string)>)> userCallback) {
-        std::string typeName = typeid(T).name();
+    // Прямая регистрация коллбэка по текстовому ключу
+    inline void RegisterTypeDoubleClickCallback(const std::string& typeName, InternalDoubleClickCallback userCallback) {
         GetTypeCallbackRegistry()[typeName] = userCallback;
     }
 
 }
 
-// Абсолютно уникальный макрос: ноль глобальных имен, инициализация через анонимную структуру
-#define LPT_REGISTER_TYPE(Type, Callback) \
+// Вспомогательные макросы для склейки имени с номером строки (защита от двоеточий ::)
+#define LPT_CONCAT_INNER(a, b) a##b
+#define LPT_CONCAT(a, b) LPT_CONCAT_INNER(a, b)
+
+// ОБНОВЛЕННЫЙ ТЕКСТОВЫЙ МАКРОС: Исключает синтаксический сбой двоеточий.
+// Принимает строковый ключ TypeNameString и саму CallbackFunction.
+#define LPT_REGISTER_TYPE(TypeNameString, CallbackFunction) \
     static inline struct { \
         bool initialized = []() { \
-            LivePT::RegisterTypeDoubleClickCallback<Type>(Callback<Type>); \
+            LivePT::RegisterTypeDoubleClickCallback(TypeNameString, CallbackFunction); \
             return true; \
         }(); \
-    } _lpt_instance_##Type;
+    } LPT_CONCAT(_lpt_instance_, __LINE__);
 
 
 //drag
