@@ -177,26 +177,23 @@ namespace Widgets {
 
         std::string srcText = *pRawText;
 
-        // 1. АНАЛИЗ СИНТАКСИСA
+        // 1. ПРЕЦИЗИОННЫЙ АНАЛИЗ РАЗМЕТКИ ПОЛЬЗОВАТЕЛЯ
         bool isMultiLine = (srcText.find('\n') != std::string::npos || srcText.find('\r') != std::string::npos);
         bool hasExplicitX = (srcText.find(".x") != std::string::npos || srcText.find("x:") != std::string::npos);
         bool hasExplicitY = (srcText.find(".y") != std::string::npos || srcText.find("y:") != std::string::npos);
 
-        // Детектируем, какие скобки использовал пользователь (фигурные или круглые)
-        wchar_t openChar = (srcText.find('{') != std::string::npos) ? '{' : '(';
-        wchar_t closeChar = (openChar == '{') ? '}' : ')';
+        // Автоопределение формата чисел (флоаты с точкой/суффиксом или целые инты)
+        bool isFloat = (srcText.find('.') != std::string::npos || srcText.find('f') != std::string::npos || srcText.find('F') != std::string::npos);
 
-        // 2. ДЕСЕРИАЛИЗАЦИЯ: Извлекаем два числа
-        size_t openIdx = srcText.find(openChar);
-        size_t closeIdx = srcText.rfind(closeChar);
+        // 2. ДЕСЕРИАЛИЗАЦИЯ: Выдергиваем числа из любого многострочного хаоса
+        size_t openIdx = srcText.find_first_of("{(");
+        size_t closeIdx = srcText.find_last_of("})");
         std::string inner = (openIdx != std::string::npos && closeIdx != std::string::npos && closeIdx > openIdx)
             ? srcText.substr(openIdx + 1, closeIdx - openIdx - 1)
             : srcText;
 
-        std::stringstream ss(inner);
-        std::string token;
-        float val1 = 0.0f, val2 = 0.0f;
-        int idx = 0;
+        std::stringstream ss(inner); std::string token;
+        float val1 = 0.0f, val2 = 0.0f; int idx = 0;
 
         while (std::getline(ss, token, ',')) {
             size_t eqPos = token.find('=');
@@ -209,9 +206,7 @@ namespace Widgets {
 
             float val = 0.0f;
             std::from_chars(valPart.data(), valPart.data() + valPart.size(), val);
-
-            if (idx == 0) val1 = val;
-            else if (idx == 1) val2 = val;
+            if (idx == 0) val1 = val; else if (idx == 1) val2 = val;
             idx++;
         }
 
@@ -219,76 +214,48 @@ namespace Widgets {
         g_posCtx.currentPos.y = val2;
         g_posCtx.vsUpdaterCallback = vsUpdater;
 
-        // 3. СИММЕТРИЧНЫЙ ГЕНЕРАТОР КОДA (Собирает строку вместе со скобками!)
-        g_posCtx.textGenerator = [vsUpdater, isMultiLine, hasExplicitX, hasExplicitY, openChar, closeChar](float newX, float newY) {
+        // 3. НЕУБИВАЕМЫЙ ПОКАДРОВЫЙ ГЕНЕРАТОР: Защищает вид агрегата от разрушения!
+        g_posCtx.textGenerator = [vsUpdater, isMultiLine, hasExplicitX, hasExplicitY, isFloat](float newX, float newY) {
             char buf[512]{};
-            char op = static_cast<char>(openChar);
-            char cl = static_cast<char>(closeChar);
+            const char* numFmt = isFloat ? "%.2ff" : "%.0f";
 
             if (isMultiLine) {
-                // Генерируем красивый многострочный блок с табами
-                sprintf_s(buf, "%c\n\t\t\t\t%s = %.2ff,\n\t\t\t\t%s = %.2ff\n\t\t\t\t%c",
-                    op,
-                    hasExplicitX ? ".x" : "x", newX,
-                    hasExplicitY ? ".y" : "y", newY,
-                    cl);
+                std::string xField = hasExplicitX ? ".x = " : "";
+                std::string yField = hasExplicitY ? ".y = " : "";
+                // Убрали внешние скобки, оставили только внутреннюю структуру и табы
+                std::string masterTemplate = "\n\t\t\t\t" + xField + numFmt + ",\n\t\t\t\t" + yField + numFmt + "\n\t\t\t\t";
+                sprintf_s(buf, masterTemplate.c_str(), newX, newY);
             }
             else {
-                // Генерируем компактный однострочный блок
                 if (hasExplicitX || hasExplicitY) {
-                    sprintf_s(buf, "%c%s = %.2ff, %s = %.2ff%c",
-                        op,
-                        hasExplicitX ? ".x" : "x", newX,
-                        hasExplicitY ? ".y" : "y", newY,
-                        cl);
+                    std::string masterTemplate = (hasExplicitX ? ".x = " : "x = ") + std::string(numFmt) + ", " + (hasExplicitY ? ".y = " : "y = ") + numFmt;
+                    sprintf_s(buf, masterTemplate.c_str(), newX, newY);
                 }
                 else {
-                    sprintf_s(buf, "%c%.2ff, %.2ff%c", op, newX, newY, cl);
+                    std::string masterTemplate = std::string(numFmt) + ", " + numFmt;
+                    sprintf_s(buf, masterTemplate.c_str(), newX, newY);
                 }
             }
-
             vsUpdater(buf);
             };
-        // =========================================================================
-        // [ТВОЙ ОРИГИНАЛЬНЫЙ WIN32 КОД ОКНА ТРЕКПАДА]: Полностью сохранен
-        // =========================================================================
+
+
+        // Твой оригинальный Win32-код окна трекпада...
         if (g_posCtx.hWindow && IsWindow(g_posCtx.hWindow)) {
-            SetActiveWindow(g_posCtx.hWindow);
-            return;
+            SetActiveWindow(g_posCtx.hWindow); return;
         }
-
-        POINT mousePos;
-        GetCursorPos(&mousePos);
-        HINSTANCE hInst = GetModuleHandleA(NULL);
+        POINT mousePos; GetCursorPos(&mousePos); HINSTANCE hInst = GetModuleHandleA(NULL);
         const char* className = "LPT_Custom2DTrackpadWin";
-
         static bool registered = [hInst, className]() {
-            WNDCLASSEXA wc = { sizeof(WNDCLASSEXA) };
-            wc.lpfnWndProc = PosPickerWndProc;
-            wc.hInstance = hInst;
-            wc.lpszClassName = className;
-            wc.hbrBackground = CreateSolidBrush(RGB(30, 30, 32));
-            return RegisterClassExA(&wc) != 0;
+            WNDCLASSEXA wc = { sizeof(WNDCLASSEXA) }; wc.lpfnWndProc = PosPickerWndProc;
+            wc.hInstance = hInst; wc.lpszClassName = className;
+            wc.hbrBackground = CreateSolidBrush(RGB(30, 30, 32)); return RegisterClassExA(&wc) != 0;
             }();
-
         int calculatedWindowY = mousePos.y - (g_posCtx.height + 14);
-
-        g_posCtx.hWindow = CreateWindowExA(
-            WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
-            className, NULL,
-            WS_POPUP | WS_VISIBLE,
-            mousePos.x - (g_posCtx.width / 2), calculatedWindowY, g_posCtx.width, g_posCtx.height,
-            NULL, NULL, hInst, NULL
-        );
-
+        g_posCtx.hWindow = CreateWindowExA(WS_EX_TOPMOST | WS_EX_TOOLWINDOW, className, NULL, WS_POPUP | WS_VISIBLE,
+            mousePos.x - (g_posCtx.width / 2), calculatedWindowY, g_posCtx.width, g_posCtx.height, NULL, NULL, hInst, NULL);
         if (!g_posCtx.hWindow) return;
-
-        g_posCtx.hPadStatic = CreateWindowExA(
-            0, "STATIC", "", WS_CHILD | WS_VISIBLE | SS_OWNERDRAW,
-            0, 0, g_posCtx.width, g_posCtx.height, g_posCtx.hWindow, NULL, hInst, NULL
-        );
-
-        SetForegroundWindow(g_posCtx.hWindow);
-        SetFocus(g_posCtx.hWindow);
+        g_posCtx.hPadStatic = CreateWindowExA(0, "STATIC", "", WS_CHILD | WS_VISIBLE | SS_OWNERDRAW, 0, 0, g_posCtx.width, g_posCtx.height, g_posCtx.hWindow, NULL, hInst, NULL);
+        SetForegroundWindow(g_posCtx.hWindow); SetFocus(g_posCtx.hWindow);
     }
 }

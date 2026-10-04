@@ -855,35 +855,24 @@ namespace LivePT {
 
         if (globalCloseIdx == std::wstring::npos) return false;
 
-        // 4. ФИЗИКА КОНВЕЙЕРА: Запоминаем точные параметры текстового блока
         g_dragState.dragLine = line;
 
-        // СТРОГИЙ КОНТРАКТ: Заменяем блок СТРОГО ОТ открывающей скобки (включительно)
+        // Фиксируем колонку СРАЗУ ПОСЛЕ открывающей скобки
         size_t localOpenIdxInLine = globalOpenIdx - lineStartOffset;
-        g_dragState.dragStartCol = GetVisualColumn(lineText, localOpenIdxInLine);
+        g_dragState.dragStartCol = GetVisualColumn(lineText, localOpenIdxInLine + 1);
 
-        // Вырезаем потроха ВМЕСТЕ со скобками, чтобы виджет видел контекст: "{.x = -141, .y = -251}"
-        std::wstring innerArgsW = fileText.substr(globalOpenIdx, (globalCloseIdx + 1) - globalOpenIdx);
+        // Вырезаем потроха СТРОГО внутри скобок (без самих { и })
+        std::wstring innerArgsW = fileText.substr(globalOpenIdx + 1, globalCloseIdx - globalOpenIdx - 1);
         std::string innerArgsA(innerArgsW.begin(), innerArgsW.end());
 
-        // Длина буфера теперь включает в себя и сами скобки!
         g_dragState.currentTextLength = innerArgsW.length();
+        g_dragState.oldValueStr = typeNameA; // Сохраняем имя типа для vsEditor
 
-        // 5. ПОКАДРОВАЯ АСИНХРОННАЯ ЛЯМБДА-ОБНОВЛЯТОР
         std::function<void(std::string)> vsUpdater = [line](std::string newCodeText) {
-            long visualStart = g_dragState.dragStartCol;
-
-            // Вычисляем visualEnd на основе честной длины буфера
-            long visualEnd = visualStart + static_cast<long>(g_dragState.currentTextLength);
-
-            // Пушим изменения в асинхронный буфер кадра
-            PushWidgetTextUpdate(line, visualStart, newCodeText);
-
-            // Актуализируем длину буфера в памяти ОЗУ для следующего кадра движения мыши
+            PushWidgetTextUpdate(line, g_dragState.dragStartCol, newCodeText);
             g_dragState.currentTextLength = newCodeText.length();
             };
 
-        // Запускаем текстовый виджет
         registry[typeNameA](std::any(innerArgsA), vsUpdater);
         return true;
     }
@@ -895,6 +884,7 @@ namespace LivePT {
         // === ГОЛОВНАЯ ФУНКЦИЯ: Чистый, лаконичный диспетчер клика мыши LivePT ===
         // === ГОЛОВНАЯ ФУНКЦИЯ: Высокоуровневый диспетчер клика мыши LivePT ===
        // === ГОЛОВНАЯ ФУНКЦИЯ: Высокоуровневый диспетчер клика мыши LivePT ===
+        // === ГОЛОВНАЯ ФУНКЦИЯ: Высокоуровневый диспетчер клика мыши LivePT ===
     inline bool HandleMouseDown(const POINT& pt) {
         if (!initVsEditor()) return false;
 
@@ -903,7 +893,6 @@ namespace LivePT {
         long line = 0, column = 0;
         std::wstring fileText;
 
-        // Скачиваем контекст (fileText здесь — это ПОЛНЫЙ текст всего документа)
         if (!GetActiveVSContext(vtActiveDoc, currentFile, line, column, fileText)) {
             return false;
         }
@@ -911,9 +900,11 @@ namespace LivePT {
         std::wstring currentLineText = DownloadCurrentLineText(vtActiveDoc.pdispVal);
         std::string normalizedPath = LivePT::NormalizePath(currentFile.c_str());
 
+        // Гарантируем сброс старого покадрового состояния
         g_dragState.targetParamId = -1;
         g_dragState.isProportionalStructDrag = false;
 
+        // Расчет факта Даблклика
         DWORD currentTime = GetTickCount();
         DWORD doubleClickTime = GetDoubleClickTime();
         bool isDoubleClick = (g_dragState.lastClickTime != 0) &&
@@ -925,26 +916,27 @@ namespace LivePT {
         else g_dragState.lastClickTime = currentTime;
         g_dragState.lastClickPt = pt;
 
+        // Применяем адаптивное смещение каретки (клик вплотную справа от числа)
         long targetCharIdx = AdjustCursorIndexForNumericContext(currentLineText, column);
 
         // =========================================================================
-        // [ФУНКЦИОНАЛ ДАБЛКЛИКА]: Обрабатываем строго Булы, Энумы и Структуры
+        // [ФУНКЦИОНАЛ ДАБЛКЛИКА]: Открываем тяжелые GUI-окна, палитры и меню
         // =========================================================================
         if (isDoubleClick && targetCharIdx >= 0 && targetCharIdx < static_cast<long>(currentLineText.length())) {
 
-            // А. Пробуем переключить Бул (Работает мгновенно на чистом тексте)
+            // А. Переключение Була (Работает мгновенно на чистом тексте)
             if (TryToggleBooleanDirect(currentLineText, line, targetCharIdx)) {
                 VariantClear(&vtActiveDoc);
                 return false;
             }
 
-            // Б. Пробуем открыть меню Энума (100% автономен, парсит PDB по префиксу строки)
+            // Б. Открытие графического меню Энума (Парсит PDB по префиксу строки)
             if (TryInitEnumSelectionDirect(currentLineText, line, column, targetCharIdx)) {
                 VariantClear(&vtActiveDoc);
                 return false;
             }
 
-            // В. Пробуем запустить GUI-виджет структуры ( ПЕРЕДАЕМ И fileText, И currentLineText!)
+            // В. Запуск GUI-виджета структуры (Палитра, цветовой круг, радар)
             if (TryInitStructWidgetDirect(fileText, currentLineText, line, column, targetCharIdx)) {
                 VariantClear(&vtActiveDoc);
                 return false;
@@ -952,14 +944,17 @@ namespace LivePT {
         }
 
         // =========================================================================
-        // [ФУНКЦИОНАЛ ОДИНОЧНОГО КЛИКА]: Одиночный драг чисел
+        // [ФУНКЦИОНАЛ ОДИНОЧНОГО КЛИКА]: Высокоскоростной драг конкретного числа!
         // =========================================================================
         if (!isDoubleClick && targetCharIdx >= 0 && targetCharIdx < static_cast<long>(currentLineText.length())) {
 
+            // Если пользователь зажал мышь на цифре — неважно, плоская это строка 
+            // или внутренность многострочного .pos агрегата — мы запускаем 
+            // КРИСТАЛЬНО ТОЧНЫЙ ОДИНОЧНЫЙ ЧИСЛОВОЙ ДРАГ!
             if (IsNumericTokenChar(currentLineText[targetCharIdx])) {
                 if (TryInitSingleNumericDrag(currentLineText, line, column, targetCharIdx, pt)) {
                     VariantClear(&vtActiveDoc);
-                    return true;
+                    return true; // Взводим g_dragState.isDragging, каскад прерван
                 }
             }
         }
@@ -967,6 +962,7 @@ namespace LivePT {
         VariantClear(&vtActiveDoc);
         return false;
     }
+
 
 
 

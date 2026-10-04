@@ -215,7 +215,8 @@ namespace Widgets {
         // Генератор текста кода собирает строку обратно:
         g_angleCtx.textGenerator = [vsUpdater](float finalAngle) {
             char buf[64]{};
-            sprintf_s(buf, "%.1ff", finalAngle); // Только цифры!
+            // Генерируем число, обязательно обернутое в круглые скобки!
+            sprintf_s(buf, "(%.1ff)", finalAngle);
             vsUpdater(buf);
             };
 

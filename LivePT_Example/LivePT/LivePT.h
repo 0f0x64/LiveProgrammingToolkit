@@ -321,17 +321,97 @@ namespace LivePT {
         // 1. Сначала выгружаем обычные мышиные буферы
         FlushPendingWritesToVS();
 
-        // 2. ВЫГРУЖАЕМ БУФЕР ВИДЖЕТОВ: Строго один раз за кадр игры!
         if (g_widgetBuffer.hasChanges && !g_widgetBuffer.codeText.empty()) {
-            long visualStart = g_widgetBuffer.startCol;
-            long visualEnd = visualStart + static_cast<long>(g_dragState.currentTextLength);
-            long newCursorCol = visualStart + static_cast<long>(g_widgetBuffer.codeText.length());
 
-            // Один тяжелый вызов в VS за кадр — это абсолютно незаметно для процессора!
-            ReplaceTextInActiveVS(g_widgetBuffer.line, visualStart, visualEnd, g_widgetBuffer.codeText, newCursorCol);
+            VARIANT vtActiveDoc; VariantInit(&vtActiveDoc);
+            if (SUCCEEDED(AutoWrap(DISPATCH_PROPERTYGET, &vtActiveDoc, pDTE, L"ActiveDocument", 0)) && vtActiveDoc.pdispVal) {
+                std::wstring fullFileText = DownloadDocumentText(vtActiveDoc.pdispVal);
 
-            // Синхронизируем длину диапазона в памяти
-            g_dragState.currentTextLength = g_widgetBuffer.codeText.length();
+                // Находим физическое смещение начала целевой строки g_widgetBuffer.line
+                size_t lineOffset = 0; long currentLineIdx = 1;
+                while (currentLineIdx < g_widgetBuffer.line && lineOffset < fullFileText.length()) {
+                    size_t nextNL = fullFileText.find(L'\n', lineOffset);
+                    if (nextNL != std::wstring::npos) { lineOffset = nextNL + 1; currentLineIdx++; }
+                    else break;
+                }
+
+                std::string targetTypeNameA = g_dragState.oldValueStr;
+                std::wstring targetTypeNameW(targetTypeNameA.begin(), targetTypeNameA.end());
+
+                // Ищем ключевое слово типа на нашей строке
+                size_t typeKeywordIdx = fullFileText.find(targetTypeNameW, lineOffset);
+
+                if (typeKeywordIdx != std::wstring::npos) {
+                    size_t openBracketIdx = std::wstring::npos;
+                    wchar_t opChar = L'\0'; wchar_t clChar = L'\0';
+
+                    for (size_t k = typeKeywordIdx + targetTypeNameW.length(); k < fullFileText.length(); ++k) {
+                        if (fullFileText[k] == L'{') { opChar = L'{'; clChar = L'}'; openBracketIdx = k; break; }
+                        if (fullFileText[k] == L'(') { opChar = L'('; clChar = L')'; openBracketIdx = k; break; }
+                        if (!iswspace(fullFileText[k])) break;
+                    }
+
+                    if (openBracketIdx != std::wstring::npos) {
+                        size_t closeBracketIdx = std::wstring::npos;
+                        int bracketCount = 1;
+                        for (size_t k = openBracketIdx + 1; k < fullFileText.length(); ++k) {
+                            if (fullFileText[k] == opChar) bracketCount++;
+                            if (fullFileText[k] == clChar) {
+                                bracketCount--;
+                                if (bracketCount == 0) { closeBracketIdx = k; break; }
+                            }
+                        }
+
+                        if (closeBracketIdx != std::wstring::npos) {
+                            // Вычисляем физическую строку закрывающей скобки
+                            long closeLine = g_widgetBuffer.line;
+                            size_t closeLineOffset = lineOffset;
+                            size_t scanNL = fullFileText.find(L'\n', lineOffset);
+                            while (scanNL != std::wstring::npos && scanNL < closeBracketIdx) {
+                                closeLine++;
+                                closeLineOffset = scanNL + 1;
+                                scanNL = fullFileText.find(L'\n', closeLineOffset);
+                            }
+
+                            // Вычисляем визуальные колонки строго ВНУТРИ скобок (заменяем только потроха!)
+                            size_t nextNL = fullFileText.find(L'\n', lineOffset);
+                            if (nextNL == std::wstring::npos) nextNL = fullFileText.length();
+                            std::wstring startLineText = fullFileText.substr(lineOffset, nextNL - lineOffset);
+
+                            size_t endNL = fullFileText.find(L'\n', closeLineOffset);
+                            if (endNL == std::wstring::npos) endNL = fullFileText.length();
+                            std::wstring endLineText = fullFileText.substr(closeLineOffset, endNL - closeLineOffset);
+
+                            // Заменяем строго диапазон ПЕРЕД первым символом аргумента и ДО закрывающей скобки
+                            long visualStartCol = GetVisualColumn(startLineText, openBracketIdx + 1 - lineOffset);
+                            long visualEndCol = GetVisualColumn(endLineText, closeBracketIdx - closeLineOffset);
+
+                            StartUndoTransaction(L"LivePT Widget Realtime Update");
+
+                            if (g_widgetBuffer.line == closeLine) {
+                                long newCursorPhysicalCol = visualStartCol + static_cast<long>(g_widgetBuffer.codeText.length());
+                                ReplaceTextInActiveVS(g_widgetBuffer.line, visualStartCol, visualEndCol, g_widgetBuffer.codeText, newCursorPhysicalCol);
+                            }
+                            else {
+                                // Безопасное DTE-удаление многострочного блока аргументов
+                                CComVariant vtSelection;
+                                if (SUCCEEDED(AutoWrap(DISPATCH_PROPERTYGET, &vtSelection, vtActiveDoc.pdispVal, L"Selection", 0)) && vtSelection.pdispVal) {
+                                    AutoWrap(DISPATCH_METHOD, NULL, vtSelection.pdispVal, L"MoveToLineAndOffset", 3, CComVariant(g_widgetBuffer.line), CComVariant(visualStartCol), CComVariant(0L));
+                                    AutoWrap(DISPATCH_METHOD, NULL, vtSelection.pdispVal, L"MoveToLineAndOffset", 3, CComVariant(closeLine), CComVariant(visualEndCol), CComVariant(1L)); // 1L = Extend/Выделить
+
+                                    std::wstring wText(g_widgetBuffer.codeText.begin(), g_widgetBuffer.codeText.end());
+                                    CComBSTR bstrText(wText.c_str());
+                                    AutoWrap(DISPATCH_METHOD, NULL, vtSelection.pdispVal, L"Insert", 1, CComVariant(bstrText));
+                                }
+                            }
+
+                            EndUndoTransaction();
+                            g_dragState.currentTextLength = g_widgetBuffer.codeText.length();
+                        }
+                    }
+                }
+                VariantClear(&vtActiveDoc);
+            }
             g_widgetBuffer.hasChanges = false;
         }
 
