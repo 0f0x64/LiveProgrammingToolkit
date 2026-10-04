@@ -16,7 +16,7 @@ struct color3 {
     unsigned char b;
 };
 #include "Widgets\color3.h"
-//LPT_REGISTER_TYPE(color3, Widgets::color3Callback);
+LPT_REGISTER_TYPE("color3", Widgets::color3Callback);
 LPT_REGISTER_DRAG(color3, DrugLogic::color3Drag);
 
 struct pos2 {
@@ -31,7 +31,7 @@ struct size2 {
     float w;
     float h;
 };
-//LPT_REGISTER_TYPE(size2, Widgets::pos2Callback);
+LPT_REGISTER_TYPE("size2", Widgets::pos2Callback);
 LPT_REGISTER_DRAG(size2, DrugLogic::size2Drag);
 
 typedef float angle;
@@ -192,18 +192,18 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         Draw({
             .pos =      eval(pos2{
-				.x = -53.00f,
-				.y = -44.00f
+				.x = -66.00f,
+				.y = -142.00f
 				}),
             .size =     eval(size2{96,   197}),
-            .Angle =    eval(angle(87.0f)),
+            .Angle =    eval(angle(155.0f)),
             .type =     eval(ptype::circle),
             .show =     eval(true),
             .color = eval(color3{
-                .r=197, 
-                .g=62,  
-                .b =36
-                }) 
+				.r=152, 
+				.g=52,  
+				.b=35
+				}) 
          });
 
         Draw({
@@ -216,12 +216,12 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         });
 
         Draw({
-            .pos =      eval(pos2{-103.9ÿ0f, 261.16f}),
+            .pos =      eval(pos2{-103.90f, 261.16f}),
             .size =     eval(size2{168.1575f, 78.1812f}),
             .Angle =    eval(angle(5.3f)),
             .type =     eval(ptype::roundbox),
             .show =     eval(true),
-            .color =    eval(color3{26, 40,      191})
+            .color =    eval(color3{118, 191, 71})
         });
 
         BitBlt(hdc, 0, 0, w, h, memDC, 0, 0, SRCCOPY);

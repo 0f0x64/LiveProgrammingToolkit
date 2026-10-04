@@ -195,7 +195,6 @@ namespace Widgets {
 namespace Widgets {
 
     inline void angleCallback(const std::any& anyValue, std::function<void(std::string)> vsUpdater) {
-        // Мышь прислала нам чистую строку потрохов, например "59.2f"
         const std::string* pRawText = std::any_cast<std::string>(&anyValue);
         if (!pRawText) return;
 
@@ -212,55 +211,36 @@ namespace Widgets {
         g_angleCtx.currentAngle = valExtracted;
         g_angleCtx.vsUpdaterCallback = vsUpdater;
 
-        // Генератор текста кода собирает строку обратно:
+        // === АДАПТАЦИЯ ПОД НОВУЮ СХЕМУ ===
+        // Генерируем исключительно чистое значение аргумента без внешних скобок
         g_angleCtx.textGenerator = [vsUpdater](float finalAngle) {
             char buf[64]{};
-            // Генерируем число, обязательно обернутое в круглые скобки!
-            sprintf_s(buf, "(%.1ff)", finalAngle);
+            sprintf_s(buf, "%.1ff", finalAngle);
             vsUpdater(buf);
             };
 
-
-
-        // Дальше твой оригинальный Win32-код создания окна CreateWindowExA...
+        // Твой оригинальный Win32-код создания окна (без изменений)
         if (g_angleCtx.hWindow && IsWindow(g_angleCtx.hWindow)) {
             InvalidateRect(g_angleCtx.hWindow, NULL, FALSE);
             SetActiveWindow(g_angleCtx.hWindow);
             return;
         }
 
-        POINT mousePos;
-        GetCursorPos(&mousePos);
-        HINSTANCE hInst = GetModuleHandleA(NULL);
+        POINT mousePos; GetCursorPos(&mousePos); HINSTANCE hInst = GetModuleHandleA(NULL);
         const char* className = "LPT_CustomAngleRadarWin";
-
         static bool registered = [hInst, className]() {
-            WNDCLASSEXA wc = { sizeof(WNDCLASSEXA) };
-            wc.lpfnWndProc = AnglePickerWndProc;
-            wc.hInstance = hInst;
-            wc.lpszClassName = className;
-            wc.hbrBackground = CreateSolidBrush(RGB(30, 30, 32));
-            return RegisterClassExA(&wc) != 0;
+            WNDCLASSEXA wc = { sizeof(WNDCLASSEXA) }; wc.lpfnWndProc = AnglePickerWndProc;
+            wc.hInstance = hInst; wc.lpszClassName = className;
+            wc.hbrBackground = CreateSolidBrush(RGB(30, 30, 32)); return RegisterClassExA(&wc) != 0;
             }();
 
         int calculatedWindowY = mousePos.y - (g_angleCtx.height + 14);
-
-        g_angleCtx.hWindow = CreateWindowExA(
-            WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
-            className, NULL,
-            WS_POPUP | WS_VISIBLE,
-            mousePos.x - (g_angleCtx.width / 2), calculatedWindowY, g_angleCtx.width, g_angleCtx.height,
-            NULL, NULL, hInst, NULL
-        );
-
+        g_angleCtx.hWindow = CreateWindowExA(WS_EX_TOPMOST | WS_EX_TOOLWINDOW, className, NULL, WS_POPUP | WS_VISIBLE,
+            mousePos.x - (g_angleCtx.width / 2), calculatedWindowY, g_angleCtx.width, g_angleCtx.height, NULL, NULL, hInst, NULL);
         if (!g_angleCtx.hWindow) return;
 
-        g_angleCtx.hRadarStatic = CreateWindowExA(
-            0, "STATIC", "", WS_CHILD | WS_VISIBLE | SS_OWNERDRAW,
-            0, 0, g_angleCtx.width, g_angleCtx.height, g_angleCtx.hWindow, NULL, hInst, NULL
-        );
-
-        SetForegroundWindow(g_angleCtx.hWindow);
-        SetFocus(g_angleCtx.hWindow);
+        g_angleCtx.hRadarStatic = CreateWindowExA(0, "STATIC", "", WS_CHILD | WS_VISIBLE | SS_OWNERDRAW, 0, 0, g_angleCtx.width, g_angleCtx.height, g_angleCtx.hWindow, NULL, hInst, NULL);
+        SetForegroundWindow(g_angleCtx.hWindow); SetFocus(g_angleCtx.hWindow);
     }
+
 }

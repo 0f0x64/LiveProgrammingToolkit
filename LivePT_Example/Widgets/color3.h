@@ -295,10 +295,8 @@ namespace Widgets {
         bool isMultiLine = (srcText.find('\n') != std::string::npos || srcText.find('\r') != std::string::npos);
         bool hasExplicitFields = (srcText.find(".r") != std::string::npos || srcText.find(".x") != std::string::npos);
 
+        // Флаг флоата по умолчанию сброшен, мы взведем его только если реально найдем 'f' или '.' внутри ЧИСЛА
         bool isFloatingPoint = false;
-        if (srcText.find('.') != std::string::npos || srcText.find('f') != std::string::npos || srcText.find('F') != std::string::npos) {
-            isFloatingPoint = true;
-        }
 
         // 2. ДЕСЕРИАЛИЗАЦИЯ: Вырезаем три компонента из любого форматирования
         std::stringstream ss(srcText);
@@ -312,9 +310,18 @@ namespace Widgets {
             if (eqPos == std::string::npos) eqPos = token.find(':');
             std::string valPart = (eqPos != std::string::npos) ? token.substr(eqPos + 1) : token;
 
+            // Очищаем токен значения, убирая имена полей и их точки (.r, .g, .b)
             valPart.erase(0, valPart.find_first_not_of(" \t\r\n.rgbxyz="));
             valPart.erase(valPart.find_last_not_of(" \t\r\nFfuUlL") + 1);
             if (valPart.empty()) continue;
+
+            // === ИСПРАВЛЕНИЕ: Проверяем на флоат только ЧИСТОЕ ЧИСЛО ===
+            // Если в самом числе есть точка (например "1.0") или суффикс "f" — это честный float
+            if (valPart.find('.') != std::string::npos ||
+                valPart.find('f') != std::string::npos ||
+                valPart.find('F') != std::string::npos) {
+                isFloatingPoint = true;
+            }
 
             float val = 0.0f;
             std::from_chars(valPart.data(), valPart.data() + valPart.size(), val);
@@ -322,7 +329,6 @@ namespace Widgets {
             idx++;
         }
 
-        // Конвертируем нормализованный RGB для колеса
         float rNorm = 0.0f, gNorm = 0.0f, bNorm = 0.0f;
         if (isFloatingPoint) {
             rNorm = std::clamp(rawVals[0], 0.0f, 1.0f);
@@ -340,7 +346,6 @@ namespace Widgets {
         g_pickerCtx.currentRGB.b = static_cast<unsigned char>(bNorm * 255.0f);
         g_pickerCtx.vsUpdaterCallback = vsUpdater;
 
-        // Перевод в HSV для ползунка яркости
         float maxVal = (std::max)({ rNorm, gNorm, bNorm });
         float minVal = (std::min)({ rNorm, gNorm, bNorm });
         float delta = maxVal - minVal;
@@ -354,35 +359,54 @@ namespace Widgets {
             if (g_pickerCtx.currentHue < 0.0f) g_pickerCtx.currentHue += 360.0f;
         }
 
-        // 3. СИММЕТРИЧНЫЙ ГЕНЕРАТОР КОДA ДЛЯ ЦВЕТА
+        // 3. === АДАПТАЦИЯ СИММЕТРИЧНОГО ГЕНЕРАТОРА КОДА ПОД СХЕМУ С selection ===
         g_pickerCtx.textGenerator = [vsUpdater, isMultiLine, hasExplicitFields, isFloatingPoint](unsigned char r, unsigned char g, unsigned char b) {
             char buf[512]{};
 
-            float outR = isFloatingPoint ? (r / 255.0f) : r;
-            float outG = isFloatingPoint ? (g / 255.0f) : g;
-            float outB = isFloatingPoint ? (b / 255.0f) : b;
-            const char* fmt = isFloatingPoint ? "%.2ff" : "%.0f";
+            if (isFloatingPoint) {
+                // ВЕТКА ФЛОАТОВ (0.0f - 1.0f)
+                float outR = r / 255.0f;
+                float outG = g / 255.0f;
+                float outB = b / 255.0f;
+                const char* fmt = "%.2ff";
 
-            if (isMultiLine) {
-                // Сборка многострочной структуры с табами
-                std::string line1 = hasExplicitFields ? ".r = " : "";
-                std::string line2 = hasExplicitFields ? ".g = " : "";
-                std::string line3 = hasExplicitFields ? ".b = " : "";
-
-                std::string masterFmt = "{\n\t\t\t\t" + line1 + fmt + ",\n\t\t\t\t" + line2 + fmt + ",\n\t\t\t\t" + line3 + fmt + "\n\t\t\t\t}";
-                sprintf_s(buf, masterFmt.c_str(), outR, outG, outB);
-            }
-            else {
-                // Сборка однострочной структуры
-                if (hasExplicitFields) {
-                    std::string masterFmt = "{" + std::string(".r = ") + fmt + ", .g = " + fmt + ", .b = " + fmt + "}";
+                if (isMultiLine) {
+                    std::string line1 = hasExplicitFields ? ".r=" : "";
+                    std::string line2 = hasExplicitFields ? ".g=" : "";
+                    std::string line3 = hasExplicitFields ? ".b=" : "";
+                    std::string masterFmt = "\n\t\t\t\t" + line1 + fmt + ", \n\t\t\t\t" + line2 + fmt + ",  \n\t\t\t\t" + line3 + fmt + "\n\t\t\t\t";
                     sprintf_s(buf, masterFmt.c_str(), outR, outG, outB);
                 }
                 else {
-                    std::string masterFmt = "{" + std::string(fmt) + ", " + fmt + ", " + fmt + "}";
+                    std::string masterFmt = hasExplicitFields
+                        ? (std::string(".r=") + fmt + ", .g=" + fmt + ", .b=" + fmt)
+                        : (std::string(fmt) + ", " + fmt + ", " + fmt);
                     sprintf_s(buf, masterFmt.c_str(), outR, outG, outB);
                 }
             }
+            else {
+                // ВЕТКА БАЙТОВ (0 - 255)
+                // Принудительно кастим в int и используем жесткий целочисленный спецификатор %d
+                int outR = static_cast<int>(r);
+                int outG = static_cast<int>(g);
+                int outB = static_cast<int>(b);
+                const char* fmt = "%d";
+
+                if (isMultiLine) {
+                    std::string line1 = hasExplicitFields ? ".r=" : "";
+                    std::string line2 = hasExplicitFields ? ".g=" : "";
+                    std::string line3 = hasExplicitFields ? ".b=" : "";
+                    std::string masterFmt = "\n\t\t\t\t" + line1 + fmt + ", \n\t\t\t\t" + line2 + fmt + ",  \n\t\t\t\t" + line3 + fmt + "\n\t\t\t\t";
+                    sprintf_s(buf, masterFmt.c_str(), outR, outG, outB);
+                }
+                else {
+                    std::string masterFmt = hasExplicitFields
+                        ? (std::string(".r=") + fmt + ", .g=" + fmt + ", .b=" + fmt)
+                        : (std::string(fmt) + ", " + fmt + ", " + fmt);
+                    sprintf_s(buf, masterFmt.c_str(), outR, outG, outB);
+                }
+            }
+
             vsUpdater(buf);
             };
 
