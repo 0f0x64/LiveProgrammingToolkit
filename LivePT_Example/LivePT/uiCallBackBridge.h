@@ -48,32 +48,34 @@ namespace LivePT {
         bool shift;           // Зажат ли Shift
     };
 
-    // Сигнатура колбека: принимает ссылку на текущий массив float и структуру дельт
-    using DragMathCallback = std::function<void(std::vector<float>& values, const DragMathInput& input)>;
+    using CustomTypeDragCallback = std::string(*)(const std::string& currentArgsStr, const LivePT::DragMathInput& input);
 
-    // Глобальный реестр для связи текстового имени типа с лямбдой математики
-    inline std::unordered_map<std::string, DragMathCallback>& GetCustomDragRegistry() {
-        static std::unordered_map<std::string, DragMathCallback> registry;
-        return registry;
+    // Global registry matching the type string to the function pointer
+    inline std::unordered_map<std::string, CustomTypeDragCallback>& GetCustomDragRegistry() {
+        static std::unordered_map<std::string, CustomTypeDragCallback> instance;
+        return instance;
     }
 
-    template <typename T>
-    inline void RegisterTypeDragCallback(DragMathCallback userCallback) {
-        std::string typeName = typeid(T).name();
-
-        // Автоматически чистим имя типа от "struct " и "class " прямо при регистрации
-        if (typeName.rfind("struct ", 0) == 0) typeName = typeName.substr(7);
-        if (typeName.rfind("class ", 0) == 0)  typeName = typeName.substr(6);
-
-        GetCustomDragRegistry()[typeName] = userCallback;
+    // Explicit registration function
+    inline bool RegisterTypeDragCallback(const std::string& typeName, CustomTypeDragCallback callback) {
+        if (callback) {
+            GetCustomDragRegistry()[typeName] = callback;
+            return true;
+        }
+        return false;
     }
 
-#define LPT_REGISTER_DRAG(Type, Callback) \
+} // namespace LivePT
+
+// =========================================================================
+// IDENTICAL STRUCT-BASED MACRO MIRROR (YOUR EXACT ARCHITECTURE)
+// =========================================================================
+
+
+#define LPT_REGISTER_DRAG(TypeNameString, CallbackFunction) \
     static inline struct { \
         bool initialized = []() { \
-            LivePT::RegisterTypeDragCallback<Type>(Callback<Type>); \
+            LivePT::RegisterTypeDragCallback(TypeNameString, CallbackFunction); \
             return true; \
         }(); \
-    } _lpt_drag_instance_##Type;
-
-}
+    } LPT_CONCAT(_lpt_drag_instance_, __LINE__);

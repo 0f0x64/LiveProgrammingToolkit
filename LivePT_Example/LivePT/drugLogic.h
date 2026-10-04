@@ -1,33 +1,6 @@
-
 namespace DrugLogic {
 
-    template <typename T>
-    inline void size2Drag(std::vector<float>& values, const LivePT::DragMathInput& input) {
-        for (float& val : values) {
-            if (val == -999999.0f) continue;
-
-            float multiplier = 1.0f + (input.mouseFrameDeltaY * 0.005f);
-            if (multiplier < 0.0f) multiplier = 0.0f;
-
-            val *= multiplier;
-            if (val == 0.0f) {
-                float speedScale = input.ctrl ? 0.1f : (input.shift ? 0.001f : 0.01f);
-                val += static_cast<float>(input.mouseFrameDeltaY) * speedScale;
-            }
-        }
-    }
-
-    template <typename T>
-    inline void pos2Drag(std::vector<float>& values, const LivePT::DragMathInput& input) {
-        if (values.size() < 2) return;
-
-        float speedScale = input.ctrl ? 1.0f : (input.shift ? 0.01f : 0.1f);
-
-        if (values[0] != -999999.0f) values[0] += static_cast<float>(input.mouseFrameDeltaX) * speedScale;
-        if (values[1] != -999999.0f) values[1] -= static_cast<float>(input.mouseFrameDeltaY) * speedScale;
-    }
-
-    // Вспомогательные функции для перевода цвета (инкапсулированы внутри DrugLogic)
+    // Helper functions for color translation (encapsulated inside DrugLogic)
     inline void LPT_RGBtoHSV(float r, float g, float b, float& h, float& s, float& v) {
         r /= 255.0f; g /= 255.0f; b /= 255.0f;
         float maxVal = (std::max)({ r, g, b });
@@ -66,76 +39,118 @@ namespace DrugLogic {
         b = (b1 + m) * 255.0f;
     }
 
-    template <typename T>
-    inline void color3Drag(std::vector<float>& values, const ::LivePT::DragMathInput& input) {
-        if (values.size() < 3) return;
-        if (values[0] == -999999.0f || values[1] == -999999.0f || values[2] == -999999.0f) return;
+    // === FIX: Universal string-based color3Drag ===
+    inline std::string color3Drag(const std::string& currentArgsStr, const ::LivePT::DragMathInput& input) {
+        int r = 0, g = 0, b = 0;
+
+        // Extract values regardless of formatting (.r=82 or pure numbers)
+        if (sscanf_s(currentArgsStr.c_str(), "%*[^0-9-]%d%*[^0-9-]%d%*[^0-9-]%d", &r, &g, &b) != 3) {
+            if (sscanf_s(currentArgsStr.c_str(), "%d, %d, %d", &r, &g, &b) != 3) {
+                return currentArgsStr;
+            }
+        }
 
         if (input.shift) {
             float h = 0, s = 0, v = 0;
-            LPT_RGBtoHSV(values[0], values[1], values[2], h, s, v);
+            LPT_RGBtoHSV((float)r, (float)g, (float)b, h, s, v);
 
-            // 1. Горизонтальное движение — чистый Hue
             if (input.mouseFrameDeltaX != 0) {
                 h += static_cast<float>(input.mouseFrameDeltaX) * 0.5f;
                 h = std::fmod(h, 360.0f);
                 if (h < 0.0f) h += 360.0f;
             }
 
-            // 2. Адаптивное вертикальное движение — умная сочность (Насыщенность + Яркость)
-                       // 2. Адаптивное вертикальное движение — честная и сочная сочность
             if (input.mouseFrameDeltaY != 0) {
                 float deltaS = static_cast<float>(input.mouseFrameDeltaY) * 0.005f;
                 s += deltaS;
                 s = std::clamp(s, 0.0f, 1.0f);
 
-                // Если мы делаем цвет сочнее (deltaS > 0), подтягиваем яркость вверх у совсем темных цветов
                 if (deltaS > 0.0f && v < 0.5f) {
                     v += deltaS * 0.5f;
                     v = std::clamp(v, 0.0f, 1.0f);
                 }
-
-                // === ИСПРАВЛЕНИЕ: Защита от вымывания в белый ===
-                // Плавно интерполируем яркость (v) к нейтральному среднему уровню 0.5f 
-                // по мере того, как насыщенность (s) стремится к нулю.
-                float targetNeutralBrightness = 0.5f;
-
-                // Используем чистую переменную 'v', которая у тебя уже объявлена в функции
-                v = v * s + targetNeutralBrightness * (1.0f - s);
+                v = v * s + 0.5f * (1.0f - s);
                 v = std::clamp(v, 0.0f, 1.0f);
             }
 
-
-            float r = 0, g = 0, b = 0;
-            LPT_HSVtoRGB(h, s, v, r, g, b);
-
-            values[0] = std::clamp(r, 0.0f, 255.0f);
-            values[1] = std::clamp(g, 0.0f, 255.0f);
-            values[2] = std::clamp(b, 0.0f, 255.0f);
-
-            for (int i = 0; i < 3; ++i) {
-                ::LivePT::g_dragState.originalStructValues[i] = std::clamp(values[i], 0.f, 255.f);
-            }
+            float fr = 0, fg = 0, fb = 0;
+            LPT_HSVtoRGB(h, s, v, fr, fg, fb);
+            r = std::clamp(static_cast<int>(fr), 0, 255);
+            g = std::clamp(static_cast<int>(fg), 0, 255);
+            b = std::clamp(static_cast<int>(fb), 0, 255);
         }
         else {
-            // === СТАНДАРТНЫЙ РЕЖИМ (Твой оригинальный алгоритм яркости) ===
-            int id = 0;
-            for (float& val : values) {
-                if (val == -999999.0f) { id++; continue; }
+            float multiplier = 1.0f + (input.mouseFrameDeltaY * 0.005f);
+            if (multiplier < 0.0f) multiplier = 0.0f;
 
-                float multiplier = 1.0f + (input.mouseFrameDeltaY * 0.005f);
-                if (multiplier < 0.0f) multiplier = 0.0f;
+            r = std::clamp(static_cast<int>((float)r * multiplier), 0, 255);
+            g = std::clamp(static_cast<int>((float)g * multiplier), 0, 255);
+            b = std::clamp(static_cast<int>((float)b * multiplier), 0, 255);
+        }
 
-                val *= multiplier;
-                if (val == 0.0f) {
-                    val += static_cast<float>(input.mouseFrameDeltaY) * 0.01f;
-                }
+        char outBuf[256]{};
+        if (currentArgsStr.find(".r") != std::string::npos) {
+            sprintf_s(outBuf, "\n\t\t\t\t.r=%d, \n\t\t\t\t.g=%d,  \n\t\t\t\t.b=%d\n\t\t\t\t", r, g, b);
+        }
+        else {
+            sprintf_s(outBuf, "%d, %d, %d", r, g, b);
+        }
+        return outBuf;
+    }
 
-                val = std::clamp(val, 0.0f, 255.0f);
-                ::LivePT::g_dragState.originalStructValues[id] = std::clamp(::LivePT::g_dragState.originalStructValues[id], 0.f, 255.f);
-
-                id++;
+    // === FIX: Universal string-based pos2Drag ===
+    inline std::string pos2Drag(const std::string& currentArgsStr, const ::LivePT::DragMathInput& input) {
+        float x = 0.0f, y = 0.0f;
+        if (sscanf_s(currentArgsStr.c_str(), "%*[^0-9.-]%f%*[^0-9.-]%f", &x, &y) != 2) {
+            if (sscanf_s(currentArgsStr.c_str(), "%f, %f", &x, &y) != 2) {
+                return currentArgsStr;
             }
         }
+
+        float speedScale = input.ctrl ? 1.0f : (input.shift ? 0.01f : 0.1f);
+        x += static_cast<float>(input.mouseFrameDeltaX) * speedScale;
+        y -= static_cast<float>(input.mouseFrameDeltaY) * speedScale;
+
+        char outBuf[256]{};
+        if (currentArgsStr.find(".x") != std::string::npos) {
+            sprintf_s(outBuf, "\n\t\t\t\t.x = %.2ff,\n\t\t\t\t.y = %.2ff\n\t\t\t\t", x, y);
+        }
+        else {
+            sprintf_s(outBuf, "%.2ff, %.2ff", x, y);
+        }
+        return outBuf;
     }
-}
+
+    // === FIX: Universal string-based size2Drag ===
+    inline std::string size2Drag(const std::string& currentArgsStr, const ::LivePT::DragMathInput& input) {
+        float w = 0.0f, h = 0.0f;
+        if (sscanf_s(currentArgsStr.c_str(), "%*[^0-9.-]%f%*[^0-9.-]%f", &w, &h) != 2) {
+            if (sscanf_s(currentArgsStr.c_str(), "%f, %f", &w, &h) != 2) {
+                return currentArgsStr;
+            }
+        }
+
+        float multiplier = 1.0f + (input.mouseFrameDeltaY * 0.005f);
+        if (multiplier < 0.0f) multiplier = 0.0f;
+
+        w *= multiplier;
+        h *= multiplier;
+
+        if (w == 0.0f || h == 0.0f) {
+            float speedScale = input.ctrl ? 0.1f : (input.shift ? 0.001f : 0.01f);
+            float added = static_cast<float>(input.mouseFrameDeltaY) * speedScale;
+            if (w == 0.0f) w += added;
+            if (h == 0.0f) h += added;
+        }
+
+        char outBuf[256]{};
+        if (currentArgsStr.find(".w") != std::string::npos) {
+            sprintf_s(outBuf, "\n\t\t\t\t.w = %.2ff,\n\t\t\t\t.h = %.2ff\n\t\t\t\t", w, h);
+        }
+        else {
+            sprintf_s(outBuf, "%.2ff, %.2ff", w, h);
+        }
+        return outBuf;
+    }
+
+} // namespace DrugLogic

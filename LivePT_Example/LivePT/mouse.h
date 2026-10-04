@@ -505,119 +505,46 @@ namespace LivePT {
 
     inline void DragProportionalStructValue(const POINT& pt, bool ctrl, bool shift) {
         int id = g_dragState.targetParamId;
-        if (id == -1 || id >= static_cast<int>(paramDesc.size()) || !paramDesc[id].structInfo.isStruct) return;
+        if (id == -1) return;
 
-        // 1. [ТВОЙ КОД] Поиск зарегистрированного колбека по типу из std::any (RTTI)
-        std::string typeName = paramDesc[id].value.type().name();
-        if (typeName.find("struct ") == 0) typeName = typeName.substr(7);
-        else if (typeName.find("class ") == 0) typeName = typeName.substr(6);
-
-        auto& registry = GetCustomDragRegistry();
-        auto it = registry.find(typeName);
-
+        auto& registry = LivePT::GetCustomDragRegistry();
+        auto it = registry.find(g_dragState.oldValueStr); // Aggregate type name is stored here
         if (it == registry.end()) return;
 
-        DragMathCallback mathCallback = it->second;
+        LivePT::CustomTypeDragCallback typeCallback = it->second;
 
-        // 2. [ТВОЙ КОД] Расчет покадровой дельты мыши
-        DragMathInput input;
+        LivePT::DragMathInput input;
         input.mouseFrameDeltaX = pt.x - g_dragState.lockMousePos.x;
         input.mouseFrameDeltaY = -(pt.y - g_dragState.lockMousePos.y);
         input.ctrl = ctrl;
         input.shift = shift;
 
-        if (input.mouseFrameDeltaX != 0 || input.mouseFrameDeltaY != 0) {
-            mathCallback(g_dragState.originalStructValues, input);
-            SetCursorPos(g_dragState.lockMousePos.x, g_dragState.lockMousePos.y);
-        }
+        // Feed the string layout directly to your string-based custom drag loop
+        std::string updatedArgsText = typeCallback(g_dragState.startTextValue, input);
 
-        // 3. Инфраструктура Visual Studio API
-        CComVariant vtActiveDoc;
-        if (FAILED(AutoWrap(DISPATCH_PROPERTYGET, &vtActiveDoc, pDTE, L"ActiveDocument", 0)) || !vtActiveDoc.pdispVal) return;
-
-        std::wstring currentLineText = DownloadCurrentLineText(vtActiveDoc.pdispVal);
-
-        // Находим физическое смещение начала макроса в строке, основываясь на p.column из базы
-        long tabSize = GetVSTabSize();
-        long currentVisualCol = 1;
-        size_t macroStartIdx = currentLineText.length();
-        for (size_t i = 0; i < currentLineText.length(); ++i) {
-            if (currentVisualCol >= paramDesc[id].column) { macroStartIdx = i; break; }
-            currentVisualCol += (currentLineText[i] == L'\t') ? (tabSize - ((currentVisualCol - 1) % tabSize)) : 1;
-        }
-
-        // Ищем скобку { строго от начала нашего макроса
-        size_t openBrace = currentLineText.find(L'{', macroStartIdx);
-        if (openBrace == std::wstring::npos) openBrace = currentLineText.find(L'{');
-        if (openBrace == std::wstring::npos) { VariantClear(&vtActiveDoc); return; }
-
-        auto args = TokenizeCallArguments(currentLineText, openBrace);
-        if (args.empty()) { VariantClear(&vtActiveDoc); return; }
-
-        // 4. [ТВОЙ КОД] Сборка результирующей строки аргументов структуры
-        std::string fullResultString = "";
-        for (size_t i = 0; i < args.size(); ++i) {
-            std::string elementText = args[i].text;
-
-            if (i < g_dragState.originalStructValues.size() && g_dragState.originalStructValues[i] != -999999.0f) {
-                char buf[64]{};
-
-                bool isIntegerMember = false;
-                if (i < paramDesc[id].structInfo.members.size()) {
-                    const auto& member = paramDesc[id].structInfo.members[i];
-                    isIntegerMember = (member.typeName == "char" ||
-                        member.typeName == "unsigned char" ||
-                        member.typeName == "signed char" ||
-                        member.typeName == "int" ||
-                        member.typeName == "unsigned int" ||
-                        member.typeName == "long");
-                }
-
-                if (isIntegerMember) {
-                    int intVal = static_cast<int>(g_dragState.originalStructValues[i] + (g_dragState.originalStructValues[i] >= 0.0f ? 0.5f : -0.5f));
-                    sprintf_s(buf, "%d", intVal);
-                    elementText = buf;
-                }
-                else {
-                    sprintf_s(buf, "%.4f", g_dragState.originalStructValues[i]);
-                    elementText = buf;
-
-                    while (elementText.length() > 2 && elementText.back() == '0' && elementText[elementText.length() - 2] != '.') {
-                        elementText.pop_back();
-                    }
-                    elementText += "f";
-                }
+        if (updatedArgsText != g_dragState.startTextValue) {
+            if (input.mouseFrameDeltaX != 0 || input.mouseFrameDeltaY != 0) {
+                SetCursorPos(g_dragState.lockMousePos.x, g_dragState.lockMousePos.y);
             }
 
-            fullResultString += elementText;
-            if (i < args.size() - 1) {
-                fullResultString += ", ";
-            }
+            long visualEndCol = g_dragState.dragStartCol + static_cast<long>(g_dragState.currentTextLength);
+            long newCursorPhysicalCol = g_dragState.dragStartCol + static_cast<long>(updatedArgsText.length());
+
+            // FIX: Successfully utilizing the signature-compliant 5-argument version
+            ReplaceTextInActiveVS(
+                g_dragState.dragLine,
+                g_dragState.dragStartCol,
+                visualEndCol,
+                updatedArgsText,
+                newCursorPhysicalCol
+            );
+
+            g_dragState.currentTextLength = updatedArgsText.length();
+            g_dragState.startTextValue = updatedArgsText;
         }
-
-        // 5. ПЕРЕВОД КООРДИНАТ: Конвертируем относительные смещения токенов TokenizeCallArguments 
-        // в абсолютные визуальные колонки Visual Studio
-        size_t physReplaceStart = openBrace + 1 + (args.front().startColOffset - (openBrace + 2));
-        size_t physReplaceEnd = openBrace + 1 + (args.back().endColOffset - (openBrace + 2));
-
-        long visualReplaceStart = GetVisualColumn(currentLineText, physReplaceStart);
-        long visualReplaceEnd = GetVisualColumn(currentLineText, physReplaceEnd);
-        long newCursorPhysicalCol = visualReplaceStart + static_cast<long>(fullResultString.length());
-
-        // Безопасная замена по честным визуальным колонкам
-        ReplaceTextInActiveVS(
-            g_dragState.dragLine,
-            visualReplaceStart,
-            visualReplaceEnd,
-            fullResultString,
-            newCursorPhysicalCol
-        );
-
-        // Обновляем метрику длины текста для поддержки непрерывного драга
-        g_dragState.currentTextLength = fullResultString.length();
-
-        VariantClear(&vtActiveDoc);
     }
+
+
 
     inline long AdjustCursorIndexForNumericContext(const std::wstring& lineText, long originalVisualColumn) {
         if (lineText.empty()) return 0;
