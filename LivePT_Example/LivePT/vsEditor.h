@@ -503,20 +503,17 @@ namespace LivePT {
         auto& params = LivePT::getParamDesc();
         int targetParamId = -1;
 
-        // 1. Линейно идем по локальным каунтерам файла от 0 до конца.
-        // registry гарантирует нам идеальный порядок макросов строго сверху вниз!
+        // 1. Линейно находим последний макрос, который начался ДО текущего положения курсора Visual Studio
         for (int localId = 0; ; ++localId) {
-
             std::string vsLookupKey = normalizedFile + ":" + std::to_string(localId);
             int paramId = LivePT::getID(vsLookupKey);
 
             if (paramId == -1) break; // Макросы в текущем файле закончились — выходим
-
             if (paramId < 0 || paramId >= static_cast<int>(params.size())) continue;
 
             const auto& p = params[paramId];
 
-            // Проверяем, находится ли макрос ДО текущего положения курсора Visual Studio
+            // Проверяем, находится ли макрос ДО начала или на позиции курсора
             if (p.line < cursorLine || (p.line == cursorLine && p.column <= cursorColumn)) {
                 targetParamId = paramId;
             }
@@ -526,11 +523,11 @@ namespace LivePT {
             }
         }
 
-        // === ИСПРАВЛЕНИЕ: ПРОВЕРКА ЛОКАЦИИ ЕВАЛА (ЗАЩИТА ОТ ТОЧКИ С ЗАПЯТОЙ) ===
+        // 2. КРИТИЧЕСКАЯ ГЕОМЕТРИЧЕСКАЯ ДИАГНОСТИКА ГРАНИЦ МАКРОСА
         if (targetParamId != -1 && !g_currentFileFullText.empty()) {
             const auto& p = params[targetParamId];
 
-            // Находим физическое смещение начала строки найденного макроса p.line
+            // Вычисляем абсолютное смещение начала строки макроса p.line
             size_t macroLineOffset = 0;
             long currentLineIdx = 1;
             while (currentLineIdx < p.line && macroLineOffset < g_currentFileFullText.length()) {
@@ -545,7 +542,7 @@ namespace LivePT {
             // Абсолютное смещение самого слова eval в файле
             size_t macroAbsoluteOffset = macroLineOffset + (p.column > 0 ? p.column - 1 : 0);
 
-            // Находим физическое смещение текущей строки курсора cursorLine
+            // Вычисляем абсолютное смещение текущей строки курсора cursorLine
             size_t cursorLineOffset = 0;
             currentLineIdx = 1;
             while (currentLineIdx < cursorLine && cursorLineOffset < g_currentFileFullText.length()) {
@@ -560,12 +557,53 @@ namespace LivePT {
             // Абсолютное смещение текущего курсора в файле
             size_t cursorAbsoluteOffset = cursorLineOffset + (cursorColumn > 0 ? cursorColumn - 1 : 0);
 
-            // Сканируем текст в диапазоне от начала макроса до курсора
+            // Ищем открывающую круглую скобку макроса eval( строго после его начала
+            size_t openBracketPos = g_currentFileFullText.find(L'(', macroAbsoluteOffset);
+
+            if (openBracketPos != std::wstring::npos && openBracketPos < g_currentFileFullText.length()) {
+                size_t closeBracketPos = std::wstring::npos;
+                int bracketCount = 1;
+
+                // Сканируем файл вперед для подсчета баланса скобок
+                for (size_t k = openBracketPos + 1; k < g_currentFileFullText.length(); ++k) {
+                    wchar_t ch = g_currentFileFullText[k];
+
+                    if (ch == L'(') {
+                        bracketCount++;
+                    }
+                    else if (ch == L')') {
+                        bracketCount--;
+                        if (bracketCount == 0) {
+                            // Нашли закрытие макроса! Проверяем синтаксический паттерн конца выражения
+                            if (k > 0) {
+                                wchar_t prevCh = g_currentFileFullText[k - 1];
+                                // Два оговоренных варианта закрытия многострочных/сложных агрегатов: )) или })
+                                if (prevCh == L')' || prevCh == L'}') {
+                                    closeBracketPos = k;
+                                    break;
+                                }
+                            }
+                            // Фолбэк на стандартное одиночное закрытие, если вложенностей не было
+                            closeBracketPos = k;
+                            break;
+                        }
+                    }
+                }
+
+                // Проверка локации курсора: если закрывающая скобка успешно определена,
+                // и курсор физически улетел дальше нее, значит мы СНАРУЖИ макроса.
+                if (closeBracketPos != std::wstring::npos) {
+                    if (cursorAbsoluteOffset > closeBracketPos) {
+                        return -1; // Курсор вне макроса — блокируем драг
+                    }
+                }
+            }
+
+            // Старая добрая защита от жесткого закрытия строки точкой с запятой
             if (macroAbsoluteOffset < cursorAbsoluteOffset && cursorAbsoluteOffset <= g_currentFileFullText.length()) {
                 size_t searchLength = cursorAbsoluteOffset - macroAbsoluteOffset;
                 std::wstring textBetween = g_currentFileFullText.substr(macroAbsoluteOffset, searchLength);
 
-                // Если между макросом и курсором встретилась ';' — значит, макрос закрыт, и мы вне локации!
                 if (textBetween.find(L';') != std::wstring::npos) {
                     return -1;
                 }
@@ -574,6 +612,7 @@ namespace LivePT {
 
         return targetParamId;
     }
+
 
 
 

@@ -192,11 +192,11 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         Draw({
             .pos =      eval(pos2{
-				.x = -51.32f,
-				.y = -180.14f
+				.x = -18.64f,
+				.y = -209.23f
 				}),
-            .size =     eval(size2{139, 154}),
-            .Angle =    eval(angle(155.0f)),
+            .size =     eval(size2{137, 155}),
+            .Angle =    eval(angle(144.0f)),
             .type =     eval(ptype::circle),
             .show =     eval(true),
             .color = eval(color3{
@@ -216,12 +216,12 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         });
 
         Draw({
-            .pos =      eval(pos2{-103.90f, 261.16f}),
+            .pos =      eval(pos2{-111.90f, 250.16f}),
             .size =     eval(size2{168.1575f, 78.1812f}),
             .Angle =    eval(angle(5.3f)),
             .type =     eval(ptype::roundbox),
             .show =     eval(true),
-            .color =    eval(color3{118, 191, 71})
+            .color =    eval(color3{108, 180, 71})
         });
 
         BitBlt(hdc, 0, 0, w, h, memDC, 0, 0, SRCCOPY);
