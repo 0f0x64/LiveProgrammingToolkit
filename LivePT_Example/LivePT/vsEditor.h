@@ -503,33 +503,72 @@ namespace LivePT {
         auto& params = LivePT::getParamDesc();
         int targetParamId = -1;
 
-        // Линейно идем по локальным каунтерам файла от 0 до конца.
+        // 1. Линейно идем по локальным каунтерам файла от 0 до конца.
         // registry гарантирует нам идеальный порядок макросов строго сверху вниз!
         for (int localId = 0; ; ++localId) {
 
-            // Собираем точный ключ, в котором намертво зашито имя файла
             std::string vsLookupKey = normalizedFile + ":" + std::to_string(localId);
             int paramId = LivePT::getID(vsLookupKey);
 
-            // Если getID вернул -1, значит, макросы в текущем файле закончились — выходим
-            if (paramId == -1) break;
+            if (paramId == -1) break; // Макросы в текущем файле закончились — выходим
 
             if (paramId < 0 || paramId >= static_cast<int>(params.size())) continue;
 
-            // Достаем честные координаты макроса, которые почистил диск и двигает Шифт
             const auto& p = params[paramId];
 
             // Проверяем, находится ли макрос ДО текущего положения курсора Visual Studio
             if (p.line < cursorLine || (p.line == cursorLine && p.column <= cursorColumn)) {
-                // Каждый следующий localId находится ближе к курсору, чем предыдущий.
-                // Перезаписываем его как последний левый элемент.
                 targetParamId = paramId;
             }
             else {
-                // Как только наткнулись на макрос, который стоит строго НИЖЕ или ПРАВЕЕ курсора,
-                // немедленно прерываем цикл. 
-                // Предыдущий сохраненный targetParamId — это 100% макрос-родитель, поглотивший курсор.
+                // Как только наткнулись на макрос, который стоит строго НИЖЕ или ПРАВЕЕ курсора — прерываем цикл.
                 break;
+            }
+        }
+
+        // === ИСПРАВЛЕНИЕ: ПРОВЕРКА ЛОКАЦИИ ЕВАЛА (ЗАЩИТА ОТ ТОЧКИ С ЗАПЯТОЙ) ===
+        if (targetParamId != -1 && !g_currentFileFullText.empty()) {
+            const auto& p = params[targetParamId];
+
+            // Находим физическое смещение начала строки найденного макроса p.line
+            size_t macroLineOffset = 0;
+            long currentLineIdx = 1;
+            while (currentLineIdx < p.line && macroLineOffset < g_currentFileFullText.length()) {
+                size_t nextNL = g_currentFileFullText.find(L'\n', macroLineOffset);
+                if (nextNL != std::wstring::npos) {
+                    macroLineOffset = nextNL + 1;
+                    currentLineIdx++;
+                }
+                else break;
+            }
+
+            // Абсолютное смещение самого слова eval в файле
+            size_t macroAbsoluteOffset = macroLineOffset + (p.column > 0 ? p.column - 1 : 0);
+
+            // Находим физическое смещение текущей строки курсора cursorLine
+            size_t cursorLineOffset = 0;
+            currentLineIdx = 1;
+            while (currentLineIdx < cursorLine && cursorLineOffset < g_currentFileFullText.length()) {
+                size_t nextNL = g_currentFileFullText.find(L'\n', cursorLineOffset);
+                if (nextNL != std::wstring::npos) {
+                    cursorLineOffset = nextNL + 1;
+                    currentLineIdx++;
+                }
+                else break;
+            }
+
+            // Абсолютное смещение текущего курсора в файле
+            size_t cursorAbsoluteOffset = cursorLineOffset + (cursorColumn > 0 ? cursorColumn - 1 : 0);
+
+            // Сканируем текст в диапазоне от начала макроса до курсора
+            if (macroAbsoluteOffset < cursorAbsoluteOffset && cursorAbsoluteOffset <= g_currentFileFullText.length()) {
+                size_t searchLength = cursorAbsoluteOffset - macroAbsoluteOffset;
+                std::wstring textBetween = g_currentFileFullText.substr(macroAbsoluteOffset, searchLength);
+
+                // Если между макросом и курсором встретилась ';' — значит, макрос закрыт, и мы вне локации!
+                if (textBetween.find(L';') != std::wstring::npos) {
+                    return -1;
+                }
             }
         }
 
