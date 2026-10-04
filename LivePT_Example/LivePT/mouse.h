@@ -221,32 +221,46 @@ namespace LivePT {
             if (lineEndOffset == std::wstring::npos) lineEndOffset = fileText.length();
             std::wstring lineText = fileText.substr(lineStartOffset, lineEndOffset - lineStartOffset);
 
-            // === ПРЕЦИЗИОННЫЙ ПЕРЕСЧЕТ ВИЗУАЛЬНЫХ КОЛОНОК В ФИЗИЧЕСКИЕ ИНДЕКСЫ ===
             long physicalStartCol = 1;
             long physicalEndCol = 1;
-            const size_t TAB_SIZE = 4;
+            const long TAB_SIZE = 4;
             size_t currentVisualCol = 1;
 
-            // 1. Находим physicalStartCol (индекс i останавливается строго перед числом)
             size_t i = 0;
             for (; i < lineText.length(); ++i) {
-                if (currentVisualCol >= static_cast<size_t>(visualStartCol)) {
-                    break;
-                }
+                if (currentVisualCol >= static_cast<size_t>(visualStartCol)) break;
                 currentVisualCol += (lineText[i] == L'\t') ? (TAB_SIZE - ((currentVisualCol - 1) % TAB_SIZE)) : 1;
             }
             physicalStartCol = static_cast<long>(i) + 1;
 
-            // 2. Находим physicalEndCol СТРОГО продолжая движение от текущей позиции i ка кадра!
-            // Это гарантирует, что диапазон заменяемого текста вычисляется символ-в-символ без погрешностей табов.
             for (; i < lineText.length(); ++i) {
-                if (currentVisualCol >= static_cast<size_t>(visualEndCol)) {
-                    break;
-                }
+                if (currentVisualCol >= static_cast<size_t>(visualEndCol)) break;
                 currentVisualCol += (lineText[i] == L'\t') ? (TAB_SIZE - ((currentVisualCol - 1) % TAB_SIZE)) : 1;
             }
             physicalEndCol = static_cast<long>(i) + 1;
-            // ======================================================================
+
+            // ТРАНСЛЯЦИЯ КУРСОРA: Переводим финальную visual-колонку в честный символьный сдвиг
+            std::wstring wNewText(newText.begin(), newText.end());
+            std::wstring modifiedLineText = lineText;
+
+            size_t localStartIdx = static_cast<size_t>(physicalStartCol - 1);
+            size_t localEndIdx = static_cast<size_t>(physicalEndCol - 1);
+            if (localStartIdx <= modifiedLineText.length() && localEndIdx <= modifiedLineText.length()) {
+                modifiedLineText.replace(localStartIdx, localEndIdx - localStartIdx, wNewText);
+            }
+
+            long exactCharacterOffset = 1;
+            size_t runningVisualCol = 1;
+            for (size_t k = 0; k < modifiedLineText.length(); ++k) {
+                if (runningVisualCol >= static_cast<size_t>(newCursorPhysicalCol)) {
+                    exactCharacterOffset = static_cast<long>(k) + 1;
+                    break;
+                }
+                runningVisualCol += (modifiedLineText[k] == L'\t') ? (TAB_SIZE - ((runningVisualCol - 1) % TAB_SIZE)) : 1;
+            }
+            if (runningVisualCol < static_cast<size_t>(newCursorPhysicalCol)) {
+                exactCharacterOffset = static_cast<long>(modifiedLineText.length()) + 1;
+            }
 
             CComVariant vtActivePoint;
             HRESULT hr = AutoWrap(DISPATCH_PROPERTYGET, &vtActivePoint, vtSelection.pdispVal, L"ActivePoint", 0);
@@ -270,9 +284,9 @@ namespace LivePT {
             hr = AutoWrap(DISPATCH_METHOD, NULL, pEditStart.pdispVal, L"ReplaceText", 3, pEditEnd, vText, vOption);
             if (FAILED(hr)) return false;
 
-            AutoWrap(DISPATCH_METHOD, NULL, vtSelection.pdispVal, L"MoveToLineAndOffset", 3, CComVariant(line), CComVariant(newCursorPhysicalCol), CComVariant(0L));
+            // Передаем точный физический офсет символа строки
+            AutoWrap(DISPATCH_METHOD, NULL, vtSelection.pdispVal, L"MoveToLineAndOffset", 3, CComVariant(line), CComVariant(exactCharacterOffset), CComVariant(0L));
         }
-
         return true;
     }
 
@@ -606,30 +620,46 @@ namespace LivePT {
     }
 
     inline long AdjustCursorIndexForNumericContext(const std::wstring& lineText, long originalVisualColumn) {
-        long cursorIdx = originalVisualColumn - 1;
-
-        // Если строка пустая или индекс изначально за границей текста, зажимаем его на конец строки
         if (lineText.empty()) return 0;
-        if (cursorIdx >= static_cast<long>(lineText.length())) {
-            cursorIdx = static_cast<long>(lineText.length()) - 1;
+
+        // 1. ЧЕСТНЫЙ ПЕРЕВОД: Конвертируем визуальную колонку VS в физический индекс строки wchar_t
+        long tabSize = GetVSTabSize();
+        size_t currentVisualCol = 1;
+        size_t physicalIdx = lineText.length();
+
+        for (size_t i = 0; i < lineText.length(); ++i) {
+            if (currentVisualCol >= static_cast<size_t>(originalVisualColumn)) {
+                physicalIdx = i;
+                break;
+            }
+            currentVisualCol += (lineText[i] == L'\t') ? (tabSize - ((currentVisualCol - 1) % tabSize)) : 1;
         }
+
+        // Если кликнули в самый конец строки за пределами текста, берем последний символ
+        if (physicalIdx >= lineText.length()) {
+            physicalIdx = lineText.length() - 1;
+        }
+
+        long cursorIdx = static_cast<long>(physicalIdx);
         if (cursorIdx < 0) return 0;
 
+        // 2. АДАПТИВНЫЙ СДВИГ: Если стоим на пробеле/запятой, но слева число — подхватываем его
         bool isCurrentNumeric = false;
         if (cursorIdx < static_cast<long>(lineText.length())) {
             wchar_t ch = lineText[cursorIdx];
-            isCurrentNumeric = iswdigit(ch) || ch == L'.' || ch == L'-' || ch == L'f' || ch == L'F';
+            isCurrentNumeric = (iswdigit(ch) || ch == L'.' || ch == L'-' || ch == L'f' || ch == L'F');
         }
 
-        // ИСПРАВЛЕНИЕ: Добавлена строгая проверка (cursorIdx - 1 < lineText.length()), чтобы не вылетать в ОЗУ
         if (!isCurrentNumeric && cursorIdx > 0 && (cursorIdx - 1) < static_cast<long>(lineText.length())) {
             wchar_t leftCh = lineText[cursorIdx - 1];
             if (iswdigit(leftCh) || leftCh == L'.' || leftCh == L'-' || leftCh == L'f' || leftCh == L'F') {
                 return cursorIdx - 1;
             }
         }
+
         return cursorIdx;
     }
+
 
 
     // === ПОДФУНКЦИЯ 2: Проверка лексических границ числового символа ===
@@ -655,41 +685,62 @@ namespace LivePT {
         long startCol = 0;
         long endCol = 0;
 
-        // Находим физические границы числа в текстовой строке
         ScanNumericTokenBoundaries(lineText, targetCharIdx, startCol, endCol);
 
         if (startCol < endCol) {
             std::wstring numW = lineText.substr(startCol, endCol - startCol);
             std::string cleanText(numW.begin(), numW.end());
 
-            // Фиксируем железные текстовые ориентиры драга в DragState
             g_dragState.dragLine = line;
             g_dragState.dragStartCol = GetVisualColumn(lineText, startCol);
             g_dragState.currentTextLength = cleanText.length();
             g_dragState.oldMouseX = pt.x;
             g_dragState.oldMouseY = pt.y;
 
-            // Вычисляем относительную позицию каретки внутри числа
-            long originalCursorColIdx = originalColumn - 1;
-            size_t relativeCursorIdx = (originalCursorColIdx >= startCol && originalCursorColIdx <= endCol)
-                ? (originalCursorColIdx - startCol)
-                : (targetCharIdx - startCol);
+            // === ИСПРАВЛЕНИЕ: Считаем смещение строго в физических индексах строки ===
+            long physicalCursorIdx = targetCharIdx; // Используем уже переведенный честный индекс!
+            if (physicalCursorIdx < startCol) physicalCursorIdx = startCol;
+            if (physicalCursorIdx > endCol)   physicalCursorIdx = endCol;
 
-            // Инициализируем математические буферы калькулятора мыши
-            InitNumericDragState(relativeCursorIdx, cleanText);
+            size_t relativeCursorIdx = static_cast<size_t>(physicalCursorIdx - startCol);
 
-            // Прячем системный курсор мыши
-            g_dragState.lockMousePos = pt;
+            g_dragState.oldValueStr = cleanText;
+            g_dragState.lastValueStr = cleanText;
+
+            size_t dotPos = cleanText.find('.');
+            g_dragState.pointBefore = (dotPos != std::wstring::npos && relativeCursorIdx > dotPos);
+
+            g_dragState.initialCursorAnchorOffset = (dotPos != std::wstring::npos)
+                ? std::abs(static_cast<long>(dotPos) - static_cast<long>(relativeCursorIdx))
+                : static_cast<long>(cleanText.length()) - static_cast<long>(relativeCursorIdx);
+
+            if (dotPos == std::wstring::npos) {
+                g_dragState.oldValue = atoi(cleanText.c_str());
+            }
+            else {
+                g_dragState.oldValue = atoi(g_dragState.pointBefore ? cleanText.substr(dotPos + 1).c_str() : cleanText.substr(0, dotPos).c_str());
+            }
+
+            g_dragState.lastValue = g_dragState.oldValue;
+            g_dragState.newValue = g_dragState.oldValue;
+
+            std::string normalizedPath = LivePT::NormalizePath(g_currentActiveFile.c_str());
+            g_dragState.targetParamId = FindParamIdByStrictGeometry(normalizedPath, line, originalColumn);
+
             if (!g_dragState.isCursorHidden) {
                 ShowCursor(FALSE);
                 g_dragState.isCursorHidden = true;
             }
 
-            return true; // Число успешно захвачено
+            return true;
         }
 
         return false;
     }
+
+
+
+
 
     // === ПОДФУНКЦИЯ 5: Мгновенное переключение булевых значений по даблклику ===
     inline bool TryToggleBooleanDirect(const std::wstring& lineText, long line, long targetCharIdx) {
@@ -935,17 +986,10 @@ namespace LivePT {
         return true;
     }
 
-
-
-
-
-    // === ГОЛОВНАЯ ФУНКЦИЯ: Чистый, лаконичный диспетчер клика мыши LivePT ===
-        // === ГОЛОВНАЯ ФУНКЦИЯ: Чистый, лаконичный диспетчер клика мыши LivePT ===
-        // === ГОЛОВНАЯ ФУНКЦИЯ: Высокоуровневый диспетчер клика мыши LivePT ===
-       // === ГОЛОВНАЯ ФУНКЦИЯ: Высокоуровневый диспетчер клика мыши LivePT ===
-        // === ГОЛОВНАЯ ФУНКЦИЯ: Высокоуровневый диспетчер клика мыши LivePT ===
     inline bool HandleMouseDown(const POINT& pt) {
-        if (!initVsEditor()) return false;
+        if (!initVsEditor()) {
+            return false;
+        }
 
         VARIANT vtActiveDoc;
         std::string currentFile;
@@ -978,43 +1022,32 @@ namespace LivePT {
         // Применяем адаптивное смещение каретки (клик вплотную справа от числа)
         long targetCharIdx = AdjustCursorIndexForNumericContext(currentLineText, column);
 
+        if (targetCharIdx < 0 || targetCharIdx >= static_cast<long>(currentLineText.length())) {
+            VariantClear(&vtActiveDoc);
+            return false;
+        }
+
         // =========================================================================
         // [ФУНКЦИОНАЛ ДАБЛКЛИКА]: Открываем тяжелые GUI-окна, палитры и меню
         // =========================================================================
-        if (isDoubleClick && targetCharIdx >= 0 && targetCharIdx < static_cast<long>(currentLineText.length())) {
-
-            // А. Переключение Була (Работает мгновенно на чистом тексте)
-            if (TryToggleBooleanDirect(currentLineText, line, targetCharIdx)) {
-                VariantClear(&vtActiveDoc);
-                return false;
-            }
-
-            // Б. Открытие графического меню Энума (Парсит PDB по префиксу строки)
-            if (TryInitEnumSelectionDirect(currentLineText, line, column, targetCharIdx)) {
-                VariantClear(&vtActiveDoc);
-                return false;
-            }
-
-            // В. Запуск GUI-виджета структуры (Палитра, цветовой круг, радар)
-            if (TryInitStructWidgetDirect(fileText, currentLineText, line, column, targetCharIdx)) {
-                VariantClear(&vtActiveDoc);
-                return false;
-            }
+        if (isDoubleClick) {
+            if (TryToggleBooleanDirect(currentLineText, line, targetCharIdx)) { VariantClear(&vtActiveDoc); return false; }
+            if (TryInitEnumSelectionDirect(currentLineText, line, column, targetCharIdx)) { VariantClear(&vtActiveDoc); return false; }
+            if (TryInitStructWidgetDirect(fileText, currentLineText, line, column, targetCharIdx)) { VariantClear(&vtActiveDoc); return false; }
+            VariantClear(&vtActiveDoc);
+            return false;
         }
 
         // =========================================================================
         // [ФУНКЦИОНАЛ ОДИНОЧНОГО КЛИКА]: Высокоскоростной драг конкретного числа!
         // =========================================================================
-        if (!isDoubleClick && targetCharIdx >= 0 && targetCharIdx < static_cast<long>(currentLineText.length())) {
+        wchar_t targetedChar = currentLineText[targetCharIdx];
+        bool isNumeric = IsNumericTokenChar(targetedChar);
 
-            // Если пользователь зажал мышь на цифре — неважно, плоская это строка 
-            // или внутренность многострочного .pos агрегата — мы запускаем 
-            // КРИСТАЛЬНО ТОЧНЫЙ ОДИНОЧНЫЙ ЧИСЛОВОЙ ДРАГ!
-            if (IsNumericTokenChar(currentLineText[targetCharIdx])) {
-                if (TryInitSingleNumericDrag(currentLineText, line, column, targetCharIdx, pt)) {
-                    VariantClear(&vtActiveDoc);
-                    return true; // Взводим g_dragState.isDragging, каскад прерван
-                }
+        if (isNumeric) {
+            if (TryInitSingleNumericDrag(currentLineText, line, column, targetCharIdx, pt)) {
+                VariantClear(&vtActiveDoc);
+                return true;
             }
         }
 
@@ -1023,18 +1056,12 @@ namespace LivePT {
     }
 
 
-
-
-
-
     inline void DragNumericValue(const POINT& pt, bool ctrl, bool shift) {
-
         int scale = 1;
         if (ctrl)  scale *= 100;
         if (shift) scale *= 10;
 
         int delta = -(pt.y - g_dragState.oldMouseY) * scale / 2;
-
         long long targetValue = static_cast<long long>(g_dragState.oldValue) + delta;
         g_dragState.newValue = static_cast<int>(targetValue);
 
@@ -1042,12 +1069,8 @@ namespace LivePT {
             size_t dotPos = g_dragState.oldValueStr.find('.');
             std::string newValueStr;
 
-            int targetId = g_dragState.targetParamId;
-
             if (dotPos == std::string::npos) {
-
-                 char modified[100];
-
+                char modified[100];
                 _itoa_s(g_dragState.newValue, modified, sizeof(modified), 10);
                 newValueStr = modified;
             }
@@ -1096,7 +1119,7 @@ namespace LivePT {
             else {
                 newCursorRelPos = static_cast<long>(newValueStr.length()) - g_dragState.initialCursorAnchorOffset;
             }
-            newCursorRelPos = std::clamp(newCursorRelPos, 0L, static_cast<long>(newValueStr.length()));
+
             long newCursorPhysicalCol = g_dragState.dragStartCol + newCursorRelPos;
 
             ReplaceTextInActiveVS(
@@ -1107,12 +1130,13 @@ namespace LivePT {
                 newCursorPhysicalCol
             );
 
-            // Обновляем исключительно текстовые метрики драга для следующего кадра мыши
             g_dragState.currentTextLength = newValueStr.length();
             g_dragState.oldValueStr = newValueStr;
             g_dragState.lastValue = g_dragState.newValue;
         }
     }
+
+
 
     inline void HandleMouseDrag(const POINT& pt, bool ctrl, bool shift) {
         if (!g_dragState.isDragging && !g_dragState.isProportionalStructDrag) return;

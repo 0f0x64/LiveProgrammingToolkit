@@ -17,7 +17,7 @@ struct color3 {
 };
 #include "Widgets\color3.h"
 LPT_REGISTER_TYPE("color3", Widgets::color3Callback);
-LPT_REGISTER_DRAG(color3, DrugLogic::color3Drag);
+//LPT_REGISTER_DRAG(color3, DrugLogic::color3Drag);
 
 struct pos2 {
     float x;
@@ -25,18 +25,18 @@ struct pos2 {
 };
 #include "Widgets\pos2.h"
 LPT_REGISTER_TYPE("pos2", Widgets::pos2Callback);
-LPT_REGISTER_DRAG(pos2, DrugLogic::pos2Drag);
+//LPT_REGISTER_DRAG(pos2, DrugLogic::pos2Drag);
 
 struct size2 {
     float w;
     float h;
 };
 LPT_REGISTER_TYPE("size2", Widgets::pos2Callback);
-LPT_REGISTER_DRAG(size2, DrugLogic::size2Drag);
+//LPT_REGISTER_DRAG(size2, DrugLogic::size2Drag);
 
 typedef float angle;
 #include "Widgets\angle.h"
-LPT_REGISTER_TYPE("angle", Widgets::angleCallback);
+//LPT_REGISTER_TYPE("angle", Widgets::angleCallback);
 
 struct {
     HWND hWnd;
@@ -192,33 +192,33 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         Draw({
             .pos =      eval(pos2{
-				.x = -18.64f,
-				.y = -209.23f
+				.x = -137.24f,
+				.y = -264.18f
 				}),
-            .size =     eval(size2{137, 155}),
-            .Angle =    eval(angle(144.0f)),
+            .size =     eval(size2{154, 157}),
+            .Angle =    eval(angle(110.0f)),
             .type =     eval(ptype::circle),
             .show =     eval(true),
             .color = eval(color3{
-				.r=82, 
-				.g=152,  
-				.b=82
+				.r=99, 
+				.g=48,  
+				.b=31
 				}) 
          });
 
         Draw({
-            .pos =      eval(pos2{306.01f, 188.10f}),
-            .size =     eval(size2{117.47f,94.56f}),
-            .Angle =    eval(angle(67.7f)),
-            .type =     eval(ptype::roundbox),
+            .pos =      eval(pos2{306.01f, 125.10f}),
+            .size =     eval(size2{101.89f,94.56f}),
+            .Angle =    eval(angle(111.7f)),
+            .type =     eval(ptype::box),
             .show =     eval(true),
-            .color =    eval(color3{14, 105,39})
+            .color =    eval(color3{102, 129, 42})
         });
 
         Draw({
-            .pos =      eval(pos2{-111.90f, 250.16f}),
+            .pos =      eval(pos2{-24.90f, 189.16f}),
             .size =     eval(size2{168.1575f, 78.1812f}),
-            .Angle =    eval(angle(5.3f)),
+            .Angle =    eval(angle(54.3f)),
             .type =     eval(ptype::roundbox),
             .show =     eval(true),
             .color =    eval(color3{108, 180, 71})

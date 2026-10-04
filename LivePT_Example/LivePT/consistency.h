@@ -146,7 +146,7 @@ namespace LivePT {
             // 2. Читаем файл с диска ровно один раз
             std::wstring fileText = ReadFileFromDisk(filePath);
             if (fileText.empty()) {
-                Log("[LivePT Disk Init] Не удалось прочитать файл или он пуст: " + filePath);
+                Log("[LivePT Disk Init] File read error or file is empty: " + filePath);
                 continue;
             }
 
@@ -167,7 +167,6 @@ namespace LivePT {
                 }
             }
         }
-        Log("[LivePT Disk Init] Синхронизация базы с файловой системой успешно завершена.");
     }
 
 
