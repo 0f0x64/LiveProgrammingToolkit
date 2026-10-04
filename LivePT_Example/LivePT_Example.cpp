@@ -36,7 +36,7 @@ LPT_REGISTER_TYPE("size2", Widgets::pos2Callback);
 
 typedef float angle;
 #include "Widgets\angle.h"
-//LPT_REGISTER_TYPE("angle", Widgets::angleCallback);
+LPT_REGISTER_TYPE("angle", Widgets::angleCallback);
 
 struct {
     HWND hWnd;

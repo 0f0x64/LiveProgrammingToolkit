@@ -274,11 +274,8 @@ namespace Widgets {
             DestroyWindow(hwnd);
             g_pickerCtx.hWindow = NULL;
             return 0;
-        
         case WM_DESTROY:
-            LivePT::EndUndoTransaction();
-            LivePT::SaveActiveDocument();
-
+            break;
         }
         return DefWindowProcA(hwnd, uMsg, wParam, lParam);
     }

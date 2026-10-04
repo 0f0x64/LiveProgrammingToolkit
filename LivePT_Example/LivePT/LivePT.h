@@ -307,13 +307,9 @@ namespace LivePT {
         Log("===================  [LivePT Map Dump End]  ===================");
     }
 
-    // === ГОЛОВНОЙ ДИСПЕТЧЕР ВЫГРУЗКИ ИЗМЕНЕНИЙ LivePT ПОСЛЕ ВЫЗОВА UPDATE ===
-        // === ГОЛОВНОЙ ДИСПЕТЧЕР ВЫГРУЗКИ ИЗМЕНЕНИЙ LivePT ПОСЛЕ ВЫЗОВА UPDATE ===
-        // === ГОЛОВНОЙ ДИСПЕТЧЕР ВЫГРУЗКИ ИЗМЕНЕНИЙ LivePT ПОСЛЕ ВЫЗОВА UPDATE ===
     inline void ProcessEdit()
     {
         AlignDatabaseFastFromDisk();
-
         Warmup();
 
 #if LivePT_WindowManagement
@@ -321,12 +317,19 @@ namespace LivePT {
 #endif
 
 #if LivePT_Mouse
-        // 1. Сначала выгружаем обычные мышиные буферы числа
+        // 1. Выгружаем обычные мышиные буферы одиночных чисел
         FlushPendingWritesToVS();
 
         // Флаг того, зажата ли сейчас основная управляющая кнопка мыши (ЛКМ)
         bool isTriggerButtonDown = (GetAsyncKeyState(LivePT_TriggerButton) & 0x8000) != 0;
         static bool s_WidgetTransactionActive = false;
+
+        // === ИНКАПСУЛЯЦИЯ UNDO В БИБЛИОТЕКЕ ===
+        // Если виджет пушит изменения, и транзакция еще не открыта — библиотека открывает её сама!
+        if (g_widgetBuffer.hasChanges && !s_WidgetTransactionActive) {
+            StartUndoTransaction(L"LivePT Widget Realtime Update");
+            s_WidgetTransactionActive = true;
+        }
 
         // 2. ВЫГРУЖАЕМ БУФЕР ВИДЖЕТОВ: Роботизированная замена по живым EnvDTE-якорям
         if (g_widgetBuffer.hasChanges && !g_widgetBuffer.codeText.empty() && pWidgetEndEditPoint && pWidgetStartEditPoint) {
@@ -343,25 +346,17 @@ namespace LivePT {
                 long actualCloseLine = (vtCloseLine.vt == VT_I4) ? vtCloseLine.lVal : g_widgetBuffer.line;
                 long actualCloseOffset = (vtCloseOffset.vt == VT_I4) ? vtCloseOffset.lVal : g_dragState.dragStartCol;
 
-                // === КВАНТОВАНИЕ UNDO: СТАРТ ГЛОБАЛЬНОЙ ТРАНЗАКЦИИ ===
-                if (isTriggerButtonDown && !s_WidgetTransactionActive) {
-                    StartUndoTransaction(L"LivePT Widget Realtime Update");
-                    s_WidgetTransactionActive = true;
-                }
-
                 if (g_widgetBuffer.line == actualCloseLine) {
                     // Однострочная быстрая замена
                     long newCursorPhysicalCol = g_dragState.dragStartCol + static_cast<long>(g_widgetBuffer.codeText.length());
                     ReplaceTextInActiveVS(g_widgetBuffer.line, g_dragState.dragStartCol, actualCloseOffset, g_widgetBuffer.codeText, newCursorPhysicalCol);
                 }
                 else {
-                    // === ВАРИАНТ 2: ИСПРАВЛЕННЫЙ МЕМОРИ-БУФЕР (ЗАЩИТА ОТКРЫВАЮЩЕЙ СКОБКИ) ===
-                    // Чтобы не трогать mouse.h, мы создаем покадровый точный клон точки старта
+                    // Многострочный исправленный мемори-буфер (Защита открывающей скобки)
                     CComVariant pSafeStartPoint;
                     HRESULT hr = AutoWrap(DISPATCH_METHOD, &pSafeStartPoint, pWidgetStartEditPoint, L"CreateEditPoint", 0);
 
                     if (SUCCEEDED(hr) && pSafeStartPoint.vt == VT_DISPATCH && pSafeStartPoint.pdispVal) {
-
                         VARIANT vtStartLineNum, vtStartCharOffset;
                         VariantInit(&vtStartLineNum); VariantInit(&vtStartCharOffset);
 
@@ -369,15 +364,13 @@ namespace LivePT {
                         AutoWrap(DISPATCH_PROPERTYGET, &vtStartCharOffset, pWidgetStartEditPoint, L"LineCharOffset", 0);
 
                         long startL = vtStartLineNum.lVal;
-                        // Хирургически сдвигаем временную точку старта на +1 символ вправо (строго внутрь скобки {)
-                        long startO = vtStartCharOffset.lVal + 1;
+                        long startO = vtStartCharOffset.lVal + 1; // Хирургический сдвиг внутрь скобки {
 
                         AutoWrap(DISPATCH_METHOD, NULL, pSafeStartPoint.pdispVal, L"MoveToLineAndOffset", 2, CComVariant(startL), CComVariant(startO));
 
                         std::wstring wText(g_widgetBuffer.codeText.begin(), g_widgetBuffer.codeText.end());
                         CComBSTR bstrText(wText.c_str());
 
-                        // Стреляем заменой от скорректированной безопасной точки pSafeStartPoint
                         AutoWrap(DISPATCH_METHOD, NULL, pSafeStartPoint.pdispVal, L"ReplaceText", 3,
                             CComVariant(pWidgetEndEditPoint),
                             CComVariant(bstrText),
@@ -386,10 +379,9 @@ namespace LivePT {
                         VariantClear(&vtStartCharOffset); VariantClear(&vtStartLineNum);
                     }
 
-                    // Синхронизируем текстовый курсор (каретку), чтобы он не прыгал
+                    // Синхронизируем текстовый курсор, чтобы избежать прыжков
                     VARIANT vtSelection; VariantInit(&vtSelection);
                     if (SUCCEEDED(AutoWrap(DISPATCH_PROPERTYGET, &vtSelection, vtActiveDocLocal.pdispVal, L"Selection", 0)) && vtSelection.pdispVal) {
-
                         VARIANT vtNewCursorLine, vtNewCursorOffset;
                         VariantInit(&vtNewCursorLine); VariantInit(&vtNewCursorOffset);
 
@@ -415,7 +407,9 @@ namespace LivePT {
             g_widgetBuffer.hasChanges = false;
         }
 
-        // === КВАНТОВАНИЕ UNDO: КОНЕЦ ГЛОБАЛЬНОЙ ТРАНЗАКЦИИ ПО MOUSE UP ===
+        // === АВТОМАТИЧЕСКОЕ ЗАКРЫТИЕ ТРАНЗАКЦИИ БИБЛИОТЕКОЙ ===
+        // Как только пользователь отпустил кнопку мыши после взаимодействия с виджетом,
+        // библиотека сама закрывает транзакцию и атомарно сохраняет документ.
         if (!isTriggerButtonDown && s_WidgetTransactionActive) {
             EndUndoTransaction();
             SaveActiveDocument();
@@ -427,7 +421,6 @@ namespace LivePT {
 
         vsEditor();
     }
-
 
 
 

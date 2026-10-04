@@ -176,9 +176,6 @@ namespace Widgets {
             }
             return 0;
         case WM_DESTROY:
-            LivePT::EndUndoTransaction();
-            LivePT::SaveActiveDocument();
-
             if (g_angleCtx.isCursorHidden) {
                 ShowCursor(TRUE);
                 g_angleCtx.isCursorHidden = false;

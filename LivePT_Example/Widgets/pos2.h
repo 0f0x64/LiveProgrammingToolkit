@@ -155,8 +155,6 @@ namespace Widgets {
             }
             return 0;
         case WM_DESTROY:
-            LivePT::EndUndoTransaction();
-            LivePT::SaveActiveDocument();
 
             if (g_posCtx.isCursorHidden) {
                 ShowCursor(TRUE);
