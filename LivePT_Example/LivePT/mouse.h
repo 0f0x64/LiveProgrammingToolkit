@@ -724,6 +724,8 @@ namespace LivePT {
             g_dragState.lastValue = g_dragState.oldValue;
             g_dragState.newValue = g_dragState.oldValue;
 
+            StartUndoTransaction(L"LivePT Realtime Numeric Edit");
+
             std::string normalizedPath = LivePT::NormalizePath(g_currentActiveFile.c_str());
             g_dragState.targetParamId = FindParamIdByStrictGeometry(normalizedPath, line, originalColumn);
 
