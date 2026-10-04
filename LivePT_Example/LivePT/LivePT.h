@@ -308,6 +308,8 @@ namespace LivePT {
     }
 
     // === ГОЛОВНОЙ ДИСПЕТЧЕР ВЫГРУЗКИ ИЗМЕНЕНИЙ LivePT ПОСЛЕ ВЫЗОВА UPDATE ===
+        // === ГОЛОВНОЙ ДИСПЕТЧЕР ВЫГРУЗКИ ИЗМЕНЕНИЙ LivePT ПОСЛЕ ВЫЗОВА UPDATE ===
+        // === ГОЛОВНОЙ ДИСПЕТЧЕР ВЫГРУЗКИ ИЗМЕНЕНИЙ LivePT ПОСЛЕ ВЫЗОВА UPDATE ===
     inline void ProcessEdit()
     {
         AlignDatabaseFastFromDisk();
@@ -342,7 +344,6 @@ namespace LivePT {
                 long actualCloseOffset = (vtCloseOffset.vt == VT_I4) ? vtCloseOffset.lVal : g_dragState.dragStartCol;
 
                 // === КВАНТОВАНИЕ UNDO: СТАРТ ГЛОБАЛЬНОЙ ТРАНЗАКЦИИ ===
-                // Если мышь зажата и виджет начал слать изменения, открываем ОДНУ транзакцию на всю сессию драга
                 if (isTriggerButtonDown && !s_WidgetTransactionActive) {
                     StartUndoTransaction(L"LivePT Widget Realtime Update");
                     s_WidgetTransactionActive = true;
@@ -354,40 +355,56 @@ namespace LivePT {
                     ReplaceTextInActiveVS(g_widgetBuffer.line, g_dragState.dragStartCol, actualCloseOffset, g_widgetBuffer.codeText, newCursorPhysicalCol);
                 }
                 else {
-                    // Многострочная замена через выделение диапазона Selection (устраняет срез кода)
-                    VARIANT vtSelection; VariantInit(&vtSelection);
-                    if (SUCCEEDED(AutoWrap(DISPATCH_PROPERTYGET, &vtSelection, vtActiveDocLocal.pdispVal, L"Selection", 0)) && vtSelection.pdispVal) {
+                    // === ВАРИАНТ 2: ИСПРАВЛЕННЫЙ МЕМОРИ-БУФЕР (ЗАЩИТА ОТКРЫВАЮЩЕЙ СКОБКИ) ===
+                    // Чтобы не трогать mouse.h, мы создаем покадровый точный клон точки старта
+                    CComVariant pSafeStartPoint;
+                    HRESULT hr = AutoWrap(DISPATCH_METHOD, &pSafeStartPoint, pWidgetStartEditPoint, L"CreateEditPoint", 0);
 
-                        // Получаем точные физические оффсеты начала и конца аргументов
+                    if (SUCCEEDED(hr) && pSafeStartPoint.vt == VT_DISPATCH && pSafeStartPoint.pdispVal) {
+
                         VARIANT vtStartLineNum, vtStartCharOffset;
-                        VARIANT vtCloseLineNum, vtCloseCharOffset;
                         VariantInit(&vtStartLineNum); VariantInit(&vtStartCharOffset);
-                        VariantInit(&vtCloseLineNum); VariantInit(&vtCloseCharOffset);
 
                         AutoWrap(DISPATCH_PROPERTYGET, &vtStartLineNum, pWidgetStartEditPoint, L"Line", 0);
                         AutoWrap(DISPATCH_PROPERTYGET, &vtStartCharOffset, pWidgetStartEditPoint, L"LineCharOffset", 0);
-                        AutoWrap(DISPATCH_PROPERTYGET, &vtCloseLineNum, pWidgetEndEditPoint, L"Line", 0);
-                        AutoWrap(DISPATCH_PROPERTYGET, &vtCloseCharOffset, pWidgetEndEditPoint, L"LineCharOffset", 0);
 
                         long startL = vtStartLineNum.lVal;
-                        long startO = vtStartCharOffset.lVal + 1; // Сдвигаемся внутрь скобки {
-                        long endL = vtCloseLineNum.lVal;
-                        long endO = vtCloseCharOffset.lVal;       // Встаем ровно перед скобкой }
+                        // Хирургически сдвигаем временную точку старта на +1 символ вправо (строго внутрь скобки {)
+                        long startO = vtStartCharOffset.lVal + 1;
 
-                        // Атомарно выделяем весь многострочный блок аргументов
-                        AutoWrap(DISPATCH_METHOD, NULL, vtSelection.pdispVal, L"MoveToLineAndOffset", 3, CComVariant(startL), CComVariant(startO), CComVariant(0L));
-                        AutoWrap(DISPATCH_METHOD, NULL, vtSelection.pdispVal, L"MoveToLineAndOffset", 3, CComVariant(endL), CComVariant(endO), CComVariant(1L)); // 1L = Extend/Выделить
+                        AutoWrap(DISPATCH_METHOD, NULL, pSafeStartPoint.pdispVal, L"MoveToLineAndOffset", 2, CComVariant(startL), CComVariant(startO));
 
-                        // Вставляем обновленный код виджета поверх выделения
                         std::wstring wText(g_widgetBuffer.codeText.begin(), g_widgetBuffer.codeText.end());
                         CComBSTR bstrText(wText.c_str());
-                        AutoWrap(DISPATCH_METHOD, NULL, vtSelection.pdispVal, L"Insert", 1, CComVariant(bstrText));
 
-                        // Схлопываем выделение точно в конец вставленного текста.
-                        AutoWrap(DISPATCH_METHOD, NULL, vtSelection.pdispVal, L"Collapse", 1, CComVariant(2L)); // 2L = vsCollapseEnd
+                        // Стреляем заменой от скорректированной безопасной точки pSafeStartPoint
+                        AutoWrap(DISPATCH_METHOD, NULL, pSafeStartPoint.pdispVal, L"ReplaceText", 3,
+                            CComVariant(pWidgetEndEditPoint),
+                            CComVariant(bstrText),
+                            CComVariant(1L));
 
-                        VariantClear(&vtCloseCharOffset); VariantClear(&vtCloseLineNum);
                         VariantClear(&vtStartCharOffset); VariantClear(&vtStartLineNum);
+                    }
+
+                    // Синхронизируем текстовый курсор (каретку), чтобы он не прыгал
+                    VARIANT vtSelection; VariantInit(&vtSelection);
+                    if (SUCCEEDED(AutoWrap(DISPATCH_PROPERTYGET, &vtSelection, vtActiveDocLocal.pdispVal, L"Selection", 0)) && vtSelection.pdispVal) {
+
+                        VARIANT vtNewCursorLine, vtNewCursorOffset;
+                        VariantInit(&vtNewCursorLine); VariantInit(&vtNewCursorOffset);
+
+                        AutoWrap(DISPATCH_PROPERTYGET, &vtNewCursorLine, pWidgetEndEditPoint, L"Line", 0);
+                        AutoWrap(DISPATCH_PROPERTYGET, &vtNewCursorOffset, pWidgetEndEditPoint, L"LineCharOffset", 0);
+
+                        long finalLine = (vtNewCursorLine.vt == VT_I4) ? vtNewCursorLine.lVal : g_widgetBuffer.line;
+                        long finalOffset = (vtNewCursorOffset.vt == VT_I4) ? vtNewCursorOffset.lVal : 1;
+
+                        AutoWrap(DISPATCH_METHOD, NULL, vtSelection.pdispVal, L"MoveToLineAndOffset", 3,
+                            CComVariant(finalLine),
+                            CComVariant(finalOffset),
+                            CComVariant(0L));
+
+                        VariantClear(&vtNewCursorOffset); VariantClear(&vtNewCursorLine);
                         VariantClear(&vtSelection);
                     }
                 }
@@ -399,8 +416,6 @@ namespace LivePT {
         }
 
         // === КВАНТОВАНИЕ UNDO: КОНЕЦ ГЛОБАЛЬНОЙ ТРАНЗАКЦИИ ПО MOUSE UP ===
-        // Если пользователь физически отпустил кнопку мыши, а транзакция виджета всё ещё открыта — 
-        // мы атомарно закрываем её и сохраняем документ. Весь драг квантуется в одно событие!
         if (!isTriggerButtonDown && s_WidgetTransactionActive) {
             EndUndoTransaction();
             SaveActiveDocument();
@@ -412,6 +427,8 @@ namespace LivePT {
 
         vsEditor();
     }
+
+
 
 
 }

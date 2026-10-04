@@ -607,6 +607,12 @@ namespace LivePT {
 
     inline long AdjustCursorIndexForNumericContext(const std::wstring& lineText, long originalVisualColumn) {
         long cursorIdx = originalVisualColumn - 1;
+
+        // Если строка пустая или индекс изначально за границей текста, зажимаем его на конец строки
+        if (lineText.empty()) return 0;
+        if (cursorIdx >= static_cast<long>(lineText.length())) {
+            cursorIdx = static_cast<long>(lineText.length()) - 1;
+        }
         if (cursorIdx < 0) return 0;
 
         bool isCurrentNumeric = false;
@@ -615,7 +621,8 @@ namespace LivePT {
             isCurrentNumeric = iswdigit(ch) || ch == L'.' || ch == L'-' || ch == L'f' || ch == L'F';
         }
 
-        if (!isCurrentNumeric && cursorIdx > 0) {
+        // ИСПРАВЛЕНИЕ: Добавлена строгая проверка (cursorIdx - 1 < lineText.length()), чтобы не вылетать в ОЗУ
+        if (!isCurrentNumeric && cursorIdx > 0 && (cursorIdx - 1) < static_cast<long>(lineText.length())) {
             wchar_t leftCh = lineText[cursorIdx - 1];
             if (iswdigit(leftCh) || leftCh == L'.' || leftCh == L'-' || leftCh == L'f' || leftCh == L'F') {
                 return cursorIdx - 1;
@@ -623,6 +630,7 @@ namespace LivePT {
         }
         return cursorIdx;
     }
+
 
     // === ПОДФУНКЦИЯ 2: Проверка лексических границ числового символа ===
     inline bool IsNumericTokenChar(wchar_t ch) {

@@ -192,8 +192,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         Draw({
             .pos =      eval(pos2{
-				.x = -72.00f,
-				.y = -214.00f
+				.x = -53.00f,
+				.y = -44.00f
 				}),
             .size =     eval(size2{96,   197}),
             .Angle =    eval(angle(87.0f)),
@@ -207,7 +207,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
          });
 
         Draw({
-            .pos =      eval(pos2{358.01f, 218.10f}),
+            .pos =      eval(pos2{281.01f, 191.10f}),
             .size =     eval(size2{117.47f,94.56f}),
             .Angle =    eval(angle(67.7f)),
             .type =     eval(ptype::roundbox),
@@ -216,7 +216,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         });
 
         Draw({
-            .pos =      eval(pos2{-115.90f, 307.16f}),
+            .pos =      eval(pos2{-103.9ÿ0f, 261.16f}),
             .size =     eval(size2{168.1575f, 78.1812f}),
             .Angle =    eval(angle(5.3f)),
             .type =     eval(ptype::roundbox),
