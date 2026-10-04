@@ -604,13 +604,6 @@ namespace LivePT {
         // Поиск активного макроса по строгой геометрии
         int finalParamDescId = FindParamIdByStrictGeometry(normalizedPath, line, column);
 
-        // КРИТИЧЕСКИЙ ЛОГ ПОДБОРA ГЕОМЕТРИИ
-        /*if (wasChanged || finalParamDescId != -1) {
-            Log("[LivePT Debug VS] Cursor at " + std::to_string(line) + ":" + std::to_string(column) +
-                " | detected finalParamDescId: " + std::to_string(finalParamDescId) +
-                " | wasChanged: " + (wasChanged ? "TRUE" : "FALSE"));
-        }*/
-
         if (finalParamDescId != -1) {
             ParseAndStoreParamValueDirect(fileText, finalParamDescId);
         }

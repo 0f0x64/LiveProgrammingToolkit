@@ -58,6 +58,9 @@ namespace LivePT {
         return args;
     }
 
+    static IDispatch* pWidgetStartEditPoint = nullptr;
+    static IDispatch* pWidgetEndEditPoint = nullptr;
+
     struct DragState {
         bool isDragging = false;
         int targetParamId = -1;
@@ -69,7 +72,7 @@ namespace LivePT {
 
         bool pointBefore = false;
         long dragLine = 0;
-
+        long dragEndLine = 0;
         long dragStartCol = 0;
         size_t currentTextLength = 0;
 
@@ -802,8 +805,8 @@ namespace LivePT {
         g_widgetBuffer.codeText = text;
         g_widgetBuffer.hasChanges = true;
     }
-    // === ПОДФУНКЦИЯ 7: Универсальный текстовый запуск виджетов по имени типа ===
-       // === ПОДФУНКЦИЯ 7: Универсальный автономный запуск виджетов (С поддержкой многострочников) ===
+    
+
     inline bool TryInitStructWidgetDirect(const std::wstring& fileText, const std::wstring& lineText, long line, long column, long targetCharIdx) {
         if (fileText.empty() || lineText.empty()) return false;
 
@@ -831,8 +834,7 @@ namespace LivePT {
 
         // 3. Сканируем ПОЛНЫЙ текст файла вправо от имени типа, чтобы определить характер скобок
         size_t globalOpenIdx = std::wstring::npos;
-        wchar_t openChar = L'\0';
-        wchar_t closeChar = L'\0';
+        wchar_t openChar = L'\0'; wchar_t closeChar = L'\0';
 
         for (size_t k = absoluteTokenEndOffset; k < fileText.length(); ++k) {
             if (fileText[k] == L'{') { openChar = L'{'; closeChar = L'}'; globalOpenIdx = k; break; }
@@ -857,25 +859,74 @@ namespace LivePT {
 
         g_dragState.dragLine = line;
 
-        // Фиксируем колонку СРАЗУ ПОСЛЕ открывающей скобки
+        // 4. Вычисляем физические координаты СТАРТА аргументов (после открывающей скобки)
+        long startLine = line;
+        size_t lastNL_start = lineStartOffset;
+        size_t scanNL_start = fileText.find(L'\n', lineStartOffset);
+        while (scanNL_start != std::wstring::npos && scanNL_start < globalOpenIdx) {
+            startLine++;
+            lastNL_start = scanNL_start + 1;
+            scanNL_start = fileText.find(L'\n', lastNL_start);
+        }
+        long startOffset = static_cast<long>(globalOpenIdx - lastNL_start) + 1; // Ровно на скобку {
+
+        // 5. Вычисляем физические координаты КОНЦА аргументов (СТРОГО на символ закрывающей скобки)
+        long closeLine = line;
+        size_t lastNL_end = lineStartOffset;
+        size_t scanNL_end = fileText.find(L'\n', lineStartOffset);
+        while (scanNL_end != std::wstring::npos && scanNL_end < globalCloseIdx) {
+            closeLine++;
+            lastNL_end = scanNL_end + 1;
+            scanNL_end = fileText.find(L'\n', lastNL_end);
+        }
+        long closeOffset = static_cast<long>(globalCloseIdx - lastNL_end) + 1; // Ровно на скобку }
+
+        if (pWidgetStartEditPoint) { pWidgetStartEditPoint->Release(); pWidgetStartEditPoint = nullptr; }
+        if (pWidgetEndEditPoint) { pWidgetEndEditPoint->Release(); pWidgetEndEditPoint = nullptr; }
+
+        VARIANT vtActiveDoc; VariantInit(&vtActiveDoc);
+        if (SUCCEEDED(AutoWrap(DISPATCH_PROPERTYGET, &vtActiveDoc, pDTE, L"ActiveDocument", 0)) && vtActiveDoc.pdispVal) {
+            VARIANT vtSelection; VariantInit(&vtSelection);
+            if (SUCCEEDED(AutoWrap(DISPATCH_PROPERTYGET, &vtSelection, vtActiveDoc.pdispVal, L"Selection", 0)) && vtSelection.pdispVal) {
+                VARIANT vtActivePoint; VariantInit(&vtActivePoint);
+                if (SUCCEEDED(AutoWrap(DISPATCH_PROPERTYGET, &vtActivePoint, vtSelection.pdispVal, L"ActivePoint", 0)) && vtActivePoint.pdispVal) {
+
+                    HRESULT hr = AutoWrap(DISPATCH_METHOD, &vtActivePoint, vtActivePoint.pdispVal, L"CreateEditPoint", 0);
+                    if (SUCCEEDED(hr) && vtActivePoint.vt == VT_DISPATCH && vtActivePoint.pdispVal) {
+                        pWidgetStartEditPoint = vtActivePoint.pdispVal;
+                        pWidgetStartEditPoint->AddRef();
+                        AutoWrap(DISPATCH_METHOD, NULL, pWidgetStartEditPoint, L"MoveToLineAndOffset", 2, CComVariant(startLine), CComVariant(startOffset));
+                    }
+
+                    hr = AutoWrap(DISPATCH_METHOD, &vtActivePoint, vtActivePoint.pdispVal, L"CreateEditPoint", 0);
+                    if (SUCCEEDED(hr) && vtActivePoint.vt == VT_DISPATCH && vtActivePoint.pdispVal) {
+                        pWidgetEndEditPoint = vtActivePoint.pdispVal;
+                        pWidgetEndEditPoint->AddRef();
+                        AutoWrap(DISPATCH_METHOD, NULL, pWidgetEndEditPoint, L"MoveToLineAndOffset", 2, CComVariant(closeLine), CComVariant(closeOffset));
+                    }
+                }
+                VariantClear(&vtActivePoint); VariantClear(&vtSelection);
+            }
+            VariantClear(&vtActiveDoc);
+        }
+
         size_t localOpenIdxInLine = globalOpenIdx - lineStartOffset;
         g_dragState.dragStartCol = GetVisualColumn(lineText, localOpenIdxInLine + 1);
 
-        // Вырезаем потроха СТРОГО внутри скобок (без самих { и })
         std::wstring innerArgsW = fileText.substr(globalOpenIdx + 1, globalCloseIdx - globalOpenIdx - 1);
         std::string innerArgsA(innerArgsW.begin(), innerArgsW.end());
 
         g_dragState.currentTextLength = innerArgsW.length();
-        g_dragState.oldValueStr = typeNameA; // Сохраняем имя типа для vsEditor
+        g_dragState.oldValueStr = typeNameA;
 
         std::function<void(std::string)> vsUpdater = [line](std::string newCodeText) {
             PushWidgetTextUpdate(line, g_dragState.dragStartCol, newCodeText);
-            g_dragState.currentTextLength = newCodeText.length();
             };
 
         registry[typeNameA](std::any(innerArgsA), vsUpdater);
         return true;
     }
+
 
 
 
@@ -1071,6 +1122,16 @@ namespace LivePT {
     }
 
     inline void HandleMouseUp() {
+
+        if (pWidgetStartEditPoint) {
+            pWidgetStartEditPoint->Release();
+            pWidgetStartEditPoint = nullptr;
+        }
+        if (pWidgetEndEditPoint) {
+            pWidgetEndEditPoint->Release();
+            pWidgetEndEditPoint = nullptr;
+        }
+
         if (!g_dragState.isDragging && !g_dragState.isProportionalStructDrag) {
             if (g_hShieldWnd) {
                 ReleaseCapture();
