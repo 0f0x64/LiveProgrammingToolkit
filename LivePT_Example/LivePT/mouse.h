@@ -552,7 +552,19 @@ namespace LivePT {
 
         if (!isCurrentNumeric && cursorIdx > 0 && (cursorIdx - 1) < static_cast<long>(lineText.length())) {
             wchar_t leftCh = lineText[cursorIdx - 1];
+
+            // Если символ слева — цифра или точка/минус
             if (iswdigit(leftCh) || leftCh == L'.' || leftCh == L'-' || leftCh == L'f' || leftCh == L'F') {
+
+                // ЗАЩИТА: Проверяем, не является ли эта цифра концом имени типа (как в pos2, color3, size2)
+                if (iswdigit(leftCh) && (cursorIdx - 2) >= 0) {
+                    wchar_t preLeftCh = lineText[cursorIdx - 2];
+                    if (iswalpha(preLeftCh)) {
+                        // Это буква перед цифрой (например, 's' перед '2'). Игнорируем сдвиг!
+                        return cursorIdx;
+                    }
+                }
+
                 return cursorIdx - 1;
             }
         }
@@ -950,6 +962,23 @@ namespace LivePT {
             if (TryInitSingleNumericDrag(currentLineText, line, column, targetCharIdx, pt)) {
                 VariantClear(&vtActiveDoc);
                 return true;
+            }
+        }
+        else if (iswalpha(targetedChar) || targetedChar == L'{' || targetedChar == L'(') {
+            // Выделяем имя токена (типа) под курсором
+            long tokenStart = targetCharIdx; long tokenEnd = targetCharIdx;
+            while (tokenStart > 0 && iswalnum(currentLineText[tokenStart - 1])) tokenStart--;
+            while (tokenEnd < static_cast<long>(currentLineText.length()) && iswalnum(currentLineText[tokenEnd])) tokenEnd++;
+
+            if (tokenStart < tokenEnd) {
+                std::wstring typeNameW = currentLineText.substr(tokenStart, tokenEnd - tokenStart);
+                std::string typeNameA(typeNameW.begin(), typeNameW.end());
+
+                // Проверяем, зарегистрирован ли драг для этого типа
+                auto& dragRegistry = GetCustomDragRegistry();
+                if (dragRegistry.find(typeNameA) != dragRegistry.end()) {
+                    LivePT::Log("[LivePT Тест] Успешно зажали тип: " + typeNameA + " на строке " + std::to_string(line));
+                }
             }
         }
 
