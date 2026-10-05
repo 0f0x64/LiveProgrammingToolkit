@@ -100,28 +100,57 @@ namespace DrugLogic {
 
     // === FIX: Universal string-based pos2Drag ===
         // === FIX: Universal string-based pos2Drag ===
+        // === FIX: Universal string-based pos2Drag ===
+       // === FIX: Universal string-based pos2Drag ===
     inline std::string pos2Drag(const std::string& currentArgsStr, const ::LivePT::DragMathInput& input) {
         float x = 0.0f, y = 0.0f;
+        bool parsed = false;
 
-        // Очищаем строку от суффиксов 'f', чтобы sscanf не спотыкался на них
-        std::string cleanStr = currentArgsStr;
-        cleanStr.erase(std::remove(cleanStr.begin(), cleanStr.end(), 'f'), cleanStr.end());
-        cleanStr.erase(std::remove(cleanStr.begin(), cleanStr.end(), 'F'), cleanStr.end());
+        // 1. НАДЕЖНЫЙ МНОГОСТРОЧНЫЙ ПАРСИНГ (.x = ... .y = ...)
+        size_t xPos = currentArgsStr.find(".x");
+        size_t yPos = currentArgsStr.find(".y");
 
-        // Безопасный последовательный разбор чисел
-        if (sscanf_s(cleanStr.c_str(), "%f, %f", &x, &y) != 2) {
-            if (sscanf_s(cleanStr.c_str(), "%*[^0-9.-]%f%*[^0-9.-]%f", &x, &y) != 2) {
-                return currentArgsStr;
+        if (xPos != std::string::npos && yPos != std::string::npos) {
+            size_t xValStart = currentArgsStr.find('=', xPos);
+            size_t yValStart = currentArgsStr.find('=', yPos);
+            if (xValStart != std::string::npos && yValStart != std::string::npos) {
+                x = std::stof(currentArgsStr.substr(xValStart + 1));
+                y = std::stof(currentArgsStr.substr(yValStart + 1));
+                parsed = true;
             }
         }
 
+        // 2. ОДНОСТРОЧНЫЙ ФОЛБЭК (Числа через запятую: 268.01f, 14.10f)
+        if (!parsed) {
+            std::string cleanStr = currentArgsStr;
+            cleanStr.erase(std::remove(cleanStr.begin(), cleanStr.end(), 'f'), cleanStr.end());
+            cleanStr.erase(std::remove(cleanStr.begin(), cleanStr.end(), 'F'), cleanStr.end());
+            if (sscanf_s(cleanStr.c_str(), "%f, %f", &x, &y) != 2) {
+                return currentArgsStr; // Если и тут крах — выходим
+            }
+        }
+
+        // 3. Вычисляем дельту движения мыши
         float speedScale = input.ctrl ? 1.0f : (input.shift ? 0.01f : 0.1f);
         x += static_cast<float>(input.mouseFrameDeltaX) * speedScale;
         y -= static_cast<float>(input.mouseFrameDeltaY) * speedScale;
 
+        // 4. Сохраняем исходное форматирование табов
+        std::string prefixTabs = "";
+        size_t firstNewLine = currentArgsStr.find('\n');
+        if (firstNewLine != std::string::npos) {
+            size_t idx = firstNewLine + 1;
+            while (idx < currentArgsStr.length() && (currentArgsStr[idx] == '\t' || currentArgsStr[idx] == ' ')) {
+                prefixTabs += currentArgsStr[idx];
+                idx++;
+            }
+        }
+        if (prefixTabs.empty()) prefixTabs = "\t\t\t\t";
+
         char outBuf[256]{};
         if (currentArgsStr.find(".x") != std::string::npos) {
-            sprintf_s(outBuf, "\n\t\t\t\t.x = %.2ff,\n\t\t\t\t.y = %.2ff\n\t\t\t\t", x, y);
+            sprintf_s(outBuf, "\n%s.x = %.2ff,\n%s.y = %.2ff\n%s",
+                prefixTabs.c_str(), x, prefixTabs.c_str(), y, prefixTabs.c_str());
         }
         else {
             sprintf_s(outBuf, "%.2ff, %.2ff", x, y);
@@ -130,23 +159,39 @@ namespace DrugLogic {
     }
 
 
+
     // === FIX: Universal string-based size2Drag ===
+        // === FIX: Universal string-based size2Drag ===
         // === FIX: Universal string-based size2Drag ===
     inline std::string size2Drag(const std::string& currentArgsStr, const ::LivePT::DragMathInput& input) {
         float w = 0.0f, h = 0.0f;
+        bool parsed = false;
 
-        // Очищаем строку от суффиксов 'f'
-        std::string cleanStr = currentArgsStr;
-        cleanStr.erase(std::remove(cleanStr.begin(), cleanStr.end(), 'f'), cleanStr.end());
-        cleanStr.erase(std::remove(cleanStr.begin(), cleanStr.end(), 'F'), cleanStr.end());
+        // 1. НАДЕЖНЫЙ МНОГОСТРОЧНЫЙ ПАРСИНГ (.w = ... .h = ...)
+        size_t wPos = currentArgsStr.find(".w");
+        size_t hPos = currentArgsStr.find(".h");
 
-        // Безопасный последовательный разбор чисел
-        if (sscanf_s(cleanStr.c_str(), "%f, %f", &w, &h) != 2) {
-            if (sscanf_s(cleanStr.c_str(), "%*[^0-9.-]%f%*[^0-9.-]%f", &w, &h) != 2) {
+        if (wPos != std::string::npos && hPos != std::string::npos) {
+            size_t wValStart = currentArgsStr.find('=', wPos);
+            size_t hValStart = currentArgsStr.find('=', hPos);
+            if (wValStart != std::string::npos && hValStart != std::string::npos) {
+                w = std::stof(currentArgsStr.substr(wValStart + 1));
+                h = std::stof(currentArgsStr.substr(hValStart + 1));
+                parsed = true;
+            }
+        }
+
+        // 2. ОДНОСТРОЧНЫЙ ФОЛБЭК
+        if (!parsed) {
+            std::string cleanStr = currentArgsStr;
+            cleanStr.erase(std::remove(cleanStr.begin(), cleanStr.end(), 'f'), cleanStr.end());
+            cleanStr.erase(std::remove(cleanStr.begin(), cleanStr.end(), 'F'), cleanStr.end());
+            if (sscanf_s(cleanStr.c_str(), "%f, %f", &w, &h) != 2) {
                 return currentArgsStr;
             }
         }
 
+        // 3. Масштабирование
         float multiplier = 1.0f + (input.mouseFrameDeltaY * 0.005f);
         if (multiplier < 0.0f) multiplier = 0.0f;
 
@@ -160,15 +205,29 @@ namespace DrugLogic {
             if (h == 0.0f) h += added;
         }
 
+        // 4. Сохраняем исходное форматирование табов
+        std::string prefixTabs = "";
+        size_t firstNewLine = currentArgsStr.find('\n');
+        if (firstNewLine != std::string::npos) {
+            size_t idx = firstNewLine + 1;
+            while (idx < currentArgsStr.length() && (currentArgsStr[idx] == '\t' || currentArgsStr[idx] == ' ')) {
+                prefixTabs += currentArgsStr[idx];
+                idx++;
+            }
+        }
+        if (prefixTabs.empty()) prefixTabs = "\t\t\t\t";
+
         char outBuf[256]{};
         if (currentArgsStr.find(".w") != std::string::npos) {
-            sprintf_s(outBuf, "\n\t\t\t\t.w = %.2ff,\n\t\t\t\t.h = %.2ff\n\t\t\t\t", w, h);
+            sprintf_s(outBuf, "\n%s.w = %.2ff,\n%s.h = %.2ff\n%s",
+                prefixTabs.c_str(), w, prefixTabs.c_str(), h, prefixTabs.c_str());
         }
         else {
             sprintf_s(outBuf, "%.2ff, %.2ff", w, h);
         }
         return outBuf;
     }
+
 
 
 } // namespace DrugLogic
