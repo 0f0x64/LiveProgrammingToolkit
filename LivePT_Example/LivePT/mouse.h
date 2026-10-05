@@ -337,33 +337,6 @@ namespace LivePT {
         return true;
     }
 
-    inline bool ParseMacroValueBoundaries(const std::wstring& fileText, long line, size_t targetEvalAbsolutePos) {
-        size_t openBracket = fileText.find(L'(', targetEvalAbsolutePos);
-        size_t closeBracket = FindCloseBracket(fileText, openBracket);
-
-        if (openBracket == std::wstring::npos || closeBracket == std::wstring::npos) return false;
-
-        g_dragState.dragLine = line;
-
-        size_t lineStartOffset = 0; long currentLineIdx = 1;
-        while (currentLineIdx < line) { lineStartOffset = fileText.find(L'\n', lineStartOffset) + 1; currentLineIdx++; }
-
-        size_t lineEndOffset = fileText.find(L'\n', lineStartOffset);
-        if (lineEndOffset == std::wstring::npos) lineEndOffset = fileText.length();
-        std::wstring wholeLineText = fileText.substr(lineStartOffset, lineEndOffset - lineStartOffset);
-
-        g_dragState.dragStartCol = GetVisualColumn(wholeLineText, openBracket - lineStartOffset) + 1;
-        g_dragState.currentTextLength = closeBracket - openBracket - 1;
-
-        std::wstring innerW = fileText.substr(openBracket + 1, g_dragState.currentTextLength);
-        std::string cleanText(innerW.begin(), innerW.end());
-        cleanText.erase(0, cleanText.find_first_not_of(" \t\r\n"));
-        cleanText.erase(cleanText.find_last_not_of(" \t\r\n") + 1);
-        g_dragState.startTextValue = cleanText;
-
-        return true;
-    }
-
     inline void InitMultiEnumSelection(int id) {
 
         g_dragState.isDragging = false;
