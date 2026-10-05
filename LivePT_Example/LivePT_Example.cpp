@@ -192,37 +192,50 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         Draw({
             .pos =      eval(pos2{
-				.x = -95.17f,
-				.y = -240.88f
+				.x = -215.47f,
+				.y = -236.38f
 				}),
-            .size =     eval(size2{154, 157}),
-            .Angle =    eval(angle(110.0f)),
+            .size =     eval(size2{135.12f, 137.75f}),
+            .Angle =    eval(angle(104.0f)),
             .type =     eval(ptype::circle),
             .show =     eval(true),
             .color = eval(color3{
-				.r=19, 
-				.g=78,  
-				.b=0
+				.r=111, 
+				.g=20,  
+				.b=32
 				}) 
          });
 
         Draw({
-            .pos =      eval(pos2{307.81f, -18.70f}),
-            .size =     eval(size2{151.16f, 140.26f}),
-            .Angle =    eval(angle(111.7f)),
-            .type =     eval(ptype::box),
+            .pos =      eval(pos2{250.61f, -63.60f}),
+            .size =     eval(size2{139.91f, 120.09f}),
+            .Angle =    eval(angle(135.7f)),
+            .type =     eval(ptype::circle),
             .show =     eval(true),
-            .color =    eval(color3{31, 97, 19})
+            .color =    eval(color3{61, 107, 66})
         });
 
-        Draw({
+/*        Draw({
             .pos =      eval(pos2{-27.18f, 143.96f}),
             .size =     eval(size2{220.84f, 114.10f}),
             .Angle =    eval(angle(54.3f)),
             .type =     eval(ptype::roundbox),
             .show =     eval(true),
             .color =    eval(color3{29, 49, 193})
-        });
+        });*/
+
+        Draw(
+            eval(
+                Primitive{
+                    pos2{-10.68f, 207.56f},
+                    size2{187.62f, 96.91f},
+                    angle(130.6f),
+                    ptype::box,
+                    true,
+                    color3{40, 0, 145}
+                }
+                )
+            );
 
         BitBlt(hdc, 0, 0, w, h, memDC, 0, 0, SRCCOPY);
         SelectObject(memDC, oldBM);

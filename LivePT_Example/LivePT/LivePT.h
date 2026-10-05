@@ -133,7 +133,7 @@ namespace LivePT {
     };
 
     static LptRuntimeLifetimeManager g_runtimeLifetimeManager;
-
+    inline std::atomic<bool> g_IsLptPdbWarmupCompleted{ false };
 
     inline void WarmupAllDatabaseParams() {
         static bool isWarmedUp = false;
@@ -213,6 +213,7 @@ namespace LivePT {
                     structMetadataCache.emplace(currentTypeInfo, std::move(loadedMembers));
                 }
             }
+            g_IsLptPdbWarmupCompleted = true;
             Log("[LivePT Async Warmup] Background PDB parsing completed. Library is fully ready.");
             });
 
@@ -315,6 +316,8 @@ namespace LivePT {
 #if LivePT_WindowManagement
         GetWindowManager().Tick();
 #endif
+
+        if (!g_IsLptPdbWarmupCompleted) return;
 
 #if LivePT_Mouse
         // 1. Выгружаем обычные мышиные буферы одиночных чисел
