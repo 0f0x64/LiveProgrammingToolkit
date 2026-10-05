@@ -481,7 +481,7 @@ namespace LivePT {
         if (id == -1) return;
 
         auto& registry = LivePT::GetCustomDragRegistry();
-        auto it = registry.find(g_dragState.oldValueStr); // Aggregate type name is stored here
+        auto it = registry.find(g_dragState.oldValueStr);
         if (it == registry.end()) return;
 
         LivePT::CustomTypeDragCallback typeCallback = it->second;
@@ -492,30 +492,41 @@ namespace LivePT {
         input.ctrl = ctrl;
         input.shift = shift;
 
-        // Feed the string layout directly to your string-based custom drag loop
         std::string updatedArgsText = typeCallback(g_dragState.startTextValue, input);
 
         if (updatedArgsText != g_dragState.startTextValue) {
+
             if (input.mouseFrameDeltaX != 0 || input.mouseFrameDeltaY != 0) {
                 SetCursorPos(g_dragState.lockMousePos.x, g_dragState.lockMousePos.y);
             }
 
-            long visualEndCol = g_dragState.dragStartCol + static_cast<long>(g_dragState.currentTextLength);
-            long newCursorPhysicalCol = g_dragState.dragStartCol + static_cast<long>(updatedArgsText.length());
+            if (pWidgetStartEditPoint && pWidgetEndEditPoint) {
 
-            // FIX: Successfully utilizing the signature-compliant 5-argument version
-            ReplaceTextInActiveVS(
-                g_dragState.dragLine,
-                g_dragState.dragStartCol,
-                visualEndCol,
-                updatedArgsText,
-                newCursorPhysicalCol
-            );
+                CComVariant pSafeStartPoint;
+                HRESULT hr = AutoWrap(DISPATCH_METHOD, &pSafeStartPoint, pWidgetStartEditPoint, L"CreateEditPoint", 0);
+
+                if (SUCCEEDED(hr) && pSafeStartPoint.vt == VT_DISPATCH && pSafeStartPoint.pdispVal) {
+
+                    // ’»–”–√»„≈— јя «јў»“ј: ƒелаем шаг на 1 символ вправо у временной точки,
+                    // чтобы уйти внутрь открывающей скобки и не затереть еЄ (как в логике ProcessEdit!)
+                    AutoWrap(DISPATCH_METHOD, NULL, pSafeStartPoint.pdispVal, L"CharRight", 1, CComVariant(1L));
+
+                    std::wstring wText(updatedArgsText.begin(), updatedArgsText.end());
+                    CComBSTR bstrText(wText.c_str());
+
+                    AutoWrap(DISPATCH_METHOD, NULL, pSafeStartPoint.pdispVal, L"ReplaceText", 3,
+                        CComVariant(pWidgetEndEditPoint),
+                        CComVariant(bstrText),
+                        CComVariant(1L));
+                }
+            }
 
             g_dragState.currentTextLength = updatedArgsText.length();
             g_dragState.startTextValue = updatedArgsText;
         }
     }
+
+
 
     inline long AdjustCursorIndexForNumericContext(const std::wstring& lineText, long originalVisualColumn) {
         if (lineText.empty()) return 0;
@@ -1102,6 +1113,7 @@ namespace LivePT {
             CreateDragShield(pt);
         }
 
+        // === ¬ќ“ Ё“ќ“ ЅЋќ : переключаем покадровую обработку на наш флаг ===
         if (g_dragState.isProportionalStructDrag) {
             DragProportionalStructValue(pt, ctrl, shift);
         }
@@ -1121,6 +1133,7 @@ namespace LivePT {
             pWidgetEndEditPoint = nullptr;
         }
 
+        // ѕровер€ем, что не активен ни один из режимов
         if (!g_dragState.isDragging && !g_dragState.isProportionalStructDrag) {
             if (g_hShieldWnd) {
                 ReleaseCapture();
@@ -1143,6 +1156,7 @@ namespace LivePT {
         EndUndoTransaction();
         SaveActiveDocument();
 
+        // —брасываем оба флага рантайм-состо€ни€
         g_dragState.isDragging = false;
         g_dragState.isProportionalStructDrag = false;
         g_dragState.targetParamId = -1;
@@ -1159,6 +1173,7 @@ namespace LivePT {
             g_vsThreadId = 0;
         }
     }
+
  // namespace LivePT
 
 
