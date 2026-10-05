@@ -651,64 +651,6 @@ namespace LivePT {
     }
 
 
-    inline bool TryInitStructDragDirect(const std::wstring& fileText, const std::wstring& lineText, long line, long targetCharIdx, const POINT& pt) {
-        // 1. Выделяем имя токена (типа) под курсором
-        long tokenStart = targetCharIdx; long tokenEnd = targetCharIdx;
-        while (tokenStart > 0 && iswalnum(lineText[tokenStart - 1])) tokenStart--;
-        while (tokenEnd < static_cast<long>(lineText.length()) && iswalnum(lineText[tokenEnd])) tokenEnd++;
-        if (tokenStart >= tokenEnd) return false;
-
-        std::wstring typeNameW = lineText.substr(tokenStart, tokenEnd - tokenStart);
-        std::string typeNameA(typeNameW.begin(), typeNameW.end());
-
-        // Проверяем по реестру, зарегистрирован ли покадровый Drag-коллбэк для этого типа
-        auto& dragRegistry = GetCustomDragRegistry();
-        if (dragRegistry.find(typeNameA) == dragRegistry.end()) return false;
-
-        // 2. Находим абсолютное смещение начала текущей строки в полном тексте файла
-        size_t lineStartOffset = 0; long currentLineIdx = 1;
-        while (currentLineIdx < line && lineStartOffset < fileText.length()) {
-            size_t nextNL = fileText.find(L'\n', lineStartOffset);
-            if (nextNL != std::wstring::npos) { lineStartOffset = nextNL + 1; currentLineIdx++; }
-            else break;
-        }
-        size_t absoluteTokenEndOffset = lineStartOffset + tokenEnd;
-
-        // 3. Сканируем полный текст файла вправо в поиске открывающей скобки структурированного агрегата
-        size_t globalOpenIdx = std::wstring::npos;
-        wchar_t openChar = L'\0'; wchar_t closeChar = L'\0';
-        for (size_t k = absoluteTokenEndOffset; k < fileText.length(); ++k) {
-            if (fileText[k] == L'{') { openChar = L'{'; closeChar = L'}'; globalOpenIdx = k; break; }
-            if (fileText[k] == L'(') { openChar = L'('; closeChar = L')'; globalOpenIdx = k; break; }
-            if (!iswspace(fileText[k])) break;
-        }
-        if (globalOpenIdx == std::wstring::npos) return false;
-
-        // 4. Ищем парную закрывающую скобку агрегата с учетом баланса вложенности
-        size_t globalCloseIdx = std::wstring::npos;
-        int bracketCount = 1;
-        for (size_t k = globalOpenIdx + 1; k < fileText.length(); ++k) {
-            if (fileText[k] == openChar) bracketCount++;
-            if (fileText[k] == closeChar) {
-                bracketCount--;
-                if (bracketCount == 0) { globalCloseIdx = k; break; }
-            }
-        }
-        if (globalCloseIdx == std::wstring::npos) return false;
-
-        // 5. Вырезаем внутренний контент аргументов
-        std::wstring innerArgsW = fileText.substr(globalOpenIdx + 1, globalCloseIdx - globalOpenIdx - 1);
-        std::string innerArgsA(innerArgsW.begin(), innerArgsW.end());
-
-        // ВРЕМЕННЫЙ ДИАГНОСТИЧЕСКИЙ ВЫВОД ДЛЯ КОНТРОЛЯ РЕЗУЛЬТАТА
-        LivePT::Log("[LivePT Тест] Функция TryInitStructDragDirect перехватила тип: " + typeNameA + " | Тело: " + innerArgsA);
-
-        // На первом этапе возвращаем false, чтобы просто проверить факт чистого парсинга без запуска драга
-        return false;
-    }
-
-
-
     // === ПОДФУНКЦИЯ 5: Мгновенное переключение булевых значений по даблклику ===
     inline bool TryToggleBooleanDirect(const std::wstring& lineText, long line, long targetCharIdx) {
         // Выделяем границы слова вокруг курсора
@@ -832,24 +774,19 @@ namespace LivePT {
         g_widgetBuffer.hasChanges = true;
     }
     
-
-    inline bool TryInitStructWidgetDirect(const std::wstring& fileText, const std::wstring& lineText, long line, long column, long targetCharIdx) {
+    inline bool ExtractStructBoundaries(const std::wstring& fileText, const std::wstring& lineText, long line, long targetCharIdx, std::string& outInnerArgsA, long& outVisualStartCol, std::string& outTypeNameA) {
         if (fileText.empty() || lineText.empty()) return false;
 
-        // 1. Вырезаем имя типа из текста текущей строки (например, "pos2")
+        // 1. Вырезаем имя типа (токен) из текущей строки
         long tokenStart = targetCharIdx; long tokenEnd = targetCharIdx;
         while (tokenStart > 0 && iswalnum(lineText[tokenStart - 1])) tokenStart--;
         while (tokenEnd < static_cast<long>(lineText.length()) && iswalnum(lineText[tokenEnd])) tokenEnd++;
         if (tokenStart >= tokenEnd) return false;
 
         std::wstring typeNameW = lineText.substr(tokenStart, tokenEnd - tokenStart);
-        std::string typeNameA(typeNameW.begin(), typeNameW.end());
+        outTypeNameA = std::string(typeNameW.begin(), typeNameW.end());
 
-        // Проверяем, зарегистрирован ли вообще такой текстовый виджет в системе
-        auto& registry = GetTypeCallbackRegistry();
-        if (registry.find(typeNameA) == registry.end()) return false;
-
-        // 2. Находим абсолютное смещение начала макроса в ПОЛНОМ тексте файла
+        // 2. Находим абсолютное смещение конца имени типа в файле
         size_t lineStartOffset = 0; long currentLineIdx = 1;
         while (currentLineIdx < line && lineStartOffset < fileText.length()) {
             size_t nextNL = fileText.find(L'\n', lineStartOffset);
@@ -858,19 +795,16 @@ namespace LivePT {
         }
         size_t absoluteTokenEndOffset = lineStartOffset + tokenEnd;
 
-        // 3. Сканируем ПОЛНЫЙ текст файла вправо от имени типа, чтобы определить характер скобок
+        // 3. Сканируем скобки вправо с защитой многострочников
         size_t globalOpenIdx = std::wstring::npos;
         wchar_t openChar = L'\0'; wchar_t closeChar = L'\0';
-
         for (size_t k = absoluteTokenEndOffset; k < fileText.length(); ++k) {
             if (fileText[k] == L'{') { openChar = L'{'; closeChar = L'}'; globalOpenIdx = k; break; }
             if (fileText[k] == L'(') { openChar = L'('; closeChar = L')'; globalOpenIdx = k; break; }
             if (!iswspace(fileText[k])) break;
         }
-
         if (globalOpenIdx == std::wstring::npos) return false;
 
-        // Ищем парную закрывающую скобку по всему объему файла
         size_t globalCloseIdx = std::wstring::npos;
         int bracketCount = 1;
         for (size_t k = globalOpenIdx + 1; k < fileText.length(); ++k) {
@@ -880,33 +814,26 @@ namespace LivePT {
                 if (bracketCount == 0) { globalCloseIdx = k; break; }
             }
         }
-
         if (globalCloseIdx == std::wstring::npos) return false;
 
-        g_dragState.dragLine = line;
-
-        // 4. Вычисляем физические координаты СТАРТА аргументов (после открывающей скобки)
-        long startLine = line;
-        size_t lastNL_start = lineStartOffset;
+        // 4. Вычисляем строки и офсеты для COM EditPoints
+        long startLine = line; size_t lastNL_start = lineStartOffset;
         size_t scanNL_start = fileText.find(L'\n', lineStartOffset);
         while (scanNL_start != std::wstring::npos && scanNL_start < globalOpenIdx) {
-            startLine++;
-            lastNL_start = scanNL_start + 1;
+            startLine++; lastNL_start = scanNL_start + 1;
             scanNL_start = fileText.find(L'\n', lastNL_start);
         }
-        long startOffset = static_cast<long>(globalOpenIdx - lastNL_start) + 1; // Ровно на скобку {
+        long startOffset = static_cast<long>(globalOpenIdx - lastNL_start) + 1; // Хирургический сдвиг внутрь {
 
-        // 5. Вычисляем физические координаты КОНЦА аргументов (СТРОГО на символ закрывающей скобки)
-        long closeLine = line;
-        size_t lastNL_end = lineStartOffset;
+        long closeLine = line; size_t lastNL_end = lineStartOffset;
         size_t scanNL_end = fileText.find(L'\n', lineStartOffset);
         while (scanNL_end != std::wstring::npos && scanNL_end < globalCloseIdx) {
-            closeLine++;
-            lastNL_end = scanNL_end + 1;
+            closeLine++; lastNL_end = scanNL_end + 1;
             scanNL_end = fileText.find(L'\n', lastNL_end);
         }
-        long closeOffset = static_cast<long>(globalCloseIdx - lastNL_end) + 1; // Ровно на скобку }
+        long closeOffset = static_cast<long>(globalCloseIdx - lastNL_end) + 1; // Ровно на закрывающую скобку }
 
+        // Пересоздаем глобальные COM-якоря
         if (pWidgetStartEditPoint) { pWidgetStartEditPoint->Release(); pWidgetStartEditPoint = nullptr; }
         if (pWidgetEndEditPoint) { pWidgetEndEditPoint->Release(); pWidgetEndEditPoint = nullptr; }
 
@@ -919,15 +846,12 @@ namespace LivePT {
 
                     HRESULT hr = AutoWrap(DISPATCH_METHOD, &vtActivePoint, vtActivePoint.pdispVal, L"CreateEditPoint", 0);
                     if (SUCCEEDED(hr) && vtActivePoint.vt == VT_DISPATCH && vtActivePoint.pdispVal) {
-                        pWidgetStartEditPoint = vtActivePoint.pdispVal;
-                        pWidgetStartEditPoint->AddRef();
+                        pWidgetStartEditPoint = vtActivePoint.pdispVal; pWidgetStartEditPoint->AddRef();
                         AutoWrap(DISPATCH_METHOD, NULL, pWidgetStartEditPoint, L"MoveToLineAndOffset", 2, CComVariant(startLine), CComVariant(startOffset));
                     }
-
                     hr = AutoWrap(DISPATCH_METHOD, &vtActivePoint, vtActivePoint.pdispVal, L"CreateEditPoint", 0);
                     if (SUCCEEDED(hr) && vtActivePoint.vt == VT_DISPATCH && vtActivePoint.pdispVal) {
-                        pWidgetEndEditPoint = vtActivePoint.pdispVal;
-                        pWidgetEndEditPoint->AddRef();
+                        pWidgetEndEditPoint = vtActivePoint.pdispVal; pWidgetEndEditPoint->AddRef();
                         AutoWrap(DISPATCH_METHOD, NULL, pWidgetEndEditPoint, L"MoveToLineAndOffset", 2, CComVariant(closeLine), CComVariant(closeOffset));
                     }
                 }
@@ -936,13 +860,71 @@ namespace LivePT {
             VariantClear(&vtActiveDoc);
         }
 
+        if (!pWidgetStartEditPoint || !pWidgetEndEditPoint) return false;
+
         size_t localOpenIdxInLine = globalOpenIdx - lineStartOffset;
-        g_dragState.dragStartCol = GetVisualColumn(lineText, localOpenIdxInLine + 1);
+        outVisualStartCol = GetVisualColumn(lineText, localOpenIdxInLine + 1);
 
         std::wstring innerArgsW = fileText.substr(globalOpenIdx + 1, globalCloseIdx - globalOpenIdx - 1);
-        std::string innerArgsA(innerArgsW.begin(), innerArgsW.end());
+        outInnerArgsA = ConvertWStringToUtf8(innerArgsW);
+        return true;
+    }
 
-        g_dragState.currentTextLength = innerArgsW.length();
+    inline bool TryInitStructDragDirect(const std::wstring& fileText, const std::wstring& lineText, long line, long column, long targetCharIdx, const POINT& pt) {
+        std::string innerArgsA, typeNameA;
+        long visualStartCol = 0;
+
+        // Вызываем общего рабочего. Если структуры нет или COM-ошибка — тихо выходим
+        if (!ExtractStructBoundaries(fileText, lineText, line, targetCharIdx, innerArgsA, visualStartCol, typeNameA)) {
+            return false;
+        }
+
+        // Проверяем наличие покадрового коллбэка в реестре драга
+        auto& dragRegistry = GetCustomDragRegistry();
+        if (dragRegistry.find(typeNameA) == dragRegistry.end()) return false;
+
+        // Настраиваем рантайм-состояние покадрового пропорционального драга мыши
+        g_dragState.dragLine = line;
+        g_dragState.dragStartCol = visualStartCol;
+        g_dragState.currentTextLength = innerArgsA.length();
+
+        g_dragState.oldValueStr = typeNameA;       // Имя типа для реестра коллбэков ("pos2")
+        g_dragState.startTextValue = innerArgsA;   // Полный текст аргументов внутри скобок
+
+        g_dragState.oldMouseX = pt.x;
+        g_dragState.oldMouseY = pt.y;
+        g_dragState.lockMousePos = pt;
+
+        g_dragState.isDragging = false;
+        g_dragState.isProportionalStructDrag = true;
+
+        StartUndoTransaction(L"LivePT Proportional Struct Drag");
+
+        if (!g_dragState.isCursorHidden) {
+            ShowCursor(FALSE);
+            g_dragState.isCursorHidden = true;
+        }
+
+        std::string normalizedPath = LivePT::NormalizePath(g_currentActiveFile.c_str());
+        g_dragState.targetParamId = FindParamIdByStrictGeometry(normalizedPath, line, column);
+
+        return true;
+    }
+
+    inline bool TryInitStructWidgetDirect(const std::wstring& fileText, const std::wstring& lineText, long line, long column, long targetCharIdx) {
+        std::string innerArgsA, typeNameA;
+        long visualStartCol = 0;
+
+        if (!ExtractStructBoundaries(fileText, lineText, line, targetCharIdx, innerArgsA, visualStartCol, typeNameA)) {
+            return false;
+        }
+
+        auto& registry = GetTypeCallbackRegistry();
+        if (registry.find(typeNameA) == registry.end()) return false;
+
+        g_dragState.dragLine = line;
+        g_dragState.dragStartCol = visualStartCol;
+        g_dragState.currentTextLength = innerArgsA.length();
         g_dragState.oldValueStr = typeNameA;
 
         std::function<void(std::string)> vsUpdater = [line](std::string newCodeText) {
@@ -952,6 +934,7 @@ namespace LivePT {
         registry[typeNameA](std::any(innerArgsA), vsUpdater);
         return true;
     }
+
 
     inline bool HandleMouseDown(const POINT& pt) {
         if (!initVsEditor()) {
@@ -1018,11 +1001,12 @@ namespace LivePT {
             }
         }
         else if (iswalpha(targetedChar) || targetedChar == L'{' || targetedChar == L'(') {
-            if (TryInitStructDragDirect(fileText, currentLineText, line, targetCharIdx, pt)) {
+            if (TryInitStructDragDirect(fileText,currentLineText, line, column, targetCharIdx, pt)) {
                 VariantClear(&vtActiveDoc);
                 return true;
             }
         }
+
 
         VariantClear(&vtActiveDoc);
         return false;

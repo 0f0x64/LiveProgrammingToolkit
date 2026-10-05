@@ -192,8 +192,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         Draw({
             .pos =      eval(pos2{
-				.x = -137.24f,
-				.y = -264.18f
+				.x = -97.24f,
+				.y = -289.18f
 				}),
             .size =     eval(size2{154, 157}),
             .Angle =    eval(angle(110.0f)),
@@ -201,8 +201,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             .show =     eval(true),
             .color = eval(color3{
 				.r=99, 
-				.g=48,  
-				.b=31
+				.g=41,  
+				.b=25
 				}) 
          });
 
