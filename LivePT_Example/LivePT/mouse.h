@@ -609,6 +609,15 @@ namespace LivePT {
         ScanNumericTokenBoundaries(lineText, targetCharIdx, startCol, endCol);
 
         if (startCol < endCol) {
+
+            if (startCol > 0) {
+                wchar_t charBeforeToken = lineText[startCol - 1];
+                if (iswalpha(charBeforeToken)) {
+                    // Слева стоит буква! Это не изолированное число, а часть имени типа. Отменяем драг.
+                    return false;
+                }
+            }
+
             std::wstring numW = lineText.substr(startCol, endCol - startCol);
             std::string cleanText(numW.begin(), numW.end());
 
