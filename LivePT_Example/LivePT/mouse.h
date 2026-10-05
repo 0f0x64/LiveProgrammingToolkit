@@ -517,8 +517,6 @@ namespace LivePT {
         }
     }
 
-
-
     inline long AdjustCursorIndexForNumericContext(const std::wstring& lineText, long originalVisualColumn) {
         if (lineText.empty()) return 0;
 
@@ -653,6 +651,61 @@ namespace LivePT {
     }
 
 
+    inline bool TryInitStructDragDirect(const std::wstring& fileText, const std::wstring& lineText, long line, long targetCharIdx, const POINT& pt) {
+        // 1. Выделяем имя токена (типа) под курсором
+        long tokenStart = targetCharIdx; long tokenEnd = targetCharIdx;
+        while (tokenStart > 0 && iswalnum(lineText[tokenStart - 1])) tokenStart--;
+        while (tokenEnd < static_cast<long>(lineText.length()) && iswalnum(lineText[tokenEnd])) tokenEnd++;
+        if (tokenStart >= tokenEnd) return false;
+
+        std::wstring typeNameW = lineText.substr(tokenStart, tokenEnd - tokenStart);
+        std::string typeNameA(typeNameW.begin(), typeNameW.end());
+
+        // Проверяем по реестру, зарегистрирован ли покадровый Drag-коллбэк для этого типа
+        auto& dragRegistry = GetCustomDragRegistry();
+        if (dragRegistry.find(typeNameA) == dragRegistry.end()) return false;
+
+        // 2. Находим абсолютное смещение начала текущей строки в полном тексте файла
+        size_t lineStartOffset = 0; long currentLineIdx = 1;
+        while (currentLineIdx < line && lineStartOffset < fileText.length()) {
+            size_t nextNL = fileText.find(L'\n', lineStartOffset);
+            if (nextNL != std::wstring::npos) { lineStartOffset = nextNL + 1; currentLineIdx++; }
+            else break;
+        }
+        size_t absoluteTokenEndOffset = lineStartOffset + tokenEnd;
+
+        // 3. Сканируем полный текст файла вправо в поиске открывающей скобки структурированного агрегата
+        size_t globalOpenIdx = std::wstring::npos;
+        wchar_t openChar = L'\0'; wchar_t closeChar = L'\0';
+        for (size_t k = absoluteTokenEndOffset; k < fileText.length(); ++k) {
+            if (fileText[k] == L'{') { openChar = L'{'; closeChar = L'}'; globalOpenIdx = k; break; }
+            if (fileText[k] == L'(') { openChar = L'('; closeChar = L')'; globalOpenIdx = k; break; }
+            if (!iswspace(fileText[k])) break;
+        }
+        if (globalOpenIdx == std::wstring::npos) return false;
+
+        // 4. Ищем парную закрывающую скобку агрегата с учетом баланса вложенности
+        size_t globalCloseIdx = std::wstring::npos;
+        int bracketCount = 1;
+        for (size_t k = globalOpenIdx + 1; k < fileText.length(); ++k) {
+            if (fileText[k] == openChar) bracketCount++;
+            if (fileText[k] == closeChar) {
+                bracketCount--;
+                if (bracketCount == 0) { globalCloseIdx = k; break; }
+            }
+        }
+        if (globalCloseIdx == std::wstring::npos) return false;
+
+        // 5. Вырезаем внутренний контент аргументов
+        std::wstring innerArgsW = fileText.substr(globalOpenIdx + 1, globalCloseIdx - globalOpenIdx - 1);
+        std::string innerArgsA(innerArgsW.begin(), innerArgsW.end());
+
+        // ВРЕМЕННЫЙ ДИАГНОСТИЧЕСКИЙ ВЫВОД ДЛЯ КОНТРОЛЯ РЕЗУЛЬТАТА
+        LivePT::Log("[LivePT Тест] Функция TryInitStructDragDirect перехватила тип: " + typeNameA + " | Тело: " + innerArgsA);
+
+        // На первом этапе возвращаем false, чтобы просто проверить факт чистого парсинга без запуска драга
+        return false;
+    }
 
 
 
@@ -965,20 +1018,9 @@ namespace LivePT {
             }
         }
         else if (iswalpha(targetedChar) || targetedChar == L'{' || targetedChar == L'(') {
-            // Выделяем имя токена (типа) под курсором
-            long tokenStart = targetCharIdx; long tokenEnd = targetCharIdx;
-            while (tokenStart > 0 && iswalnum(currentLineText[tokenStart - 1])) tokenStart--;
-            while (tokenEnd < static_cast<long>(currentLineText.length()) && iswalnum(currentLineText[tokenEnd])) tokenEnd++;
-
-            if (tokenStart < tokenEnd) {
-                std::wstring typeNameW = currentLineText.substr(tokenStart, tokenEnd - tokenStart);
-                std::string typeNameA(typeNameW.begin(), typeNameW.end());
-
-                // Проверяем, зарегистрирован ли драг для этого типа
-                auto& dragRegistry = GetCustomDragRegistry();
-                if (dragRegistry.find(typeNameA) != dragRegistry.end()) {
-                    LivePT::Log("[LivePT Тест] Успешно зажали тип: " + typeNameA + " на строке " + std::to_string(line));
-                }
+            if (TryInitStructDragDirect(fileText, currentLineText, line, targetCharIdx, pt)) {
+                VariantClear(&vtActiveDoc);
+                return true;
             }
         }
 
