@@ -200,19 +200,19 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             .type =     eval(ptype::circle),
             .show =     eval(true),
             .color = eval(color3{
-				.r=51, 
-				.g=90,  
+				.r=19, 
+				.g=78,  
 				.b=0
 				}) 
          });
 
         Draw({
-            .pos =      eval(pos2{268.01f, 14.10f}),
-            .size =     eval(size2{101.89f,94.56f}),
+            .pos =      eval(pos2{286.91f, 2.20f}),
+            .size =     eval(size2{151.16f, 140.26f}),
             .Angle =    eval(angle(111.7f)),
             .type =     eval(ptype::box),
             .show =     eval(true),
-            .color =    eval(color3{56, 127, 41})
+            .color =    eval(color3{31, 97, 19})
         });
 
         Draw({

@@ -99,10 +99,18 @@ namespace DrugLogic {
     }
 
     // === FIX: Universal string-based pos2Drag ===
+        // === FIX: Universal string-based pos2Drag ===
     inline std::string pos2Drag(const std::string& currentArgsStr, const ::LivePT::DragMathInput& input) {
         float x = 0.0f, y = 0.0f;
-        if (sscanf_s(currentArgsStr.c_str(), "%*[^0-9.-]%f%*[^0-9.-]%f", &x, &y) != 2) {
-            if (sscanf_s(currentArgsStr.c_str(), "%f, %f", &x, &y) != 2) {
+
+        // Очищаем строку от суффиксов 'f', чтобы sscanf не спотыкался на них
+        std::string cleanStr = currentArgsStr;
+        cleanStr.erase(std::remove(cleanStr.begin(), cleanStr.end(), 'f'), cleanStr.end());
+        cleanStr.erase(std::remove(cleanStr.begin(), cleanStr.end(), 'F'), cleanStr.end());
+
+        // Безопасный последовательный разбор чисел
+        if (sscanf_s(cleanStr.c_str(), "%f, %f", &x, &y) != 2) {
+            if (sscanf_s(cleanStr.c_str(), "%*[^0-9.-]%f%*[^0-9.-]%f", &x, &y) != 2) {
                 return currentArgsStr;
             }
         }
@@ -121,11 +129,20 @@ namespace DrugLogic {
         return outBuf;
     }
 
+
     // === FIX: Universal string-based size2Drag ===
+        // === FIX: Universal string-based size2Drag ===
     inline std::string size2Drag(const std::string& currentArgsStr, const ::LivePT::DragMathInput& input) {
         float w = 0.0f, h = 0.0f;
-        if (sscanf_s(currentArgsStr.c_str(), "%*[^0-9.-]%f%*[^0-9.-]%f", &w, &h) != 2) {
-            if (sscanf_s(currentArgsStr.c_str(), "%f, %f", &w, &h) != 2) {
+
+        // Очищаем строку от суффиксов 'f'
+        std::string cleanStr = currentArgsStr;
+        cleanStr.erase(std::remove(cleanStr.begin(), cleanStr.end(), 'f'), cleanStr.end());
+        cleanStr.erase(std::remove(cleanStr.begin(), cleanStr.end(), 'F'), cleanStr.end());
+
+        // Безопасный последовательный разбор чисел
+        if (sscanf_s(cleanStr.c_str(), "%f, %f", &w, &h) != 2) {
+            if (sscanf_s(cleanStr.c_str(), "%*[^0-9.-]%f%*[^0-9.-]%f", &w, &h) != 2) {
                 return currentArgsStr;
             }
         }
@@ -152,5 +169,6 @@ namespace DrugLogic {
         }
         return outBuf;
     }
+
 
 } // namespace DrugLogic
