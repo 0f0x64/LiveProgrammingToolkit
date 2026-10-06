@@ -92,7 +92,7 @@ bool IsPrimitiveSelected(int posX, int posY, HWND hwnd) {
 
 // Новая структура параметров, принимающая список инициализации точек
 struct LinePrimitive {
-    std::initializer_list<pos2> points; // Принимает блок { pos2{...}, pos2{...} }
+    std::vector<pos2> points;
     color3 color;                       // Цвет ломаной линии
 };
 
@@ -230,22 +230,22 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         Draw({
             .pos = eval(pos2{
-				.x = -161.27f,
-				.y = -251.48f
+				.x = -179.07f,
+				.y = -241.08f
 				}),
-            .size = eval(size2{144.89f, 147.69f}),
+            .size = eval(size2{144.39f, 147.19f}),
             .Angle = eval(angle(104.0f)),
             .type = eval(ptype::box),
             .show = eval(true),
             .color = eval(color3{
-				.r=187, 
-				.g=56,  
-				.b=41
+				.r=138, 
+				.g=0,  
+				.b=0
 				})
             });
 
         Draw({
-            .pos = eval(pos2{264.71f, -197.70f}),
+            .pos = eval(pos2{250.81f, -193.10f}),
             .size = eval(size2{188.06f, 161.43f}),
             .Angle = eval(angle(132.7f)),
             .type = eval(ptype::circle),
@@ -263,30 +263,31 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
                 });*/
 
         Draw(eval(Primitive{
-            pos2{-21.32f, 220.06f},
+            pos2{20.88f, 225.66f},
             size2{92.05f, 101.15f},
             angle(324.8f),
             ptype::roundbox,
             true,
-            color3{21, 28, 158}
+            color3{143, 45, 61}
             }));
 
         DrawLine({
-            .points = eval(std::initializer_list<pos2>{
-                pos2{58.30f, -62.20f},
-                pos2{90.60f, -149.50f},
-                pos2{97.40f, -238.90f},
+            .points = eval(std::vector<pos2>{
+                pos2{95.20f, -87.80f},
+                pos2{40.30f, -162.50f},
+                pos2{46.80f, -232.20f},
                 pos2{22.60f, -260.30f},
-                pos2{-50.50f, -185.30f},
+                pos2{-30.50f, -168.00f},
                 pos2{-66.80f, -92.60f},
                 pos2{-20.40f, -3.30f},
-                pos2{32.30f, -28.60f},
+                pos2{42.10f, -32.70f},
                 pos2{100.10f, 23.60f},
                 pos2{155.00f, 45.90f},
-                pos2{196.60f, 10.40f},
-                pos2{197.00f, -33.00f}
+                pos2{183.50f, 84.50f},
+                                    pos2{240.00f, 45.90f},
+                pos2{279.30f, 27.50f}
             }),
-            .color = eval(color3{220, 48, 63}) // Желтый цвет
+            .color = eval(color3{37, 19, 220}) // Желтый цвет
             });
 
         BitBlt(hdc, 0, 0, w, h, memDC, 0, 0, SRCCOPY);

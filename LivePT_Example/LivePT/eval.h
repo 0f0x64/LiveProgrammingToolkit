@@ -574,7 +574,13 @@ namespace LivePT {
         }
     };
 
-    // ----------------- Изолированная подсистема массивов -----------------
+    template <typename T>
+    struct MsvcVectorProxy {
+        T* myFirst;
+        T* myLast;
+        T* myEnd;
+    };
+
     struct GenericVectorState {
         void* heapMemory = nullptr;
         size_t elementCount = 0;
@@ -586,6 +592,127 @@ namespace LivePT {
         static std::unordered_map<int, GenericVectorState> instance;
         return instance;
     }
+
+    // ЧАСТИЧНАЯ СПЕЦИАЛИЗАЦИЯ ДЛЯ ДИНАМИЧЕСКИХ ВЕКТОРОВ НА СТУДО-ЯКОРЯХ
+    // Переработанная безопасная специализация в eval.h (БЕЗ использования MsvcVectorProxy)
+    template <typename ElementType, FixedString<260> AbsoluteFile, int Line, int Column>
+    struct EvalSyntaxShield<std::vector<ElementType>, AbsoluteFile, Line, Column> {
+
+        inline static std::vector<ElementType> Get(const std::vector<ElementType>& literalValue) {
+            int target_id = GlobalEvalRegistry<std::vector<ElementType>, AbsoluteFile, Line, Column>::cached_id;
+
+            if (target_id < 0 || target_id >= static_cast<int>(paramDesc.size())) {
+                return literalValue;
+            }
+
+            auto& vectorMap = GetGenericVectorMap();
+
+            // Первичная инициализация при первом проходе
+            if (!paramDesc[target_id].loaded) {
+                paramDesc[target_id].value = std::any(target_id); // Сохраняем ID как хэндл кучи
+
+                paramDesc[target_id].stringUpdater = [](std::any& targetAny, const std::string& textValue) {
+                    int vId = std::any_cast<int>(targetAny);
+                    auto& state = GetGenericVectorMap()[vId];
+
+                    // Изолируем тело вектора { ... }
+                    size_t openBrace = textValue.find('{');
+                    size_t closeBrace = textValue.rfind('}');
+                    if (openBrace == std::string::npos || closeBrace == std::string::npos) return;
+                    std::string innerArrayContent = textValue.substr(openBrace + 1, closeBrace - openBrace - 1);
+
+                    // Разбиваем элементы по внешним запятым
+                    std::vector<std::string> elements;
+                    std::string curE; int bCount = 0; int pCount = 0;
+                    for (char c : innerArrayContent) {
+                        if (c == '{') bCount++; else if (c == '}') bCount--;
+                        else if (c == '(') pCount++; else if (c == ')') pCount--;
+                        if (c == ',' && bCount == 0 && pCount == 0) {
+                            elements.push_back(curE); curE.clear();
+                        }
+                        else curE += c;
+                    }
+                    if (!curE.empty()) elements.push_back(curE);
+
+                    // Очистка токенов
+                    for (auto& e : elements) {
+                        e.erase(0, e.find_first_not_of(" \t\r\n")); e.erase(e.find_last_not_of(" \t\r\n") + 1);
+                    }
+                    elements.erase(std::remove_if(elements.begin(), elements.end(), [](const std::string& s) { return s.empty(); }), elements.end());
+
+                    if (elements.empty()) return;
+
+                    size_t newCount = elements.size();
+                    size_t elemSize = sizeof(ElementType);
+
+                    void* newHeap = std::realloc(state.heapMemory, newCount * elemSize);
+                    if (!newHeap) return;
+
+                    state.heapMemory = newHeap;
+                    state.elementCount = newCount;
+                    state.elementSize = elemSize;
+
+                    std::memset(state.heapMemory, 0, newCount * elemSize);
+
+                    // Парсинг полей (x, y) для pos2/size2 структур напрямую в выделенную кучу
+                    char* byteBase = reinterpret_cast<char*>(state.heapMemory);
+                    for (size_t i = 0; i < newCount; ++i) {
+                        std::string cleanToken = elements[i];
+                        size_t oB = cleanToken.find('{'); size_t cB = cleanToken.rfind('}');
+                        if (oB != std::string::npos && cB != std::string::npos) {
+                            cleanToken = cleanToken.substr(oB + 1, cB - oB - 1);
+                        }
+
+                        std::stringstream ss(cleanToken);
+                        std::string field; size_t fIdx = 0;
+                        char* targetFieldAddr = byteBase + (i * elemSize);
+
+                        while (std::getline(ss, field, ',')) {
+                            size_t eq = field.find('=');
+                            if (eq != std::string::npos) field = field.substr(eq + 1);
+                            while (!field.empty() && (field.back() == 'f' || field.back() == 'F')) field.pop_back();
+
+                            float fVal = 0.0f;
+                            std::from_chars(field.data() + field.find_first_not_of(" \t"), field.data() + field.size(), fVal);
+
+                            // Безопасно пишем float во внутренние поля структуры по индексу
+                            reinterpret_cast<float*>(targetFieldAddr)[fIdx++] = fVal;
+                        }
+                    }
+                    };
+
+                paramDesc[target_id].loaded = true;
+            }
+
+            std::string absPath = NormalizePath(AbsoluteFile.c_str());
+            int real_id = getID(absPath + ":" + std::to_string(paramDesc[target_id].counterID));
+
+            // Если в куче LivePT есть измененные рантайм-данные, возвращаем их
+            if (real_id >= 0 && real_id < static_cast<int>(paramDesc.size())) {
+                int vId = std::any_cast<int>(paramDesc[real_id].value);
+                auto& state = vectorMap[vId];
+
+                if (state.heapMemory && state.elementCount > 0) {
+                    std::vector<ElementType> safeReturnVector;
+                    safeReturnVector.reserve(state.elementCount);
+
+                    ElementType* heapArray = reinterpret_cast<ElementType*>(state.heapMemory);
+                    for (size_t i = 0; i < state.elementCount; ++i) {
+                        safeReturnVector.push_back(heapArray[i]);
+                    }
+                    // Возвращаем абсолютно валидный STL-вектор, созданный стандартным путем
+                    return safeReturnVector;
+                }
+            }
+
+            // Если изменений нет — возвращаем дефолтное значение из кода (literalValue)
+            return literalValue;
+        }
+    };
+
+
+    // ----------------- Изолированная подсистема массивов -----------------
+    
 
     template <typename T> struct is_initializer_list : std::false_type {};
     template <typename E> struct is_initializer_list<std::initializer_list<E>> : std::true_type { using element_type = E; };

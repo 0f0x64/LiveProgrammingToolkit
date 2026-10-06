@@ -274,16 +274,21 @@ namespace LivePT {
     // Единый метод безопасного поиска закрывающей скобки макроса.
 // Честно считает баланс круглых (), фигурных {} и угловых <> скобок, 
 // чтобы корректно определять границы многострочных и сложных параметров.
+   // Обновленная безопасная версия в vsEditor.h
     inline size_t FindMacroCloseBracket(const std::wstring& text, size_t openBracketPos) {
         if (openBracketPos == std::wstring::npos || openBracketPos >= text.length()) {
             return std::wstring::npos;
         }
 
-        int roundCount = 1;  // Начинаем с 1, так как openBracketPos указывает на открывающую '('
-        int curlyCount = 0;  // Для защиты блоков инициализации структур и массивов {...}
-        int angleCount = 0;  // Для защиты шаблонов и типов аргументов <...>
+        int roundCount = 1;
+        int curlyCount = 0;
+        int angleCount = 0;
 
-        for (size_t k = openBracketPos + 1; k < text.length(); ++k) {
+        // Ограничиваем поиск разумным пределом (например, 5000 символов от начала макроса),
+        // чтобы парсер гарантированно не уходил в бесконечный цикл при поломке синтаксиса
+        size_t maxScanLength = (std::min)(text.length(), openBracketPos + 5000);
+
+        for (size_t k = openBracketPos + 1; k < maxScanLength; ++k) {
             wchar_t ch = text[k];
 
             if (ch == L'(') {
@@ -291,7 +296,11 @@ namespace LivePT {
             }
             else if (ch == L')') {
                 roundCount--;
-                // Макрос считается закрытым только тогда, когда мы вышли из всех вложенных контекстов
+                // Защита: если curlyCount ушел в минус из-за сломанной разметки, 
+                // мы всё равно доверяем круглым скобкам самого макроса eval(...)
+                if (curlyCount < 0) curlyCount = 0;
+                if (angleCount < 0) angleCount = 0;
+
                 if (roundCount == 0 && curlyCount == 0 && angleCount == 0) {
                     return k;
                 }
@@ -310,8 +319,10 @@ namespace LivePT {
             }
         }
 
+        // Если баланс нарушен — возвращаем npos, но НЕ зависаем!
         return std::wstring::npos;
     }
+
 
 
     inline std::string GetActiveDocumentPath(IDispatch* pActiveDoc) {
@@ -557,66 +568,80 @@ namespace LivePT {
                 targetParamId = paramId;
             }
             else {
-                break;
+                break; // Выходим из поиска, как только зашли за строку курсора
             }
         }
 
-        // 2. Проверяем, не вылетел ли курсор за нижнюю границу многострочного макроса
+        // 2. Проверяем, не вылетел ли курсор за нижнюю границу многострочного макроса (массива)
         if (targetParamId != -1 && !g_currentFileFullText.empty()) {
             const auto& p = params[targetParamId];
 
-            // Находим абсолютное смещение начала строки макроса
-            size_t macroLineOffset = 0; long currentLineIdx = 1;
+            // Находим абсолютное смещение начала строки макроса в файле
+            size_t macroLineOffset = 0;
+            long currentLineIdx = 1;
             while (currentLineIdx < p.line && macroLineOffset < g_currentFileFullText.length()) {
                 size_t nextNL = g_currentFileFullText.find(L'\n', macroLineOffset);
-                if (nextNL != std::wstring::npos) { macroLineOffset = nextNL + 1; currentLineIdx++; }
+                if (nextNL != std::wstring::npos) {
+                    macroLineOffset = nextNL + 1;
+                    currentLineIdx++;
+                }
                 else break;
             }
 
+            // Вычисляем позицию открывающей скобки макроса eval(
             size_t openBracketPos = g_currentFileFullText.find(L'(', macroLineOffset + (p.column > 0 ? p.column - 1 : 0));
 
             if (openBracketPos != std::wstring::npos && openBracketPos < g_currentFileFullText.length()) {
 
-                // Используем наш единый безопасный детектор скобок
+                // ИСПОЛЬЗУЕМ ОБНОВЛЕННЫЙ БЕЗОПАСНЫЙ ДЕТЕКТОР СКОБОК С ЗАЩИТОЙ ОТ ПЕРЕПОЛНЕНИЯ
                 size_t closeBracketPos = FindMacroCloseBracket(g_currentFileFullText, openBracketPos);
 
-                if (closeBracketPos != std::wstring::npos) {
-                    // Вычисляем, на какой конкретно физической строке закрывается макрос
-                    long macroEndLine = p.line;
-                    size_t scanNL = macroLineOffset;
-                    while ((scanNL = g_currentFileFullText.find(L'\n', scanNL)) != std::wstring::npos && scanNL < closeBracketPos) {
-                        macroEndLine++;
-                        scanNL++;
-                    }
-
-                    // Архитектурный фикс: Курсор легитимен, если его строка находится строго в диапазоне 
-                    // от начала макроса (p.line) до строки его закрытия (macroEndLine) ВКЛЮЧИТЕЛЬНО!
-                    if (cursorLine > macroEndLine) {
-                        return -1; // Курсор ушел ниже всего блока макроса — отсекаем
-                    }
-
-                    // Если мы стоим ровно на строке закрытия, проверяем ';' только ЕСЛИ курсор ушел дальше самой скобки
-                    if (cursorLine == macroEndLine) {
-                        size_t cursorLineOffset = 0; currentLineIdx = 1;
-                        while (currentLineIdx < cursorLine && cursorLineOffset < g_currentFileFullText.length()) {
-                            size_t nextNL = g_currentFileFullText.find(L'\n', cursorLineOffset);
-                            if (nextNL != std::wstring::npos) { cursorLineOffset = nextNL + 1; currentLineIdx++; }
-                            else break;
-                        }
-                        size_t cursorAbsoluteOffset = cursorLineOffset + (cursorColumn > 0 ? cursorColumn - 1 : 0);
-
-                        if (cursorAbsoluteOffset > closeBracketPos) {
-                            // Проверяем, нет ли точки с запятой между закрытием макроса и курсором на этой строке
-                            std::wstring trailingText = g_currentFileFullText.substr(closeBracketPos, cursorAbsoluteOffset - closeBracketPos);
-                            if (trailingText.find(L';') != std::wstring::npos) {
-                                return -1;
-                            }
-                        }
-                    }
-
-                    // Во всех остальных случаях внутри многострочного диапазона — это 100% успех сопоставления
-                    return targetParamId;
+                // КРИТИЧЕСКИЙ АРХИТЕКТУРНЫЙ ФИКС: 
+                // Если из-за драга синтаксис сломался и скобка не найдена — аварийно выходим,
+                // чтобы предотвратить бесконечный цикл и намертво не повесить UI-поток приложения
+                if (closeBracketPos == std::wstring::npos) {
+                    return -1;
                 }
+
+                // Вычисляем, на какой конкретно физической строке закрывается макрос
+                long macroEndLine = p.line;
+                size_t scanNL = macroLineOffset;
+                while ((scanNL = g_currentFileFullText.find(L'\n', scanNL)) != std::wstring::npos && scanNL < closeBracketPos) {
+                    macroEndLine++;
+                    scanNL++;
+                }
+
+                // Курсор легитимен, если его строка находится строго в диапазоне 
+                // от начала макроса (p.line) до строки его закрытия (macroEndLine) ВКЛЮЧИТЕЛЬНО
+                if (cursorLine > macroEndLine) {
+                    return -1; // Курсор ушел ниже всего блока макроса (массива) — отсекаем
+                }
+
+                // Если мы стоим ровно на строке закрытия, проверяем ';' только ЕСЛИ курсор ушел дальше самой скобки
+                if (cursorLine == macroEndLine) {
+                    size_t cursorLineOffset = 0;
+                    currentLineIdx = 1;
+                    while (currentLineIdx < cursorLine && cursorLineOffset < g_currentFileFullText.length()) {
+                        size_t nextNL = g_currentFileFullText.find(L'\n', cursorLineOffset);
+                        if (nextNL != std::wstring::npos) {
+                            cursorLineOffset = nextNL + 1;
+                            currentLineIdx++;
+                        }
+                        else break;
+                    }
+                    size_t cursorAbsoluteOffset = cursorLineOffset + (cursorColumn > 0 ? cursorColumn - 1 : 0);
+
+                    if (cursorAbsoluteOffset > closeBracketPos) {
+                        // Проверяем, нет ли точки с запятой между закрытием макроса и курсором на этой строке
+                        std::wstring trailingText = g_currentFileFullText.substr(closeBracketPos, cursorAbsoluteOffset - closeBracketPos);
+                        if (trailingText.find(L';') != std::wstring::npos) {
+                            return -1; // Точка с запятой означает, что выражение закрыто, и курсор за его пределами
+                        }
+                    }
+                }
+
+                // Во всех остальных случаях внутри многострочного диапазона — это 100% успех сопоставления
+                return targetParamId;
             }
         }
 
