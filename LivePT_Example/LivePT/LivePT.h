@@ -135,6 +135,8 @@ namespace LivePT {
     static LptRuntimeLifetimeManager g_runtimeLifetimeManager;
     inline std::atomic<bool> g_IsLptPdbWarmupCompleted{ false };
 
+    
+
     inline void WarmupAllDatabaseParams() {
         static bool isWarmedUp = false;
         if (isWarmedUp) return;
@@ -145,8 +147,8 @@ namespace LivePT {
 
         isWarmedUp = true;
 
+        // Запускаем тяжелый разбор PDB в фоновом потоке
         std::thread warmupThread([totalParams]() {
-
             auto& localParams = LivePT::getParamDesc();
 
             std::unordered_map<std::type_index, decltype(localParams[0].structInfo.members)> structMetadataCache;
@@ -162,18 +164,21 @@ namespace LivePT {
             for (size_t i = 0; i < totalParams; ++i) {
                 auto& p = localParams[i];
 
+                // Пропускаем то, что уже загружено или не инициализировано
                 if (p.enumInfo.isEnum || p.structInfo.isStruct || !p.value.has_value()) {
                     continue;
                 }
 
                 std::type_index currentTypeInfo = p.value.type();
 
+                // Примитивы не требуют разбора структуры
                 if (currentTypeInfo == typeFloat || currentTypeInfo == typeInt ||
                     currentTypeInfo == typeBool || currentTypeInfo == typeDouble ||
                     currentTypeInfo == typeChar || currentTypeInfo == typeUChar) {
                     continue;
                 }
 
+                // Быстрый кэш, если структура такого типа уже разбиралась
                 auto it = structMetadataCache.find(currentTypeInfo);
                 if (it != structMetadataCache.end()) {
                     p.structInfo.members = it->second;
@@ -197,7 +202,7 @@ namespace LivePT {
                 std::vector<DWORD> fSizes;
                 std::vector<std::string> fTypes;
 
-                // Тяжелый вызов DbgHelp выполняется в фоне и не фризит UI-поток отрисовки кадра!
+                // Этот вызов DbgHelp теперь не фризит UI-поток отрисовки кадра!
                 if (LoadStructMetadataDirect(wTypeName.c_str(), fNames, fOffsets, fSizes, fTypes)) {
                     decltype(p.structInfo.members) loadedMembers;
                     const size_t fieldsCount = fOffsets.size();
@@ -217,17 +222,15 @@ namespace LivePT {
             Log("[LivePT Async Warmup] Background PDB parsing completed. Library is fully ready.");
             });
 
-        // Отвязываем поток, чтобы он работал независимо и завершился сам
+        // Отвязываем поток, чтобы он работал асинхронно
         warmupThread.detach();
     }
 
-    void Warmup()
-    {
+    inline void Warmup() {
         static bool isFirstFrame = true;
         if (isFirstFrame) {
             auto startTime = std::chrono::high_resolution_clock::now();
 
-            // Сам вызов чистой функции прогрева
             LivePT::WarmupAllDatabaseParams();
 
             auto endTime = std::chrono::high_resolution_clock::now();
@@ -240,6 +243,9 @@ namespace LivePT {
             isFirstFrame = false;
         }
     }
+
+
+    
 
     inline void LogAllEvalCoordinates() {
         // Получаем доступ к нашей глобальной мапе, собранной на этапе Pre-Main

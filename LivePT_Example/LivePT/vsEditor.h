@@ -271,6 +271,49 @@ namespace LivePT {
         return std::wstring::npos;
     }
 
+    // Единый метод безопасного поиска закрывающей скобки макроса.
+// Честно считает баланс круглых (), фигурных {} и угловых <> скобок, 
+// чтобы корректно определять границы многострочных и сложных параметров.
+    inline size_t FindMacroCloseBracket(const std::wstring& text, size_t openBracketPos) {
+        if (openBracketPos == std::wstring::npos || openBracketPos >= text.length()) {
+            return std::wstring::npos;
+        }
+
+        int roundCount = 1;  // Начинаем с 1, так как openBracketPos указывает на открывающую '('
+        int curlyCount = 0;  // Для защиты блоков инициализации структур и массивов {...}
+        int angleCount = 0;  // Для защиты шаблонов и типов аргументов <...>
+
+        for (size_t k = openBracketPos + 1; k < text.length(); ++k) {
+            wchar_t ch = text[k];
+
+            if (ch == L'(') {
+                roundCount++;
+            }
+            else if (ch == L')') {
+                roundCount--;
+                // Макрос считается закрытым только тогда, когда мы вышли из всех вложенных контекстов
+                if (roundCount == 0 && curlyCount == 0 && angleCount == 0) {
+                    return k;
+                }
+            }
+            else if (ch == L'{') {
+                curlyCount++;
+            }
+            else if (ch == L'}') {
+                curlyCount--;
+            }
+            else if (ch == L'<') {
+                angleCount++;
+            }
+            else if (ch == L'>') {
+                angleCount--;
+            }
+        }
+
+        return std::wstring::npos;
+    }
+
+
     inline std::string GetActiveDocumentPath(IDispatch* pActiveDoc) {
 
         VARIANT vtFullName; VariantInit(&vtFullName);
@@ -410,25 +453,11 @@ namespace LivePT {
         size_t openBracket = fileText.find(L'(', anchorOffset);
 
         if (openBracket != std::wstring::npos && openBracket < fileText.length()) {
-            size_t closeBracketPos = std::wstring::npos;
-            int bracketCount = 1;
 
-            // Считаем честный баланс скобок агрегата вперед, защищаясь от многострочных сдвигов
-            for (size_t k = openBracket + 1; k < fileText.length(); ++k) {
-                wchar_t ch = fileText[k];
-                if (ch == L'(') {
-                    bracketCount++;
-                }
-                else if (ch == L')') {
-                    bracketCount--;
-                    if (bracketCount == 0) {
-                        closeBracketPos = k;
-                        break;
-                    }
-                }
-            }
+            // Используем наш новый безопасный детектор
+            size_t closeBracketPos = FindMacroCloseBracket(fileText, openBracket);
 
-            // Если скобка честно найдена — вырезаем строго внутренний агрегат целиком
+            // Если скобка найдена — вырезаем строго внутреннее содержимое макроса
             if (closeBracketPos != std::wstring::npos && closeBracketPos > openBracket) {
                 std::wstring innerValueW = fileText.substr(openBracket + 1, closeBracketPos - openBracket - 1);
                 std::string innerValueA = ConvertWStringToUtf8(innerValueW);
@@ -437,11 +466,12 @@ namespace LivePT {
                 innerValueA.erase(0, innerValueA.find_first_not_of(" \t\r\n"));
                 innerValueA.erase(innerValueA.find_last_not_of(" \t\r\n") + 1);
 
-                // Пушим чистую валидную строку агрегата в рантайм-парсер игры
+                // Отправляем чистую строку в базовый рантайм-парсер
                 UpdateParamValue(targetId, innerValueA);
             }
         }
     }
+
 
 
 
@@ -546,21 +576,9 @@ namespace LivePT {
             size_t openBracketPos = g_currentFileFullText.find(L'(', macroLineOffset + (p.column > 0 ? p.column - 1 : 0));
 
             if (openBracketPos != std::wstring::npos && openBracketPos < g_currentFileFullText.length()) {
-                size_t closeBracketPos = std::wstring::npos;
-                int bracketCount = 1;
 
-                // Считаем честный баланс скобок макроса
-                for (size_t k = openBracketPos + 1; k < g_currentFileFullText.length(); ++k) {
-                    wchar_t ch = g_currentFileFullText[k];
-                    if (ch == L'(') bracketCount++;
-                    else if (ch == L')') {
-                        bracketCount--;
-                        if (bracketCount == 0) {
-                            closeBracketPos = k;
-                            break;
-                        }
-                    }
-                }
+                // Используем наш единый безопасный детектор скобок
+                size_t closeBracketPos = FindMacroCloseBracket(g_currentFileFullText, openBracketPos);
 
                 if (closeBracketPos != std::wstring::npos) {
                     // Вычисляем, на какой конкретно физической строке закрывается макрос
@@ -571,8 +589,7 @@ namespace LivePT {
                         scanNL++;
                     }
 
-                    // === КРИТИЧЕСКИЙ АРХИТЕКТУРНЫЙ ФИКС ===
-                    // Курсор легитимен, если его строка находится строго в диапазоне 
+                    // Архитектурный фикс: Курсор легитимен, если его строка находится строго в диапазоне 
                     // от начала макроса (p.line) до строки его закрытия (macroEndLine) ВКЛЮЧИТЕЛЬНО!
                     if (cursorLine > macroEndLine) {
                         return -1; // Курсор ушел ниже всего блока макроса — отсекаем
@@ -597,7 +614,7 @@ namespace LivePT {
                         }
                     }
 
-                    // Во всех остальных случаях внутри диапазона строк — это 100% УСПЕХ
+                    // Во всех остальных случаях внутри многострочного диапазона — это 100% успех сопоставления
                     return targetParamId;
                 }
             }
@@ -605,9 +622,6 @@ namespace LivePT {
 
         return targetParamId;
     }
-
-
-
 
 
     inline void ShiftDatabaseCoordinates(const std::string& targetFile, long targetLine, long visualStartCol, int lineDelta, int columnDelta);

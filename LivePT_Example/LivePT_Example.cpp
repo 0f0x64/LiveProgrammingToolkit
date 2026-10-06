@@ -1,4 +1,5 @@
 #include <windows.h>
+#include <initializer_list>
 
 // ---------------- LivePT integration section ----------------
 #define LivePT_EditMode true // true for activate
@@ -78,7 +79,7 @@ bool IsPrimitiveSelected(int posX, int posY, HWND hwnd) {
 
         //while (GetAsyncKeyState(VK_LBUTTON))
         {
-          //  Sleep(16);
+            //  Sleep(16);
         }
         curSel = drawCounter;
         return true;
@@ -88,12 +89,49 @@ bool IsPrimitiveSelected(int posX, int posY, HWND hwnd) {
 }
 
 
+
+// Новая структура параметров, принимающая список инициализации точек
+struct LinePrimitive {
+    std::initializer_list<pos2> points; // Принимает блок { pos2{...}, pos2{...} }
+    color3 color;                       // Цвет ломаной линии
+};
+
+void DrawLine(LinePrimitive lp, std::source_location location = std::source_location::current()) {
+    // Интеграция с LivePT (определяет, находится ли курсор VS внутри функции)
+    BOOL highlight = LivePT::IsCursorInsideFunctionCall(location);
+
+    if (lp.points.size() < 2) return;
+
+    // Настройка пера (Pen) для рисования линий
+    HPEN hPen = CreatePen(PS_SOLID, highlight ? 4 : 2, RGB(lp.color.r, lp.color.g, lp.color.b));
+    HPEN hOldPen = (HPEN)SelectObject(gc.memDC, hPen);
+
+    // Центр экрана для смещения координат
+    int centerX = gc.w / 2;
+    int centerY = gc.h / 2;
+
+    // Итератор для прохода по элементам initializer_list
+    auto it = lp.points.begin();
+
+    // Встаем на стартовую позицию (первая точка ломаной)
+    MoveToEx(gc.memDC, centerX + (int)it->x, centerY + (int)it->y, NULL);
+
+    // Последовательно соединяем линиями все остальные точки
+    for (++it; it != lp.points.end(); ++it) {
+        LineTo(gc.memDC, centerX + (int)it->x, centerY + (int)it->y);
+    }
+
+    // Очистка ресурсов GDI
+    SelectObject(gc.memDC, hOldPen);
+    DeleteObject(hPen);
+}
+
 void Draw(Primitive p, std::source_location location = std::source_location::current()) {
 
     int posX = (gc.w / 2) + p.pos.x;
     int posY = (gc.h / 2) + p.pos.y;
 
-    auto sel = IsPrimitiveSelected(posX,posY, gc.hWnd);
+    auto sel = IsPrimitiveSelected(posX, posY, gc.hWnd);
 
     if (sel) {
         LivePT::OpenFileAndMoveCursorToLocation(location);
@@ -191,51 +229,65 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         drawCounter = 0;
 
         Draw({
-            .pos =      eval(pos2{
-				.x = -215.47f,
-				.y = -236.38f
+            .pos = eval(pos2{
+				.x = -139.27f,
+				.y = -253.28f
 				}),
-            .size =     eval(size2{135.12f, 137.75f}),
-            .Angle =    eval(angle(104.0f)),
-            .type =     eval(ptype::circle),
-            .show =     eval(true),
+            .size = eval(size2{144.89f, 147.69f}),
+            .Angle = eval(angle(104.0f)),
+            .type = eval(ptype::box),
+            .show = eval(true),
             .color = eval(color3{
-				.r=111, 
-				.g=20,  
-				.b=32
-				}) 
-         });
+				.r=187, 
+				.g=56,  
+				.b=41
+				})
+            });
 
         Draw({
-            .pos =      eval(pos2{250.61f, -63.60f}),
-            .size =     eval(size2{139.91f, 120.09f}),
-            .Angle =    eval(angle(135.7f)),
-            .type =     eval(ptype::circle),
-            .show =     eval(true),
-            .color =    eval(color3{61, 107, 66})
-        });
+            .pos = eval(pos2{278.71f, -165.80f}),
+            .size = eval(size2{188.06f, 161.43f}),
+            .Angle = eval(angle(132.7f)),
+            .type = eval(ptype::circle),
+            .show = eval(true),
+            .color = eval(color3{0, 128, 57})
+            });
 
-/*        Draw({
-            .pos =      eval(pos2{-27.18f, 143.96f}),
-            .size =     eval(size2{220.84f, 114.10f}),
-            .Angle =    eval(angle(54.3f)),
-            .type =     eval(ptype::roundbox),
-            .show =     eval(true),
-            .color =    eval(color3{29, 49, 193})
-        });*/
+        /*        Draw({
+                    .pos =      eval(pos2{-27.18f, 143.96f}),
+                    .size =     eval(size2{220.84f, 114.10f}),
+                    .Angle =    eval(angle(54.3f)),
+                    .type =     eval(ptype::roundbox),
+                    .show =     eval(true),
+                    .color =    eval(color3{29, 49, 193})
+                });*/
 
-        Draw(
-            eval(
-                Primitive{
-                    pos2{-10.68f, 207.56f},
-                    size2{187.62f, 96.91f},
-                    angle(130.6f),
-                    ptype::box,
-                    true,
-                    color3{40, 0, 145}
-                }
-                )
-            );
+        Draw(eval(Primitive{
+            pos2{-21.32f, 220.06f},
+            size2{92.05f, 101.15f},
+            angle(324.8f),
+            ptype::roundbox,
+            true,
+            color3{21, 28, 158}
+            }));
+
+        DrawLine({
+            .points = eval(std::initializer_list<pos2>{
+                pos2{58.30f, -62.20f},
+                pos2{90.60f, -149.50f},
+                pos2{97.40f, -238.90f},
+                pos2{22.60f, -260.30f},
+                pos2{-50.50f, -185.30f},
+                pos2{-66.80f, -92.60f},
+                pos2{-20.40f, -3.30f},
+                pos2{32.30f, -28.60f},
+                pos2{100.10f, 23.60f},
+                pos2{155.00f, 45.90f},
+                pos2{196.60f, 10.40f},
+                pos2{197.00f, -33.00f}
+            }),
+            .color = eval(color3{220, 48, 63}) // Желтый цвет
+            });
 
         BitBlt(hdc, 0, 0, w, h, memDC, 0, 0, SRCCOPY);
         SelectObject(memDC, oldBM);
@@ -258,7 +310,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     const char CLASS_NAME[] = "WindowClass";
 
     //LivePT::InitLivePTCallbacks();
-    
+
     auto hUser32 = GetModuleHandleA("user32.dll");
     typedef BOOL(WINAPI* PfnSetProcessDpiAwarenessContext)(DPI_AWARENESS_CONTEXT);
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
