@@ -67,6 +67,12 @@ namespace LivePT {
             if (static_cast<unsigned char>(c) > 127) return;
         }
 
+        if (paramDesc[id].structInfo.isStruct) {
+            paramDesc[id].value = std::any(newValue);
+            paramDesc[id].loaded = true;
+            return;
+        }
+
         if (paramDesc[id].enumInfo.isEnum) {
             if (paramDesc[id].enumInfo.elements.empty()) {
                 std::wstring wEnumName = L"";
@@ -573,12 +579,151 @@ namespace LivePT {
         }
     };
 
+    struct GenericVectorState {
+        void* heapMemory = nullptr;
+        size_t elementCount = 0;
+        size_t elementSize = 0;
+        size_t lastTextHash = 0;
+    };
+
+    inline std::unordered_map<int, GenericVectorState>& GetGenericVectorMap() {
+        static std::unordered_map<int, GenericVectorState> instance;
+        return instance;
+    }
+
+    template <typename T> struct is_initializer_list : std::false_type {};
+    template <typename E> struct is_initializer_list<std::initializer_list<E>> : std::true_type { using element_type = E; };
+
 
     template <typename LiteralType, FixedString<260> AbsoluteFile, int Line, int Column>
     struct LazyTypeDetector {
         LiteralType rawValue;
 
-        constexpr LazyTypeDetector(LiteralType val) : rawValue(val) {}
+        constexpr LazyTypeDetector(LiteralType val) : rawValue(val) {
+            if constexpr (LivePT::is_initializer_list<LiteralType>::value) {
+                using ElementType = typename LivePT::is_initializer_list<LiteralType>::element_type;
+                int target_id = GlobalEvalRegistry<LiteralType, AbsoluteFile, Line, Column>::cached_id;
+                auto& params = LivePT::getParamDesc();
+                auto& vectorMap = LivePT::GetGenericVectorMap();
+
+                if (target_id >= 0 && target_id < static_cast<int>(params.size())) {
+                    auto& p = params[target_id];
+                    p.structInfo.isStruct = true;
+                    p.structInfo.members.clear();
+
+                    if (vectorMap.find(target_id) == vectorMap.end()) {
+                        auto& state = vectorMap[target_id];
+                        state.elementCount = val.size();
+                        state.elementSize = sizeof(ElementType);
+                        state.heapMemory = malloc(state.elementCount * state.elementSize);
+                        std::memcpy(state.heapMemory, val.begin(), state.elementCount * state.elementSize);
+
+                        // ЗАПРОС К PDB: вытаскиваем имя смешанной структуры
+                        std::string typeNameAnsi = typeid(ElementType).name();
+                        const char* typePtr = typeNameAnsi.c_str();
+                        if (strncmp(typePtr, "struct ", 7) == 0) typePtr += 7;
+                        else if (strncmp(typePtr, "class ", 6) == 0) typePtr += 6;
+
+                        size_t len = strlen(typePtr); std::wstring wTypeName(len, L'\0');
+                        MultiByteToWideChar(CP_ACP, 0, typePtr, static_cast<int>(len), wTypeName.data(), static_cast<int>(len));
+
+                        std::vector<std::string> fNames; std::vector<DWORD> fOffsets;
+                        std::vector<DWORD> fSizes; std::vector<std::string> fTypes;
+
+                        // DbgHelp возвращает честные смещения с учетом выравнивания компилятора
+                        if (LoadStructMetadataDirect(wTypeName.c_str(), fNames, fOffsets, fSizes, fTypes)) {
+                            // Размножаем поля структуры в плоскую карту на диапазон до 128 элементов
+                            for (size_t arrIdx = 0; arrIdx < 128; ++arrIdx) {
+                                size_t baseOffset = arrIdx * sizeof(ElementType);
+                                for (size_t k = 0; k < fOffsets.size(); ++k) {
+                                    p.structInfo.members.push_back({ fNames[k], static_cast<DWORD>(baseOffset + fOffsets[k]), fSizes[k], fTypes[k] });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Всеядный оператор, возвращающий живую память из кучи вместо константного initializer_list
+        inline operator LiteralType() const requires (LivePT::is_initializer_list<LiteralType>::value) {
+            using ElementType = typename LivePT::is_initializer_list<LiteralType>::element_type;
+            int target_id = GlobalEvalRegistry<LiteralType, AbsoluteFile, Line, Column>::cached_id;
+            auto& vectorMap = LivePT::GetGenericVectorMap();
+            auto& params = LivePT::getParamDesc();
+
+            if (target_id >= 0 && target_id < static_cast<int>(params.size()) && params[target_id].loaded) {
+                auto& state = vectorMap[target_id];
+                size_t textHash = state.lastTextHash;
+                std::string currentTextValue = "";
+
+                if (auto pStr = std::any_cast<std::string>(&params[target_id].value)) {
+                    currentTextValue = *pStr;
+                    textHash = std::hash<std::string>{}(currentTextValue);
+                }
+
+                // === ИСПРАВЛЕННЫЙ БЛОК ПАРСИНГА ИНЛАЙН-СПИСКА ===
+                if (state.lastTextHash != textHash) {
+                    state.lastTextHash = textHash;
+
+                    size_t openBrace = currentTextValue.find('{');
+                    size_t closeBrace = currentTextValue.rfind('}');
+                    if (openBrace != std::string::npos && closeBrace != std::string::npos) {
+                        std::string content = currentTextValue.substr(openBrace + 1, closeBrace - openBrace - 1);
+
+                        auto LocalSplit = [](const std::string& input) {
+                            std::vector<std::string> res; std::string cur; int b = 0;
+                            for (char c : input) {
+                                if (c == '{') b++; else if (c == '}') b--;
+                                if (c == ',' && b == 0) { res.push_back(cur); cur.clear(); }
+                                else cur += c;
+                            }
+                            if (!cur.empty()) res.push_back(cur);
+                            return res;
+                            };
+
+                        auto tokens = LocalSplit(content);
+
+                        // Перевыделяем кучу под актуальный размер массива на диске
+                        state.elementCount = tokens.size();
+                        if (state.heapMemory) free(state.heapMemory);
+                        state.heapMemory = malloc(state.elementCount * state.elementSize);
+
+                        // КРИТИЧЕСКИЙ ФИКС: Инициализируем память дефолтными значениями из компилятора,
+                        // чтобы если sscanf где-то промахнется, у нас не было нулей или мусора!
+                        std::memcpy(state.heapMemory, rawValue.begin(), (std::min)(state.elementCount, rawValue.size()) * state.elementSize);
+
+                        char* byteBase = reinterpret_cast<char*>(state.heapMemory);
+                        size_t fieldsPerElement = state.elementSize / 4;
+
+                        // Потоковый разбор элементов: затягиваем float/int напрямую по смещениям
+                        for (size_t i = 0; i < tokens.size(); ++i) {
+                            size_t subOpen = tokens[i].find('{'); size_t subClose = tokens[i].rfind('}');
+                            if (subOpen != std::string::npos && subClose != std::string::npos) {
+                                std::string coords = tokens[i].substr(subOpen + 1, subClose - subOpen - 1);
+                                coords.erase(std::remove(coords.begin(), coords.end(), 'f'), coords.end());
+                                coords.erase(std::remove(coords.begin(), coords.end(), 'F'), coords.end());
+
+                                float vals[8] = { 0.0f };
+                                int parsed = sscanf_s(coords.c_str(), "%f, %f, %f, %f, %f, %f, %f, %f",
+                                    &vals[0], &vals[1], &vals[2], &vals[3], &vals[4], &vals[5], &vals[6], &vals[7]);
+
+                                if (parsed > 0) {
+                                    float* pDst = reinterpret_cast<float*>(byteBase + (i * state.elementSize));
+                                    for (int k = 0; k < parsed && k < static_cast<int>(fieldsPerElement); ++k) {
+                                        pDst[k] = vals[k]; // Перезаписываем только распознанные float/int поля
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                ElementType* pStart = reinterpret_cast<ElementType*>(state.heapMemory);
+                return std::initializer_list<ElementType>(pStart, pStart + state.elementCount);
+            }
+            return rawValue;
+        }
 
         template <typename TargetType>
         inline operator TargetType() const {

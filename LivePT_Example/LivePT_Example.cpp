@@ -1,4 +1,5 @@
 #include <windows.h>
+#include <initializer_list>
 
 // ---------------- LivePT integration section ----------------
 #define LivePT_EditMode true // true for activate
@@ -87,6 +88,43 @@ bool IsPrimitiveSelected(int posX, int posY, HWND hwnd) {
     return false;
 }
 
+
+
+// Новая структура параметров, принимающая список инициализации точек
+struct LinePrimitive {
+    std::initializer_list<pos2> points; // Принимает блок { pos2{...}, pos2{...} }
+    color3 color;                       // Цвет ломаной линии
+};
+
+void DrawLine(LinePrimitive lp, std::source_location location = std::source_location::current()) {
+    // Интеграция с LivePT (определяет, находится ли курсор VS внутри функции)
+    BOOL highlight = LivePT::IsCursorInsideFunctionCall(location);
+
+    if (lp.points.size() < 2) return;
+
+    // Настройка пера (Pen) для рисования линий
+    HPEN hPen = CreatePen(PS_SOLID, highlight ? 4 : 2, RGB(lp.color.r, lp.color.g, lp.color.b));
+    HPEN hOldPen = (HPEN)SelectObject(gc.memDC, hPen);
+
+    // Центр экрана для смещения координат
+    int centerX = gc.w / 2;
+    int centerY = gc.h / 2;
+
+    // Итератор для прохода по элементам initializer_list
+    auto it = lp.points.begin();
+
+    // Встаем на стартовую позицию (первая точка ломаной)
+    MoveToEx(gc.memDC, centerX + (int)it->x, centerY + (int)it->y, NULL);
+
+    // Последовательно соединяем линиями все остальные точки
+    for (++it; it != lp.points.end(); ++it) {
+        LineTo(gc.memDC, centerX + (int)it->x, centerY + (int)it->y);
+    }
+
+    // Очистка ресурсов GDI
+    SelectObject(gc.memDC, hOldPen);
+    DeleteObject(hPen);
+}
 
 void Draw(Primitive p, std::source_location location = std::source_location::current()) {
 
@@ -224,18 +262,27 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             .color =    eval(color3{29, 49, 193})
         });*/
 
-        Draw(
-            eval(
-                Primitive{
-                    pos2{-10.68f, 207.56f},
-                    size2{187.62f, 96.91f},
-                    angle(130.6f),
-                    ptype::box,
-                    true,
-                    color3{40, 0, 145}
-                }
-                )
-            );
+        Draw(eval(Primitive{
+            pos2{-1.78f, 173.96f},
+            size2{162.04f, 89.62f},
+            angle(131.6f),
+            ptype::box,
+            true,
+            color3{0, 42, 148}
+            }));
+
+        DrawLine({
+            // Явно указываем тип списка инициализации, чтобы макрос eval 
+            // и компилятор MSVC поняли друг друга с полуслова!
+            .points = eval(std::initializer_list<pos2>{
+                pos2{-71.40f, -139.00f},
+                pos2{26.00f, -169.00f},
+                pos2{122.00f, -118.00f},
+                pos2{28.0f, -41.0f},
+                pos2{148.60f, -1.80f}
+            }),
+            .color = eval(color3{255, 255, 0}) // Желтый цвет
+            });
 
         BitBlt(hdc, 0, 0, w, h, memDC, 0, 0, SRCCOPY);
         SelectObject(memDC, oldBM);

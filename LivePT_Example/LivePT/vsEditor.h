@@ -411,21 +411,24 @@ namespace LivePT {
 
         if (openBracket != std::wstring::npos && openBracket < fileText.length()) {
             size_t closeBracketPos = std::wstring::npos;
-            int bracketCount = 1;
+            int roundCount = 1;  // Баланс ()
+            int curlyCount = 0;  // Баланс {}
+            int angleCount = 0;  // Баланс <>
 
-            // Считаем честный баланс скобок агрегата вперед, защищаясь от многострочных сдвигов
             for (size_t k = openBracket + 1; k < fileText.length(); ++k) {
                 wchar_t ch = fileText[k];
-                if (ch == L'(') {
-                    bracketCount++;
-                }
+                if (ch == L'(') roundCount++;
                 else if (ch == L')') {
-                    bracketCount--;
-                    if (bracketCount == 0) {
+                    roundCount--;
+                    if (roundCount == 0 && curlyCount == 0 && angleCount == 0) {
                         closeBracketPos = k;
                         break;
                     }
                 }
+                else if (ch == L'{') curlyCount++;
+                else if (ch == L'}') curlyCount--;
+                else if (ch == L'<') angleCount++;
+                else if (ch == L'>') angleCount--;
             }
 
             // Если скобка честно найдена — вырезаем строго внутренний агрегат целиком
