@@ -275,9 +275,11 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 				})
             });
 
+        float x = rand() % 20 + 66;
+
         Draw({
             .pos = eval(pos2{293.41f, -221.50f}),
-            .size = eval(size2{188.06f, 161.43f}),
+            .size = eval(size2{188.06f, x}),
             .Angle = eval(angle(132.7f)),
             .type = eval(ptype::circle),
             .show = eval(true),
@@ -293,9 +295,11 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
                     .color =    eval(color3{29, 49, 193})
                 });*/
 
+
+
         Draw(eval(Primitive{
             pos2{90.88f, 203.36f},
-            size2{92.05f, 101.15f},
+            size2{97.05f, x},
             angle(324.8f),
             ptype::roundbox,
             true,
