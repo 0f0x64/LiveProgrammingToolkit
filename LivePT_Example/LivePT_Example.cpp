@@ -245,7 +245,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
          });
 
         Draw({
-            .pos =      eval(pos2{250.61f, -63.60f}),
+            .pos =      eval(pos2{258.31f, -59.30f}),
             .size =     eval(size2{139.91f, 120.09f}),
             .Angle =    eval(angle(135.7f)),
             .type =     eval(ptype::circle),
@@ -263,25 +263,30 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         });*/
 
         Draw(eval(Primitive{
-            pos2{-1.78f, 173.96f},
-            size2{162.04f, 89.62f},
-            angle(131.6f),
+            pos2{17.58f, 157.46f},
+            size2{168.27f, 93.63f},
+            angle(125.6f),
             ptype::box,
             true,
-            color3{0, 42, 148}
+            color3{48, 34, 148}
             }));
 
         DrawLine({
-            // явно указываем тип списка инициализации, чтобы макрос eval 
-            // и компил€тор MSVC пон€ли друг друга с полуслова!
             .points = eval(std::initializer_list<pos2>{
-                pos2{-71.40f, -139.00f},
-                pos2{26.00f, -169.00f},
-                pos2{122.00f, -118.00f},
-                pos2{28.0f, -41.0f},
-                pos2{148.60f, -1.80f}
+                pos2{61.40f, -80.50f},
+                pos2{90.60f, -149.50f},
+                pos2{97.40f, -238.90f},
+                pos2{22.60f, -260.30f},
+                pos2{-50.50f, -185.30f},
+                pos2{-66.80f, -92.60f},
+                pos2{-20.40f, -3.30f},
+                pos2{32.30f, -28.60f},
+                pos2{100.10f, 23.60f},
+                pos2{155.00f, 45.90f},
+                pos2{196.60f, 10.40f},
+                pos2{197.00f, -33.00f}
             }),
-            .color = eval(color3{255, 255, 0}) // ∆елтый цвет
+            .color = eval(color3{220, 48, 63}) // ∆елтый цвет
             });
 
         BitBlt(hdc, 0, 0, w, h, memDC, 0, 0, SRCCOPY);
