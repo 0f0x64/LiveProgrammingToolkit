@@ -91,40 +91,71 @@ bool IsPrimitiveSelected(int posX, int posY, HWND hwnd) {
 
 
 // Новая структура параметров, принимающая список инициализации точек
+struct HeavyPoint {
+    bool isVisible;          // 1 байт (+ 3 байта padding)
+    pos2 coordinates;        // 8 байт (float x, float y)
+    unsigned char thickness; // 1 байт (+ 3 байта padding)
+    int customUid;           // 4 байта
+    color3 segmentColor;     // 3 байта (r, g, b) -> Тяжелый тест вложенности структур!
+};                           // Общий размер будет выровнен компилятором до ~28-32 байт
+
 struct LinePrimitive {
-    std::vector<pos2> points;
-    color3 color;                       // Цвет ломаной линии
+    std::vector<HeavyPoint> points;
 };
 
-void DrawLine(LinePrimitive lp, std::source_location location = std::source_location::current()) {
-    // Интеграция с LivePT (определяет, находится ли курсор VS внутри функции)
-    BOOL highlight = LivePT::IsCursorInsideFunctionCall(location);
+// main.cpp
 
+// Полностью исправленная функция DrawLine в main.cpp
+// Полностью исправленная, рабочая отрисовка в main.cpp
+void DrawLine(LinePrimitive lp, std::source_location location = std::source_location::current()) {
+    BOOL highlight = LivePT::IsCursorInsideFunctionCall(location);
     if (lp.points.size() < 2) return;
 
-    // Настройка пера (Pen) для рисования линий
-    HPEN hPen = CreatePen(PS_SOLID, highlight ? 4 : 2, RGB(lp.color.r, lp.color.g, lp.color.b));
-    HPEN hOldPen = (HPEN)SelectObject(gc.memDC, hPen);
-
-    // Центр экрана для смещения координат
     int centerX = gc.w / 2;
     int centerY = gc.h / 2;
 
-    // Итератор для прохода по элементам initializer_list
-    auto it = lp.points.begin();
+    // Храним указатель на предыдущую валидную (видимую) точку
+    const HeavyPoint* pPrevPoint = nullptr;
 
-    // Встаем на стартовую позицию (первая точка ломаной)
-    MoveToEx(gc.memDC, centerX + (int)it->x, centerY + (int)it->y, NULL);
+    for (const auto& pt : lp.points) {
+        // Выводим текст координат и UID ВСЕГДА, чтобы видеть реальные числа в рантайме
+        int targetX = centerX + (int)pt.coordinates.x;
+        int targetY = centerY + (int)pt.coordinates.y;
 
-    // Последовательно соединяем линиями все остальные точки
-    for (++it; it != lp.points.end(); ++it) {
-        LineTo(gc.memDC, centerX + (int)it->x, centerY + (int)it->y);
+        std::string infoStr = "#" + std::to_string(pt.customUid) + " (" + std::to_string((int)pt.coordinates.x) + "," + std::to_string((int)pt.coordinates.y) + ")";
+        SetTextColor(gc.memDC, RGB(pt.segmentColor.r, pt.segmentColor.g, pt.segmentColor.b));
+        SetBkMode(gc.memDC, TRANSPARENT);
+        TextOutA(gc.memDC, targetX + 8, targetY - 12, infoStr.c_str(), (int)infoStr.length());
+
+        // Если точка невидима — линию через нее не ведем, но кэш плоттера не ломаем
+        if (!pt.isVisible) continue;
+
+        if (pPrevPoint == nullptr) {
+            // Это первая видимая точка — просто запоминаем её как стартовую
+            pPrevPoint = &pt;
+        }
+        else {
+            // Рисуем линию от предыдущей видимой точки к текущей
+            int startX = centerX + (int)pPrevPoint->coordinates.x;
+            int startY = centerY + (int)pPrevPoint->coordinates.y;
+
+            int currentThickness = highlight ? (pt.thickness + 2) : pt.thickness;
+            HPEN hPen = CreatePen(PS_SOLID, currentThickness, RGB(pt.segmentColor.r, pt.segmentColor.g, pt.segmentColor.b));
+            HPEN hOldPen = (HPEN)SelectObject(gc.memDC, hPen);
+
+            // Чертим строго между двумя конкретными точками
+            MoveToEx(gc.memDC, startX, startY, NULL);
+            LineTo(gc.memDC, targetX, targetY);
+
+            SelectObject(gc.memDC, hOldPen);
+            DeleteObject(hPen);
+
+            // Переставляем указатель на текущую точку
+            pPrevPoint = &pt;
+        }
     }
-
-    // Очистка ресурсов GDI
-    SelectObject(gc.memDC, hOldPen);
-    DeleteObject(hPen);
 }
+
 
 void Draw(Primitive p, std::source_location location = std::source_location::current()) {
 
@@ -245,12 +276,12 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             });
 
         Draw({
-            .pos = eval(pos2{250.81f, -193.10f}),
+            .pos = eval(pos2{293.41f, -221.50f}),
             .size = eval(size2{188.06f, 161.43f}),
             .Angle = eval(angle(132.7f)),
             .type = eval(ptype::circle),
             .show = eval(true),
-            .color = eval(color3{0, 128, 57})
+            .color = eval(color3{0, 116, 46})
             });
 
         /*        Draw({
@@ -263,31 +294,33 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
                 });*/
 
         Draw(eval(Primitive{
-            pos2{20.88f, 225.66f},
+            pos2{90.88f, 203.36f},
             size2{92.05f, 101.15f},
             angle(324.8f),
             ptype::roundbox,
             true,
-            color3{143, 45, 61}
+            color3{200, 52, 76}
             }));
 
         DrawLine({
-            .points = eval(std::vector<pos2>{
-                pos2{95.20f, -87.80f},
-                pos2{40.30f, -162.50f},
-                pos2{46.80f, -232.20f},
-                pos2{22.60f, -260.30f},
-                pos2{-30.50f, -168.00f},
-                pos2{-66.80f, -92.60f},
-                pos2{-20.40f, -3.30f},
-                pos2{42.10f, -32.70f},
-                pos2{100.10f, 23.60f},
-                pos2{155.00f, 45.90f},
-                pos2{183.50f, 84.50f},
-                                    pos2{240.00f, 45.90f},
-                pos2{279.30f, 27.50f}
-            }),
-            .color = eval(color3{37, 19, 220}) // Желтый цвет
+    .points = eval(std::vector<HeavyPoint>{
+        { true, pos2{-182.10f, 175.80f}, 32, 956, color3{0, 21, 48} },
+            {
+                .isVisible = true,
+                .coordinates = pos2{33.95f, -81.72f},
+                .thickness = 36,
+                .customUid = 1033,
+                .segmentColor = color3{0, 53, 0}
+            },
+            {.isVisible = false, .coordinates = pos2{12.40f, -3.20f}, .thickness = 1, .customUid = 666, .segmentColor = color3{0, 0, 0} },
+            {
+                .isVisible = true,
+                .coordinates = pos2{252.40f, 45.30f},
+                .thickness = 20,
+                .customUid = 1010,
+                .segmentColor = color3{191, 150, 0}
+            }
+        })
             });
 
         BitBlt(hdc, 0, 0, w, h, memDC, 0, 0, SRCCOPY);
