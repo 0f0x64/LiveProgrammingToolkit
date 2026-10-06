@@ -1,5 +1,6 @@
 namespace LivePT {
 
+
     struct EnumElementDesc {
         int value;
         std::string name;
@@ -572,6 +573,23 @@ namespace LivePT {
             return static_cast<TargetType>(literalValue);
         }
     };
+
+    // ----------------- Изолированная подсистема массивов -----------------
+    struct GenericVectorState {
+        void* heapMemory = nullptr;
+        size_t elementCount = 0;
+        size_t elementSize = 0;
+        size_t lastTextHash = 0;
+    };
+
+    inline std::unordered_map<int, GenericVectorState>& GetGenericVectorMap() {
+        static std::unordered_map<int, GenericVectorState> instance;
+        return instance;
+    }
+
+    template <typename T> struct is_initializer_list : std::false_type {};
+    template <typename E> struct is_initializer_list<std::initializer_list<E>> : std::true_type { using element_type = E; };
+    // ---------------------------------------------------------------------
 
 
     template <typename LiteralType, FixedString<260> AbsoluteFile, int Line, int Column>
