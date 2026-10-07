@@ -679,6 +679,8 @@ namespace LivePT {
                         paramDesc[target_id].validFieldsMask.resize(vectorTotalBytes, false);
                     }
 
+                    //paramDesc[target_id].validFieldsMask.assign(vectorTotalBytes, false);
+
                     auto LocalSplitByOuterCommas = [](const std::string& input) {
                         std::vector<std::string> resTokens; std::string curT;
                         int bCount = 0; int pCount = 0;
@@ -925,26 +927,38 @@ namespace LivePT {
         if (real_id >= 0 && real_id < static_cast<int>(paramDesc.size()) && paramDesc[real_id].loaded) {
             if (auto pCachedVector = std::any_cast<std::vector<ElementType>>(&paramDesc[real_id].value)) {
 
-                // Если размеры совпадают, накладываем только константные байты из IDE
-                if (resultVector.size() == pCachedVector->size()) {
-                    char* targetBase = reinterpret_cast<char*>(resultVector.data());
-                    const char* cacheBase = reinterpret_cast<const char*>(pCachedVector->data());
+                // СИТУАЦИЯ 1: Пользователь добавил или удалил строку элемента в IDE.
+                // Размеры кэша и бинарника разъехались. Возвращаем вектор из IDE целиком, 
+                // чтобы на лету увидеть изменение геометрии массива (как это работало раньше!).
+                if (literalValue.size() != pCachedVector->size()) {
+                    return *pCachedVector;
+                }
 
-                    size_t vectorTotalBytes = resultVector.size() * sizeof(ElementType);
-                    const auto& mask = paramDesc[real_id].validFieldsMask;
+                // СИТУАЦИЯ 2: Структура массива стабильна. 
+                // Работает покадровое побайтовое наложение, чтобы пробрасывать переменные типа 'x'
+                std::vector<ElementType> resultVector = literalValue;
 
-                    if (mask.size() == vectorTotalBytes) {
-                        for (size_t b = 0; b < vectorTotalBytes; ++b) {
-                            if (mask[b]) {
-                                targetBase[b] = cacheBase[b];
-                            }
+                char* targetBase = reinterpret_cast<char*>(resultVector.data());
+                const char* cacheBase = reinterpret_cast<const char*>(pCachedVector->data());
+
+                size_t vectorTotalBytes = resultVector.size() * sizeof(ElementType);
+                const auto& mask = paramDesc[real_id].validFieldsMask;
+
+                if (mask.size() == vectorTotalBytes) {
+                    for (size_t b = 0; b < vectorTotalBytes; ++b) {
+                        if (mask[b]) {
+                            targetBase[b] = cacheBase[b];
                         }
                     }
                 }
+
+                return resultVector;
             }
         }
 
-        return resultVector;
+        return literalValue;
+
+
 
     }
 };

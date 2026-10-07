@@ -260,8 +260,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         drawCounter = 0;
 
         Draw({
-            .pos = eval(pos2{-144.43f, -385.68f}),
-            .size = eval(size2{206.47f, 128.17f}),
+            .pos = eval(pos2{-152.03f, -365.88f}),
+            .size = eval(size2{276.00f, 171.28f}),
             .Angle = eval(angle(93.0f)),
             .type = eval(ptype::box),
             .show = eval(true),
@@ -275,9 +275,9 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         float x = rand() % 20 + 66;
 
         Draw({
-            .pos = eval(pos2{239.81f, -322.00f}),
-            .size = eval(size2{111.06f, x}),
-            .Angle = eval(angle(114.7f)),
+            .pos = eval(pos2{364.11f, -289.80f}),
+            .size = eval(size2{149.06f, x}),
+            .Angle = eval(angle(110.7f)),
             .type = eval(ptype::circle),
             .show = eval(true),
             .color = eval(color3{0, 150, 36})
@@ -295,18 +295,20 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
 
         Draw(eval(Primitive{
-            pos2{169.09f, 403.46f},
-            size2{198.05f, x},
-            angle(340.8f),
-            ptype::roundbox,
+            pos2{298.55f, 510.46f},
+            size2{104.05f, x},
+            angle(311.7f),
+            ptype::circle,
             true,
-            color3{9, 46, 136}
+            color3{14, 53, 166}
             }));
 
         DrawLine({
     .points = eval(std::vector<HeavyPoint>{
-            { true, pos2{-133.80f, 141.80f}, 43, 956, color3{113, 125, 121} },
-                { true, pos2{-71.80f, 16.80f}, 43, 956, color3{113, 125, 121} },
+            { true, pos2{-126.50f, 165.10f}, 84, 956, color3{36, 61, 125} },
+                { true, pos2{-71.80f, 16.80f}, 26, 956, color3{65, 84, 125} },
+                { true, pos2{31.60f, 103.80f}, 38, 956, color3{39, 60, 125} },
+                { true, pos2{145.00f, 341.00f}, 38, 956, color3{127, 0, 33} },
     
         })
             });
