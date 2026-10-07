@@ -260,14 +260,14 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         drawCounter = 0;
 
         Draw({
-            .pos = eval(pos2{-135.93f, -362.18f}),
+            .pos = eval(pos2{-92.33f, -303.98f}),
             .size = eval(size2{276.00f, 171.28f}),
             .Angle = eval(angle(93.0f)),
             .type = eval(ptype::box),
             .show = eval(true),
             .color = eval(color3{
-				.r=174, 
-				.g=0,  
+				.r=75, 
+				.g=22,  
 				.b=0
 				})
             });
@@ -275,8 +275,11 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         float x = rand() % 20 + 66;
 
         Draw({
-            .pos = eval(pos2{366.01f, -276.80f}),
-            .size = eval(size2{149.06f, x}),
+            .pos = eval(pos2{
+				.x = 423.01f,
+				.y = -203.50f
+				}),
+            .size = eval(size2{148.06f, x}),
             .Angle = eval(angle(110.7f)),
             .type = eval(ptype::circle),
             .show = eval(true),
@@ -295,20 +298,24 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
 
 Draw(eval(Primitive{
-            pos2{268.85f, 398.06f},
-            size2{104.05f, x},
-            angle(311.7f),
-            ptype::circle,
+            pos2{
+				.x = 517.25f,
+				.y = 280.76f
+				},
+            size2{123.05f, x},
+            angle(265.0f),
+            ptype::roundbox,
             true,
-            color3{14, 53, 166}
+            color3{54, 0, 124}
             }));
 
         DrawLine({
     .points = eval(std::vector<HeavyPoint>{
-            { true, pos2{-126.50f, 165.10f}, 84, 956, color3{36, 61, 125} },
+            { true, pos2{-127.30f, 168.10f}, 84, 956, color3{36, 61, 125} },
                 { true, pos2{-71.80f, 16.80f}, 26, 956, color3{65, 84, 125} },
                 { true, pos2{31.60f, 103.80f}, 38, 956, color3{39, 60, 125} },
-                { true, pos2{145.00f, 341.00f}, 38, 956, color3{127, 0, 33} },
+                { true, pos2{157.30f, 340.10f}, 38, 956, color3{127, 0, 33} },
+                { true, pos2{49.20f, 396.40f}, 38, 956, color3{127, 0, 33} },
     
         })
             });

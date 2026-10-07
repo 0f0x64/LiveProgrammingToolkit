@@ -898,17 +898,44 @@ namespace LivePT {
             return false;
         }
 
-        // === ФИЛЬТР ДЛЯ ДРАГА МЫШКОЙ ===
+        // === УМНЫЙ ЛЕКСИЧЕСКИЙ ФИЛЬТР ДЛЯ СМЕШАННОГО СОДЕРЖИМОГО (ДРАГ) ===
         {
-            std::string cleanArgs = innerArgsA;
-            cleanArgs.erase(std::remove_if(cleanArgs.begin(), cleanArgs.end(), [](char c) {
-                return c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '.' || c == '=' || c == ',' || c == '-' || c == '+' || c == 'f' || c == 'F';
-                }), cleanArgs.end());
-
-            for (char c : cleanArgs) {
+            bool hasAlphaVariables = false;
+            // Итерируемся по строке аргументов, чтобы найти изолированные переменные типа 'x'
+            for (size_t i = 0; i < innerArgsA.length(); ++i) {
+                char c = innerArgsA[i];
                 if (std::isalpha(static_cast<unsigned char>(c))) {
-                    return false; // Блокируем драг смешанной структуры на корню
+                    // Игнорируем признаки float-констант 'f'/'F'
+                    if (c == 'f' || c == 'F') continue;
+
+                    // Проверяем контекст: не является ли это полем C++20 (например, .x = ...)
+                    bool isDesignatedInitializer = false;
+
+                    // Проверяем налево: нет ли там точки?
+                    size_t left = i;
+                    while (left > 0) {
+                        left--;
+                        if (innerArgsA[left] == '.') { isDesignatedInitializer = true; break; }
+                        if (!std::isspace(static_cast<unsigned char>(innerArgsA[left]))) break;
+                    }
+
+                    // Проверяем направо: нет ли там знака равенства '='?
+                    size_t right = i;
+                    while (right < innerArgsA.length() - 1) {
+                        right++;
+                        if (innerArgsA[right] == '=') { isDesignatedInitializer = true; break; }
+                        if (!std::isspace(static_cast<unsigned char>(innerArgsA[right]))) break;
+                    }
+
+                    if (!isDesignatedInitializer) {
+                        hasAlphaVariables = true; // Нашли чистую переменную типа 'x'!
+                        break;
+                    }
                 }
+            }
+
+            if (hasAlphaVariables) {
+                return false; // Блокируем драг только для реальных переменных, защищая рантайм-динамику
             }
         }
 
@@ -948,28 +975,44 @@ namespace LivePT {
             return false;
         }
 
-        // === ЧЕСТНЫЙ АРХИТЕКТУРНЫЙ ФИКС ДЛЯ СМЕШАННОГО СОДЕРЖИМОГО ===
-        // Быстро проверяем, нет ли внутри строки аргументов нечисловых параметров (переменных вроде 'x').
-        // Мы ищем токены параметров. Если параметр не содержит цифр, но содержит буквы (кроме признаков float 'f'/'F') —
-        // это рантайм-переменная! Мы блокируем открытие виджета, чтобы не сжечь код.
+        // === УМНЫЙ ЛЕКСИЧЕСКИЙ ФИЛЬТР ДЛЯ СМЕШАННОГО СОДЕРЖИМОГО ===
         {
-            std::string cleanArgs = innerArgsA;
-            // Убираем пробелы, табы, знаки инициализации полей, чтобы остались только чистые токены
-            cleanArgs.erase(std::remove_if(cleanArgs.begin(), cleanArgs.end(), [](char c) {
-                return c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '.' || c == '=' || c == ',' || c == '-' || c == '+' || c == 'f' || c == 'F';
-                }), cleanArgs.end());
-
-            // Если после очистки от цифр и знаков в строке остались буквы (например 'x' или имя переменной)
             bool hasAlphaVariables = false;
-            for (char c : cleanArgs) {
+            // Итерируемся по строке аргументов, чтобы найти изолированные переменные типа 'x'
+            for (size_t i = 0; i < innerArgsA.length(); ++i) {
+                char c = innerArgsA[i];
                 if (std::isalpha(static_cast<unsigned char>(c))) {
-                    hasAlphaVariables = true;
-                    break;
+                    // Игнорируем признаки float-констант 'f'/'F'
+                    if (c == 'f' || c == 'F') continue;
+
+                    // Проверяем контекст: не является ли это полем C++20 (например, .x = ...)
+                    bool isDesignatedInitializer = false;
+
+                    // Проверяем налево: нет ли там точки?
+                    size_t left = i;
+                    while (left > 0) {
+                        left--;
+                        if (innerArgsA[left] == '.') { isDesignatedInitializer = true; break; }
+                        if (!std::isspace(static_cast<unsigned char>(innerArgsA[left]))) break;
+                    }
+
+                    // Проверяем направо: нет ли там знака равенства '='?
+                    size_t right = i;
+                    while (right < innerArgsA.length() - 1) {
+                        right++;
+                        if (innerArgsA[right] == '=') { isDesignatedInitializer = true; break; }
+                        if (!std::isspace(static_cast<unsigned char>(innerArgsA[right]))) break;
+                    }
+
+                    if (!isDesignatedInitializer) {
+                        hasAlphaVariables = true; // Нашли чистую переменную типа 'x'!
+                        break;
+                    }
                 }
             }
 
             if (hasAlphaVariables) {
-                return false; // Виджет ВООБЩЕ НЕ ОТКРЫВАЕТСЯ для смешанного C++ кода!
+                return false; // Блокируем виджет только для реальных переменных, защищая код от затирания
             }
         }
 
@@ -988,7 +1031,6 @@ namespace LivePT {
         registry[typeNameA](std::any(innerArgsA), vsUpdater);
         return true;
     }
-
 
 
     inline bool HandleMouseDown(const POINT& pt) {
