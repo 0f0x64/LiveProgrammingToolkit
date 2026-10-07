@@ -171,6 +171,7 @@ namespace LivePT {
 
 
     inline void ShiftDatabaseCoordinates(const std::string& targetFile, long targetLine, long visualStartCol, int lineDelta, int columnDelta) {
+
         auto& params = LivePT::getParamDesc();
         std::string normalizedTarget = LivePT::NormalizePath(targetFile.c_str());
 

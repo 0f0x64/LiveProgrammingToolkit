@@ -260,7 +260,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         drawCounter = 0;
 
         Draw({
-            .pos = eval(pos2{-152.03f, -365.88f}),
+            .pos = eval(pos2{-135.93f, -362.18f}),
             .size = eval(size2{276.00f, 171.28f}),
             .Angle = eval(angle(93.0f)),
             .type = eval(ptype::box),
@@ -275,7 +275,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         float x = rand() % 20 + 66;
 
         Draw({
-            .pos = eval(pos2{364.11f, -289.80f}),
+            .pos = eval(pos2{366.01f, -276.80f}),
             .size = eval(size2{149.06f, x}),
             .Angle = eval(angle(110.7f)),
             .type = eval(ptype::circle),
@@ -294,8 +294,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
 
 
-        Draw(eval(Primitive{
-            pos2{298.55f, 510.46f},
+Draw(eval(Primitive{
+            pos2{268.85f, 398.06f},
             size2{104.05f, x},
             angle(311.7f),
             ptype::circle,

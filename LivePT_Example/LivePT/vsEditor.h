@@ -696,13 +696,16 @@ namespace LivePT {
             return;
         }
 
-        bool wasChanged = (currentLineText != g_lastLineTextBuffer || currentLineCount != g_lastLineCount);
+        bool wasChanged = (currentLineCount != g_lastLineCount) ||
+            (line == g_lastLine && currentLineText != g_lastLineTextBuffer);
 
         if (wasChanged) {
             int lineDelta = static_cast<int>(currentLineCount - g_lastLineCount);
             int columnDelta = static_cast<int>(currentLineLength - g_lastLineLength);
             long visualStartCol = (column < g_lastCol) ? column : g_lastCol;
 
+            // Защита: Если количество строк не менялось (lineDelta == 0), но мы правим текст текущей строки,
+            // сдвиг колонок должен происходить только для элементов, которые находятся ПРАВЕЕ курсора.
             LivePT::ShiftDatabaseCoordinates(currentActiveFile, g_lastLine, visualStartCol, lineDelta, columnDelta);
         }
 
@@ -804,6 +807,8 @@ namespace LivePT {
                 CComVariant(targetLine),
                 CComVariant(1L),
                 CComVariant(0L));
+            g_lastLine = targetLine;
+            g_lastCol = 1;
         }
     }
 
