@@ -305,21 +305,21 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         DrawLine({
     .points = eval(std::vector<HeavyPoint>{
-        { true, pos2{-151.90f, 148.80f}, 43, 956, color3{0, 21, 48} },
+        { true, pos2{-137.90f, 150.40f}, 43, 956, color3{0, 21, 48} },
             {
                 .isVisible = true,
-                .coordinates = pos2{54.55f, -56.92f},
+                .coordinates = pos2{18.65f, -48.52f},
                 .thickness = 36,
                 .customUid = 1033,
                 .segmentColor = color3{0, 53, 0}
             },
-            {.isVisible = false, .coordinates = pos2{12.40f, -3.20f}, .thickness = 1, .customUid = 666, .segmentColor = color3{0, 0, 0} },
+            {.isVisible = false, .coordinates = pos2{41.70f, -13.60f}, .thickness = 1, .customUid = 666, .segmentColor = color3{0, 0, 0} },
             {
                 .isVisible = true,
-                .coordinates = pos2{239.40f, x},
+                .coordinates = pos2{152.40f, x},
                 .thickness = 20,
                 .customUid = 1010,
-                .segmentColor = color3{191, 150, 0}
+                .segmentColor = color3{187, 187, 0}
             }
         })
             });
