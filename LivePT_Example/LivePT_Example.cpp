@@ -260,16 +260,13 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         drawCounter = 0;
 
         Draw({
-            .pos = eval(pos2{
-				.x = -179.07f,
-				.y = -241.08f
-				}),
-            .size = eval(size2{144.39f, 147.19f}),
-            .Angle = eval(angle(104.0f)),
+            .pos = eval(pos2{-207.43f, -369.68f}),
+            .size = eval(size2{185.55f, 157.52f}),
+            .Angle = eval(angle(93.0f)),
             .type = eval(ptype::box),
             .show = eval(true),
             .color = eval(color3{
-				.r=138, 
+				.r=174, 
 				.g=0,  
 				.b=0
 				})
@@ -278,12 +275,12 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         float x = rand() % 20 + 66;
 
         Draw({
-            .pos = eval(pos2{293.41f, -221.50f}),
-            .size = eval(size2{188.06f, x}),
-            .Angle = eval(angle(132.7f)),
+            .pos = eval(pos2{239.81f, -322.00f}),
+            .size = eval(size2{111.06f, x}),
+            .Angle = eval(angle(134.7f)),
             .type = eval(ptype::circle),
             .show = eval(true),
-            .color = eval(color3{0, 116, 46})
+            .color = eval(color3{0, 150, 36})
             });
 
         /*        Draw({
@@ -298,20 +295,20 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
 
         Draw(eval(Primitive{
-            pos2{90.88f, 203.36f},
-            size2{97.05f, x},
-            angle(324.8f),
+            pos2{48.39f, 349.56f},
+            size2{198.05f, x},
+            angle(326.8f),
             ptype::roundbox,
             true,
-            color3{200, 52, 76}
+            color3{206, 57, 101}
             }));
 
         DrawLine({
     .points = eval(std::vector<HeavyPoint>{
-        { true, pos2{-182.10f, 175.80f}, 32, 956, color3{0, 21, 48} },
+        { true, pos2{-151.90f, 148.80f}, 43, 956, color3{0, 21, 48} },
             {
                 .isVisible = true,
-                .coordinates = pos2{33.95f, -81.72f},
+                .coordinates = pos2{54.55f, -56.92f},
                 .thickness = 36,
                 .customUid = 1033,
                 .segmentColor = color3{0, 53, 0}
@@ -319,7 +316,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             {.isVisible = false, .coordinates = pos2{12.40f, -3.20f}, .thickness = 1, .customUid = 666, .segmentColor = color3{0, 0, 0} },
             {
                 .isVisible = true,
-                .coordinates = pos2{252.40f, 45.30f},
+                .coordinates = pos2{239.40f, x},
                 .thickness = 20,
                 .customUid = 1010,
                 .segmentColor = color3{191, 150, 0}
