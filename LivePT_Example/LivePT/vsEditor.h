@@ -807,6 +807,25 @@ namespace LivePT {
                 CComVariant(targetLine),
                 CComVariant(1L),
                 CComVariant(0L));
+
+
+            VARIANT vtActiveDoc; VariantInit(&vtActiveDoc);
+            HRESULT hr = pDTE ? AutoWrap(DISPATCH_PROPERTYGET, &vtActiveDoc, pDTE, L"ActiveDocument", 0) : E_FAIL;
+
+            if (hr == CO_E_OBJNOTCONNECTED || hr == RPC_E_DISCONNECTED || hr == E_ACCESSDENIED) {
+                ResetDTEConnection();
+                return;
+            }
+            if (FAILED(hr) || !vtActiveDoc.pdispVal) { VariantClear(&vtActiveDoc); return; }
+
+            IDispatch* pActiveDoc = vtActiveDoc.pdispVal;
+            std::string currentActiveFile = GetActiveDocumentPath(pActiveDoc);
+            g_currentActiveFile = currentActiveFile;
+            if (currentActiveFile.empty()) { VariantClear(&vtActiveDoc); return; }
+
+            long line = 0, column = 0;
+            if (!GetCursorCoordinates(pActiveDoc, line, column)) { VariantClear(&vtActiveDoc); return; }
+            g_lastLineTextBuffer = DownloadCurrentLineText(pActiveDoc);
             g_lastLine = targetLine;
             g_lastCol = 1;
         }
