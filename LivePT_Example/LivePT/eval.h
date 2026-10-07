@@ -344,10 +344,30 @@ namespace LivePT {
                             auto tokens = LocalSplitByOuterCommas(curInnerText);
                             size_t positionalIndex = 0;
 
+                            // === АТОМАРНАЯ ИЗОЛЯЦИЯ И ИСПРАВЛЕННЫЙ ПОИСК ЗНАКА РАВЕНСТВА ===
                             for (const auto& token : tokens) {
-                                size_t eqPos = token.find('=');
-                                std::string fieldName = ""; std::string valueStr = token;
+                                // ЯВНО ОБЪЯВЛЯЕМ ПЕРЕМЕННЫЕ НА ВХОДЕ В ЦИКЛ
+                                std::string fieldName = "";
+                                std::string valueStr = token;
                                 const StructMemberDesc* member = nullptr;
+
+                                size_t eqPos = std::string::npos;
+                                int bCount = 0; // Баланс {}
+                                int pCount = 0; // Баланс ()
+
+                                // Поиск знака равенства строго на самом верхнем уровне текущего токена
+                                for (size_t i = 0; i < token.length(); ++i) {
+                                    char c = token[i];
+                                    if (c == '{') bCount++;
+                                    else if (c == '}') { bCount--; if (bCount < 0) bCount = 0; }
+                                    else if (c == '(') pCount++;
+                                    else if (c == ')') { pCount--; if (pCount < 0) pCount = 0; }
+
+                                    if (c == '=' && bCount == 0 && pCount == 0) {
+                                        eqPos = i;
+                                        break;
+                                    }
+                                }
 
                                 if (eqPos != std::string::npos) {
                                     fieldName = token.substr(0, eqPos);
@@ -358,7 +378,13 @@ namespace LivePT {
                                     valueStr.erase(valueStr.find_last_not_of(" \t\r\n") + 1);
 
                                     for (size_t mIdx = 0; mIdx < membersCache.size(); ++mIdx) {
-                                        if (membersCache[mIdx].name == fieldName) { member = &membersCache[mIdx]; break; }
+                                        if (membersCache[mIdx].name == fieldName) {
+                                            member = &membersCache[mIdx];
+
+                                            // Синхронизируем позиционный индекс при смешивании синтаксиса
+                                            positionalIndex = mIdx + 1;
+                                            break;
+                                        }
                                     }
                                 }
                                 else {
@@ -369,9 +395,11 @@ namespace LivePT {
                                 }
 
                                 if (!member) continue;
-                                char* fieldAddress = byteBase + member->offset;
 
+                                // Дальнейшая логика записи использует строго локальные переменные
+                                char* fieldAddress = byteBase + member->offset;
                                 DWORD currentAbsoluteFieldOffset = absoluteBaseOffset + member->offset;
+
                                 size_t structTotalSize = sizeof(TargetType);
 
                                 if (paramDesc[target_id].validFieldsMask.size() < structTotalSize) {
@@ -678,6 +706,7 @@ namespace LivePT {
                     if (paramDesc[target_id].validFieldsMask.size() < vectorTotalBytes) {
                         paramDesc[target_id].validFieldsMask.resize(vectorTotalBytes, false);
                     }
+
 
                     auto LocalSplitByOuterCommas = [](const std::string& input) {
                         std::vector<std::string> resTokens; std::string curT;
