@@ -679,8 +679,6 @@ namespace LivePT {
                         paramDesc[target_id].validFieldsMask.resize(vectorTotalBytes, false);
                     }
 
-                    //paramDesc[target_id].validFieldsMask.assign(vectorTotalBytes, false);
-
                     auto LocalSplitByOuterCommas = [](const std::string& input) {
                         std::vector<std::string> resTokens; std::string curT;
                         int bCount = 0; int pCount = 0;
