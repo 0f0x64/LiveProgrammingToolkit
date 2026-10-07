@@ -276,11 +276,11 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         Draw(eval(Primitive{
             .pos = pos2{
-				.x = 394.41f,
-				.y = -209.80f
+				.x = 387.21f,
+				.y = -206.00f
 				},
-            .size = size2{148.06f, x},
-            .Angle = angle(110.7f),
+            .size = size2{158.06f, x},
+            .Angle = angle(116.7f),
             .type = ptype::circle,
             .show = true,
             .color = color3{0, 150, 36}
