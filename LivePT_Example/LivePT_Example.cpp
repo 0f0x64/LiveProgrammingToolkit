@@ -260,8 +260,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         drawCounter = 0;
 
         Draw({
-            .pos = eval(pos2{-207.43f, -369.68f}),
-            .size = eval(size2{185.55f, 157.52f}),
+            .pos = eval(pos2{-144.43f, -385.68f}),
+            .size = eval(size2{206.47f, 128.17f}),
             .Angle = eval(angle(93.0f)),
             .type = eval(ptype::box),
             .show = eval(true),
@@ -277,7 +277,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         Draw({
             .pos = eval(pos2{239.81f, -322.00f}),
             .size = eval(size2{111.06f, x}),
-            .Angle = eval(angle(134.7f)),
+            .Angle = eval(angle(114.7f)),
             .type = eval(ptype::circle),
             .show = eval(true),
             .color = eval(color3{0, 150, 36})
@@ -295,32 +295,19 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
 
         Draw(eval(Primitive{
-            pos2{48.39f, 349.56f},
+            pos2{169.09f, 403.46f},
             size2{198.05f, x},
-            angle(326.8f),
+            angle(340.8f),
             ptype::roundbox,
             true,
-            color3{206, 57, 101}
+            color3{9, 46, 136}
             }));
 
         DrawLine({
     .points = eval(std::vector<HeavyPoint>{
-        { true, pos2{-137.90f, 150.40f}, 43, 956, color3{0, 21, 48} },
-            {
-                .isVisible = true,
-                .coordinates = pos2{18.65f, -48.52f},
-                .thickness = 36,
-                .customUid = 1033,
-                .segmentColor = color3{0, 53, 0}
-            },
-            {.isVisible = false, .coordinates = pos2{41.70f, -13.60f}, .thickness = 1, .customUid = 666, .segmentColor = color3{0, 0, 0} },
-            {
-                .isVisible = true,
-                .coordinates = pos2{152.40f, x},
-                .thickness = 20,
-                .customUid = 1010,
-                .segmentColor = color3{187, 187, 0}
-            }
+            { true, pos2{-133.80f, 141.80f}, 43, 956, color3{113, 125, 121} },
+                { true, pos2{-71.80f, 16.80f}, 43, 956, color3{113, 125, 121} },
+    
         })
             });
 

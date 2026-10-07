@@ -894,27 +894,35 @@ namespace LivePT {
         std::string innerArgsA, typeNameA;
         long visualStartCol = 0;
 
-        // Вызываем общего рабочего. Если структуры нет или COM-ошибка — тихо выходим
         if (!ExtractStructBoundaries(fileText, lineText, line, targetCharIdx, innerArgsA, visualStartCol, typeNameA)) {
             return false;
         }
 
-        // Проверяем наличие покадрового коллбэка в реестре драга
+        // === ФИЛЬТР ДЛЯ ДРАГА МЫШКОЙ ===
+        {
+            std::string cleanArgs = innerArgsA;
+            cleanArgs.erase(std::remove_if(cleanArgs.begin(), cleanArgs.end(), [](char c) {
+                return c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '.' || c == '=' || c == ',' || c == '-' || c == '+' || c == 'f' || c == 'F';
+                }), cleanArgs.end());
+
+            for (char c : cleanArgs) {
+                if (std::isalpha(static_cast<unsigned char>(c))) {
+                    return false; // Блокируем драг смешанной структуры на корню
+                }
+            }
+        }
+
         auto& dragRegistry = GetCustomDragRegistry();
         if (dragRegistry.find(typeNameA) == dragRegistry.end()) return false;
 
-        // Настраиваем рантайм-состояние покадрового пропорционального драга мыши
         g_dragState.dragLine = line;
         g_dragState.dragStartCol = visualStartCol;
         g_dragState.currentTextLength = innerArgsA.length();
-
-        g_dragState.oldValueStr = typeNameA;       // Имя типа для реестра коллбэков ("pos2")
-        g_dragState.startTextValue = innerArgsA;   // Полный текст аргументов внутри скобок
-
+        g_dragState.oldValueStr = typeNameA;
+        g_dragState.startTextValue = innerArgsA;
         g_dragState.oldMouseX = pt.x;
         g_dragState.oldMouseY = pt.y;
         g_dragState.lockMousePos = pt;
-
         g_dragState.isDragging = false;
         g_dragState.isProportionalStructDrag = true;
 
@@ -931,12 +939,38 @@ namespace LivePT {
         return true;
     }
 
+
     inline bool TryInitStructWidgetDirect(const std::wstring& fileText, const std::wstring& lineText, long line, long column, long targetCharIdx) {
         std::string innerArgsA, typeNameA;
         long visualStartCol = 0;
 
         if (!ExtractStructBoundaries(fileText, lineText, line, targetCharIdx, innerArgsA, visualStartCol, typeNameA)) {
             return false;
+        }
+
+        // === ЧЕСТНЫЙ АРХИТЕКТУРНЫЙ ФИКС ДЛЯ СМЕШАННОГО СОДЕРЖИМОГО ===
+        // Быстро проверяем, нет ли внутри строки аргументов нечисловых параметров (переменных вроде 'x').
+        // Мы ищем токены параметров. Если параметр не содержит цифр, но содержит буквы (кроме признаков float 'f'/'F') —
+        // это рантайм-переменная! Мы блокируем открытие виджета, чтобы не сжечь код.
+        {
+            std::string cleanArgs = innerArgsA;
+            // Убираем пробелы, табы, знаки инициализации полей, чтобы остались только чистые токены
+            cleanArgs.erase(std::remove_if(cleanArgs.begin(), cleanArgs.end(), [](char c) {
+                return c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '.' || c == '=' || c == ',' || c == '-' || c == '+' || c == 'f' || c == 'F';
+                }), cleanArgs.end());
+
+            // Если после очистки от цифр и знаков в строке остались буквы (например 'x' или имя переменной)
+            bool hasAlphaVariables = false;
+            for (char c : cleanArgs) {
+                if (std::isalpha(static_cast<unsigned char>(c))) {
+                    hasAlphaVariables = true;
+                    break;
+                }
+            }
+
+            if (hasAlphaVariables) {
+                return false; // Виджет ВООБЩЕ НЕ ОТКРЫВАЕТСЯ для смешанного C++ кода!
+            }
         }
 
         auto& registry = GetTypeCallbackRegistry();
@@ -954,6 +988,7 @@ namespace LivePT {
         registry[typeNameA](std::any(innerArgsA), vsUpdater);
         return true;
     }
+
 
 
     inline bool HandleMouseDown(const POINT& pt) {
