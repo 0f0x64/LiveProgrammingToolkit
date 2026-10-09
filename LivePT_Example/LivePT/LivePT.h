@@ -2,7 +2,7 @@
 
 #define LivePT_Mouse true // true for mouse drag, switch, enums with context menu
 #define LivePT_WindowManagement true //auto split screen on single monitor
-#define LivePT_AppToSecondaryDisplay true //auto move your app to second monitor
+#define LivePT_AppToSecondaryDisplay false //auto move your app to second monitor
 #define LivePT_TriggerButton VK_LBUTTON  // you can use VK_MBUTTON for alternative
 
 // -------------------

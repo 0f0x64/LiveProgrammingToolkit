@@ -767,14 +767,6 @@ namespace LivePT {
                 ::AttachThreadInput(gameThreadId, vsThreadId, FALSE);
             }
 
-            for (int k = 0; k < 5; ++k) {
-                MSG msg;
-                while (PeekMessageW(&msg, NULL, 0, 0, PM_REMOVE)) {
-                    TranslateMessage(&msg);
-                    DispatchMessageW(&msg);
-                }
-                ::Sleep(10);
-            }
         }
 
         CComVariant vtItemOperations;
