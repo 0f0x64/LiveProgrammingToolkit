@@ -259,53 +259,58 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         drawCounter = 0;
 
+
         Draw({
-            .pos = eval(pos2{-183.23f, -345.18f}),
-            .size = eval(size2{276.00f, 171.28f}),
-            .Angle = eval(angle(93.0f)),
-            .type = eval(ptype::box),
+            .pos = eval(pos2{-39.63f, -210.88f}),
+            .size = eval(size2{269.75f, 120.72f}),
+            .Angle = eval(angle(306.3f)),
+            .type = eval(ptype::circle),
             .show = eval(true),
             .color = eval(color3{
-				.r=73, 
-				.g=4,  
-				.b=0
+				.r=123, 
+				.g=46,  
+				.b=55
 				})
             });
 
         float x = rand() % 20 + 66;
 
+
         Draw(eval(Primitive{
             .pos = pos2{
-				.x = 473.11f,
-				.y = -284.00f
+				.x = 314.61f,
+				.y = -349.70f
 				},
             .size = size2{103.06f, x},
-            .Angle = angle(116.7f),
+            .Angle = angle(183.2f),
             .type = ptype::circle,
             .show = true,
-            .color = color3{0, 150, 36}
+            .color = color3{127, 103, 105}
             }));
 
         Draw(eval(Primitive{
             pos2{
-				.x = 377.95f,
-				.y = 142.46f
+				.x = 289.15f,
+				.y = 4.16f
 				},
             size2{160.05f, x},
             angle(265.0f),
             ptype::roundbox,
             true,
-            color3{54, 0, 124}
+            color3{128, 87, 81}
             }));
 
         DrawLine({
     .points = eval(std::vector<HeavyPoint>{
-            { true, pos2{-155.10f, 169.20f}, 84, 956, color3{36, 61, 125} },
-                { true, pos2{-71.80f, 16.80f}, 26, 956, color3{65, 84, 125} },
+            { true, pos2{-155.10f, 169.20f}, 58, 956, color3{36, 61, 125} },
+                { true, pos2{-71.80f, 16.80f}, 50, 956, color3{65, 84, 125} },
                 { true, pos2{31.60f, 103.80f}, 38, 956, color3{39, 60, 125} },
-                { true, pos2{157.30f, 340.10f}, 38, 956, color3{127, 0, 33} },
-                { true, pos2{16.40f, 398.50f}, 38, 956, color3{127, 0, 33} },
-                { true, pos2{-62.80f, 362.50f}, 38, 956, color3{127, 0, 33} },
+                { true, pos2{93.60f, 274.80f}, 38, 956, color3{39, 60, 125} },
+                { true, pos2{-69.30f, 373.80f}, 38, 956, color3{39, 60, 125} },
+                
+                
+
+
     
         })
             });
@@ -329,8 +334,6 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
 
     const char CLASS_NAME[] = "WindowClass";
-
-    //LivePT::InitLivePTCallbacks();
 
     auto hUser32 = GetModuleHandleA("user32.dll");
     typedef BOOL(WINAPI* PfnSetProcessDpiAwarenessContext)(DPI_AWARENESS_CONTEXT);

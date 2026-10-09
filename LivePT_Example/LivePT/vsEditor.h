@@ -759,7 +759,7 @@ namespace LivePT {
                 ::AttachThreadInput(gameThreadId, vsThreadId, TRUE);
             }
 
-            ::ShowWindow(hVSMainWnd, SW_RESTORE);
+            ::ShowWindow(hVSMainWnd, SW_SHOW);
             ::SetForegroundWindow(hVSMainWnd);
             ::SetFocus(hVSMainWnd);
 
