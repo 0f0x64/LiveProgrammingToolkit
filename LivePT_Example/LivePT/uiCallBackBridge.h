@@ -71,7 +71,6 @@ namespace LivePT {
 // IDENTICAL STRUCT-BASED MACRO MIRROR (YOUR EXACT ARCHITECTURE)
 // =========================================================================
 
-
 #define LPT_REGISTER_DRAG(TypeNameString, CallbackFunction) \
     static inline struct { \
         bool initialized = []() { \
@@ -79,3 +78,4 @@ namespace LivePT {
             return true; \
         }(); \
     } LPT_CONCAT(_lpt_drag_instance_, __LINE__);
+

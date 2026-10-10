@@ -794,6 +794,106 @@ namespace LivePT {
         g_widgetBuffer.hasChanges = true;
     }
     
+
+    void WidgetBufferUpdate()
+    {
+        // Флаг того, зажата ли сейчас основная управляющая кнопка мыши (ЛКМ)
+        bool isTriggerButtonDown = (GetAsyncKeyState(LivePT_TriggerButton) & 0x8000) != 0;
+        static bool s_WidgetTransactionActive = false;
+
+        // === ИНКАПСУЛЯЦИЯ UNDO В БИБЛИОТЕКЕ ===
+        // Если виджет пушит изменения, и транзакция еще не открыта — библиотека открывает её сама!
+        if (g_widgetBuffer.hasChanges && !s_WidgetTransactionActive) {
+            StartUndoTransaction(L"LivePT Widget Realtime Update");
+            s_WidgetTransactionActive = true;
+        }
+
+        // 2. ВЫГРУЖАЕМ БУФЕР ВИДЖЕТОВ: Роботизированная замена по живым EnvDTE-якорям
+        if (g_widgetBuffer.hasChanges && !g_widgetBuffer.codeText.empty() && pWidgetEndEditPoint && pWidgetStartEditPoint) {
+
+            VARIANT vtActiveDocLocal; VariantInit(&vtActiveDocLocal);
+            if (SUCCEEDED(AutoWrap(DISPATCH_PROPERTYGET, &vtActiveDocLocal, pDTE, L"ActiveDocument", 0)) && vtActiveDocLocal.pdispVal) {
+
+                VARIANT vtCloseLine, vtCloseOffset;
+                VariantInit(&vtCloseLine); VariantInit(&vtCloseOffset);
+
+                AutoWrap(DISPATCH_PROPERTYGET, &vtCloseLine, pWidgetEndEditPoint, L"Line", 0);
+                AutoWrap(DISPATCH_PROPERTYGET, &vtCloseOffset, pWidgetEndEditPoint, L"DisplayColumn", 0);
+
+                long actualCloseLine = (vtCloseLine.vt == VT_I4) ? vtCloseLine.lVal : g_widgetBuffer.line;
+                long actualCloseOffset = (vtCloseOffset.vt == VT_I4) ? vtCloseOffset.lVal : g_dragState.dragStartCol;
+
+                if (g_widgetBuffer.line == actualCloseLine) {
+                    // Однострочная быстрая замена
+                    long newCursorPhysicalCol = g_dragState.dragStartCol + static_cast<long>(g_widgetBuffer.codeText.length());
+                    ReplaceTextInActiveVS(g_widgetBuffer.line, g_dragState.dragStartCol, actualCloseOffset, g_widgetBuffer.codeText, newCursorPhysicalCol);
+                }
+                else {
+                    // Многострочный исправленный мемори-буфер (Защита открывающей скобки)
+                    CComVariant pSafeStartPoint;
+                    HRESULT hr = AutoWrap(DISPATCH_METHOD, &pSafeStartPoint, pWidgetStartEditPoint, L"CreateEditPoint", 0);
+
+                    if (SUCCEEDED(hr) && pSafeStartPoint.vt == VT_DISPATCH && pSafeStartPoint.pdispVal) {
+                        VARIANT vtStartLineNum, vtStartCharOffset;
+                        VariantInit(&vtStartLineNum); VariantInit(&vtStartCharOffset);
+
+                        AutoWrap(DISPATCH_PROPERTYGET, &vtStartLineNum, pWidgetStartEditPoint, L"Line", 0);
+                        AutoWrap(DISPATCH_PROPERTYGET, &vtStartCharOffset, pWidgetStartEditPoint, L"LineCharOffset", 0);
+
+                        long startL = vtStartLineNum.lVal;
+                        long startO = vtStartCharOffset.lVal + 1; // Хирургический сдвиг внутрь скобки {
+
+                        AutoWrap(DISPATCH_METHOD, NULL, pSafeStartPoint.pdispVal, L"MoveToLineAndOffset", 2, CComVariant(startL), CComVariant(startO));
+
+                        std::wstring wText(g_widgetBuffer.codeText.begin(), g_widgetBuffer.codeText.end());
+                        CComBSTR bstrText(wText.c_str());
+
+                        AutoWrap(DISPATCH_METHOD, NULL, pSafeStartPoint.pdispVal, L"ReplaceText", 3,
+                            CComVariant(pWidgetEndEditPoint),
+                            CComVariant(bstrText),
+                            CComVariant(1L));
+
+                        VariantClear(&vtStartCharOffset); VariantClear(&vtStartLineNum);
+                    }
+
+                    // Синхронизируем текстовый курсор, чтобы избежать прыжков
+                    VARIANT vtSelection; VariantInit(&vtSelection);
+                    if (SUCCEEDED(AutoWrap(DISPATCH_PROPERTYGET, &vtSelection, vtActiveDocLocal.pdispVal, L"Selection", 0)) && vtSelection.pdispVal) {
+                        VARIANT vtNewCursorLine, vtNewCursorOffset;
+                        VariantInit(&vtNewCursorLine); VariantInit(&vtNewCursorOffset);
+
+                        AutoWrap(DISPATCH_PROPERTYGET, &vtNewCursorLine, pWidgetEndEditPoint, L"Line", 0);
+                        AutoWrap(DISPATCH_PROPERTYGET, &vtNewCursorOffset, pWidgetEndEditPoint, L"LineCharOffset", 0);
+
+                        long finalLine = (vtNewCursorLine.vt == VT_I4) ? vtNewCursorLine.lVal : g_widgetBuffer.line;
+                        long finalOffset = (vtNewCursorOffset.vt == VT_I4) ? vtNewCursorOffset.lVal : 1;
+
+                        AutoWrap(DISPATCH_METHOD, NULL, vtSelection.pdispVal, L"MoveToLineAndOffset", 3,
+                            CComVariant(finalLine),
+                            CComVariant(finalOffset),
+                            CComVariant(0L));
+
+                        VariantClear(&vtNewCursorOffset); VariantClear(&vtNewCursorLine);
+                        VariantClear(&vtSelection);
+                    }
+                }
+
+                VariantClear(&vtCloseOffset); VariantClear(&vtCloseLine);
+                VariantClear(&vtActiveDocLocal);
+            }
+            g_widgetBuffer.hasChanges = false;
+        }
+
+        // === АВТОМАТИЧЕСКОЕ ЗАКРЫТИЕ ТРАНЗАКЦИИ БИБЛИОТЕКОЙ ===
+        // Как только пользователь отпустил кнопку мыши после взаимодействия с виджетом,
+        // библиотека сама закрывает транзакцию и атомарно сохраняет документ.
+        if (!isTriggerButtonDown && s_WidgetTransactionActive) {
+            EndUndoTransaction();
+            SaveActiveDocument();
+            s_WidgetTransactionActive = false;
+        }
+    }
+
     inline bool ExtractStructBoundaries(const std::wstring& fileText, const std::wstring& lineText, long line, long targetCharIdx, std::string& outInnerArgsA, long& outVisualStartCol, std::string& outTypeNameA) {
         if (fileText.empty() || lineText.empty()) return false;
 

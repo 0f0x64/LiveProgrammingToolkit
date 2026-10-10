@@ -39,7 +39,6 @@ namespace DrugLogic {
         b = (b1 + m) * 255.0f;
     }
 
-    // === FIX: Universal string-based color3Drag ===
     inline std::string color3Drag(const std::string& currentArgsStr, const ::LivePT::DragMathInput& input) {
         int r = 0, g = 0, b = 0;
 
@@ -98,10 +97,6 @@ namespace DrugLogic {
         return outBuf;
     }
 
-    // === FIX: Universal string-based pos2Drag ===
-        // === FIX: Universal string-based pos2Drag ===
-        // === FIX: Universal string-based pos2Drag ===
-       // === FIX: Universal string-based pos2Drag ===
     inline std::string pos2Drag(const std::string& currentArgsStr, const ::LivePT::DragMathInput& input) {
         float x = 0.0f, y = 0.0f;
         bool parsed = false;
@@ -158,11 +153,6 @@ namespace DrugLogic {
         return outBuf;
     }
 
-
-
-    // === FIX: Universal string-based size2Drag ===
-        // === FIX: Universal string-based size2Drag ===
-        // === FIX: Universal string-based size2Drag ===
     inline std::string size2Drag(const std::string& currentArgsStr, const ::LivePT::DragMathInput& input) {
         float w = 0.0f, h = 0.0f;
         bool parsed = false;
@@ -228,6 +218,4 @@ namespace DrugLogic {
         return outBuf;
     }
 
-
-
-} // namespace DrugLogic
+}

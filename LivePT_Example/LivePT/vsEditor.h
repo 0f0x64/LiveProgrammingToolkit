@@ -919,8 +919,114 @@ namespace LivePT {
         return (validStartLine != -1 && static_cast<long>(location.line()) == validStartLine);
     }
 
+    inline std::atomic<bool> g_IsLptPdbWarmupCompleted{ false };
 
+    inline void WarmupAllDatabaseParams() {
+        static bool isWarmedUp = false;
+        if (isWarmedUp) return;
 
+        auto& params = LivePT::getParamDesc();
+        const size_t totalParams = params.size();
+        if (totalParams == 0) return;
+
+        isWarmedUp = true;
+
+        // Запускаем тяжелый разбор PDB в фоновом потоке
+        std::thread warmupThread([totalParams]() {
+            auto& localParams = LivePT::getParamDesc();
+
+            std::unordered_map<std::type_index, decltype(localParams[0].structInfo.members)> structMetadataCache;
+            structMetadataCache.reserve(8);
+
+            static const std::type_index typeFloat = typeid(float);
+            static const std::type_index typeInt = typeid(int);
+            static const std::type_index typeBool = typeid(bool);
+            static const std::type_index typeDouble = typeid(double);
+            static const std::type_index typeChar = typeid(char);
+            static const std::type_index typeUChar = typeid(unsigned char);
+
+            for (size_t i = 0; i < totalParams; ++i) {
+                auto& p = localParams[i];
+
+                // Пропускаем то, что уже загружено или не инициализировано
+                if (p.enumInfo.isEnum || p.structInfo.isStruct || !p.value.has_value()) {
+                    continue;
+                }
+
+                std::type_index currentTypeInfo = p.value.type();
+
+                // Примитивы не требуют разбора структуры
+                if (currentTypeInfo == typeFloat || currentTypeInfo == typeInt ||
+                    currentTypeInfo == typeBool || currentTypeInfo == typeDouble ||
+                    currentTypeInfo == typeChar || currentTypeInfo == typeUChar) {
+                    continue;
+                }
+
+                // Быстрый кэш, если структура такого типа уже разбиралась
+                auto it = structMetadataCache.find(currentTypeInfo);
+                if (it != structMetadataCache.end()) {
+                    p.structInfo.members = it->second;
+                    p.structInfo.isStruct = true;
+                    continue;
+                }
+
+                std::string typeNameAnsi = currentTypeInfo.name();
+                if (typeNameAnsi.empty()) continue;
+
+                const char* typePtr = typeNameAnsi.c_str();
+                if (strncmp(typePtr, "struct ", 7) == 0) typePtr += 7;
+                else if (strncmp(typePtr, "class ", 6) == 0) typePtr += 6;
+
+                size_t len = strlen(typePtr);
+                std::wstring wTypeName(len, L'\0');
+                MultiByteToWideChar(CP_ACP, 0, typePtr, static_cast<int>(len), wTypeName.data(), static_cast<int>(len));
+
+                std::vector<std::string> fNames;
+                std::vector<DWORD> fOffsets;
+                std::vector<DWORD> fSizes;
+                std::vector<std::string> fTypes;
+
+                // Этот вызов DbgHelp теперь не фризит UI-поток отрисовки кадра!
+                if (LoadStructMetadataDirect(wTypeName.c_str(), fNames, fOffsets, fSizes, fTypes)) {
+                    decltype(p.structInfo.members) loadedMembers;
+                    const size_t fieldsCount = fOffsets.size();
+                    loadedMembers.reserve(fieldsCount);
+
+                    for (size_t k = 0; k < fieldsCount; ++k) {
+                        loadedMembers.push_back({ std::move(fNames[k]), fOffsets[k], fSizes[k], std::move(fTypes[k]) });
+                    }
+
+                    p.structInfo.members = loadedMembers;
+                    p.structInfo.isStruct = true;
+
+                    structMetadataCache.emplace(currentTypeInfo, std::move(loadedMembers));
+                }
+            }
+            g_IsLptPdbWarmupCompleted = true;
+            Log("[LivePT Async Warmup] Background PDB parsing completed. Library is fully ready.");
+            });
+
+        // Отвязываем поток, чтобы он работал асинхронно
+        warmupThread.detach();
+    }
+
+    inline void Warmup() {
+        static bool isFirstFrame = true;
+        if (isFirstFrame) {
+            auto startTime = std::chrono::high_resolution_clock::now();
+
+            LivePT::WarmupAllDatabaseParams();
+
+            auto endTime = std::chrono::high_resolution_clock::now();
+            auto durationMicro = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime).count();
+            double durationMilli = durationMicro / 1000.0;
+
+            LivePT::Log("[LivePT External Profile] Warmup execution time: " +
+                std::to_string(durationMilli) + " ms (" + std::to_string(durationMicro) + " us).");
+
+            isFirstFrame = false;
+        }
+    }
 
 
 }
