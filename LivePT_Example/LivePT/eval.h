@@ -31,8 +31,6 @@ namespace LivePT {
         EnumTypeDesc enumInfo;
         StructTypeDesc structInfo;
 
-        // КРИТИЧЕСКИЙ ФИКС: Храним маску — какие поля структуры в IDE являются ЧИСЛАМИ
-        // Индекс в векторе соответствует индексу поля в structInfo.members
         std::vector<bool> validFieldsMask;
 
         long long typeMinBound = 0;
@@ -41,8 +39,6 @@ namespace LivePT {
         int column = 0;
         std::function<void(std::any& targetAny, const std::string& textValue)> stringUpdater = nullptr;
     };
-
-
 
     inline std::vector<ref>& getParamDesc() {
         static std::vector<ref> instance;
@@ -74,7 +70,6 @@ namespace LivePT {
             if (paramDesc[id].enumInfo.elements.empty()) {
                 std::wstring wEnumName = L"";
 
-                // Находим имя типа энума (например, "ptype") из пришедшей строки "ptype::box"
                 size_t lastCols = newValue.rfind("::");
                 if (lastCols != std::string::npos) {
                     std::string pureTypeName = newValue.substr(0, lastCols);
@@ -85,7 +80,6 @@ namespace LivePT {
                     std::vector<std::string> parsedNames;
                     std::vector<int> parsedValues;
 
-                    // Вызываем твой прямой PDB-парсер
                     if (LoadEnumMetadataDirect(wEnumName.c_str(), parsedNames, parsedValues)) {
                         for (size_t i = 0; i < parsedNames.size(); ++i) {
                             EnumElementDesc gameElem{ parsedValues[i], parsedNames[i] };
@@ -95,19 +89,16 @@ namespace LivePT {
                 }
             }
 
-            // Очищаем пришедшее значение для прецизионного сравнения токенов
             std::string cleanNewValue = newValue;
             size_t lastColsNew = cleanNewValue.rfind("::");
             if (lastColsNew != std::string::npos) {
-                cleanNewValue = cleanNewValue.substr(lastColsNew + 2); // Получаем "box"
-            }
+                cleanNewValue = cleanNewValue.substr(lastColsNew + 2);             }
 
-            // Теперь этот цикл гарантированно отработает со старта, так как база наполнена!
             for (const auto& elem : paramDesc[id].enumInfo.elements) {
                 std::string cleanElemName = elem.name;
                 size_t lastColsElem = cleanElemName.rfind("::");
                 if (lastColsElem != std::string::npos) {
-                    cleanElemName = cleanElemName.substr(lastColsElem + 2); // Получаем "box" из PDB
+                    cleanElemName = cleanElemName.substr(lastColsElem + 2);
                 }
 
                 if (elem.name == newValue || cleanElemName == cleanNewValue || elem.name == cleanNewValue) {
@@ -614,14 +605,6 @@ namespace LivePT {
     }
 
     // ЧАСТИЧНАЯ СПЕЦИАЛИЗАЦИЯ ДЛЯ ДИНАМИЧЕСКИХ ВЕКТОРОВ НА СТУДО-ЯКОРЯХ
-    // Переработанная безопасная специализация в eval.h (БЕЗ использования MsvcVectorProxy)
-    // Универсальная специализация в eval.h — поддерживает ЛЮБЫЕ смешанные структуры
-    // Исправленный и синхронизированный с рантаймом движок Щита в eval.h
-    // Полностью исправленный Щит в eval.h — стабилизирует память элементов вектора
-    // Полностью универсальный Щит в eval.h — кушает ЛЮБЫЕ смешанные структуры через PDB
-    // ============================================================================
-// НАЙТИ ИЛИ ВСТАВИТЬ В КОНЕЦ ФАЙЛА eval.h (ПЕРЕД struct LazyTypeDetector)
-// ============================================================================
 
     template <typename ElementType, FixedString<260> AbsoluteFile, int Line, int Column>
     struct EvalSyntaxShield<std::vector<ElementType>, AbsoluteFile, Line, Column> {
@@ -702,11 +685,9 @@ namespace LivePT {
                     size_t elemSize = sizeof(ElementType);
                     size_t vectorTotalBytes = pVec->size() * elemSize;
 
-                    // Выделяем маску под актуальный размер вектора в байтах
                     if (paramDesc[target_id].validFieldsMask.size() < vectorTotalBytes) {
                         paramDesc[target_id].validFieldsMask.resize(vectorTotalBytes, false);
                     }
-
 
                     auto LocalSplitByOuterCommas = [](const std::string& input) {
                         std::vector<std::string> resTokens; std::string curT;
@@ -798,7 +779,6 @@ namespace LivePT {
                             if (!member) continue;
                             char* fieldAddress = subByteBase + member->offset;
 
-                            // Сквозной абсолютный офсет байта внутри всего буфера элементов вектора
                             DWORD currentAbsoluteFieldOffset = absoluteBaseOffset + member->offset;
 
                             if (!LocalLookupStructMembersFromParams(member->typeName).empty()) {
@@ -936,7 +916,6 @@ namespace LivePT {
                             structToken = structToken.substr(subOpen + 1, subClose - subOpen - 1);
                         }
 
-                        // Считаем абсолютное смещение текущего ЭЛЕМЕНТА от начала массива на куче
                         DWORD elementAbsoluteBaseOffset = static_cast<DWORD>(idx * elemSize);
                         LocalWriteStructBytes(targetElementAddr, mainTypeName, structToken, elementAbsoluteBaseOffset);
                     }
@@ -954,15 +933,10 @@ namespace LivePT {
         if (real_id >= 0 && real_id < static_cast<int>(paramDesc.size()) && paramDesc[real_id].loaded) {
             if (auto pCachedVector = std::any_cast<std::vector<ElementType>>(&paramDesc[real_id].value)) {
 
-                // СИТУАЦИЯ 1: Пользователь добавил или удалил строку элемента в IDE.
-                // Размеры кэша и бинарника разъехались. Возвращаем вектор из IDE целиком, 
-                // чтобы на лету увидеть изменение геометрии массива (как это работало раньше!).
                 if (literalValue.size() != pCachedVector->size()) {
                     return *pCachedVector;
                 }
 
-                // СИТУАЦИЯ 2: Структура массива стабильна. 
-                // Работает покадровое побайтовое наложение, чтобы пробрасывать переменные типа 'x'
                 std::vector<ElementType> resultVector = literalValue;
 
                 char* targetBase = reinterpret_cast<char*>(resultVector.data());
@@ -991,14 +965,8 @@ namespace LivePT {
 };
 
 
-
-    // ----------------- Изолированная подсистема массивов -----------------
-    
-
     template <typename T> struct is_initializer_list : std::false_type {};
     template <typename E> struct is_initializer_list<std::initializer_list<E>> : std::true_type { using element_type = E; };
-    // ---------------------------------------------------------------------
-
 
     template <typename LiteralType, FixedString<260> AbsoluteFile, int Line, int Column>
     struct LazyTypeDetector {

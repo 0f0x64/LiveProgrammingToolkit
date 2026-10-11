@@ -652,7 +652,6 @@ namespace LivePT {
     inline void ShiftDatabaseCoordinates(const std::string& targetFile, long targetLine, long visualStartCol, int lineDelta, int columnDelta);
 
     // === ЕДИНЫЙ ПОЛНОСТЬЮ ОЧИЩЕННЫЙ ДИСПЕТЧЕР LivePT ===
-        // === ЕДИНЫЙ ПОЛНОСТЬЮ ОЧИЩЕННЫЙ ДИСПЕТЧЕР СИНХРОНИЗАЦИИ LivePT ===
     inline void vsEditor() {
         if (!initVsEditor()) return;
 

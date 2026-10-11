@@ -43,7 +43,7 @@ namespace Widgets {
                 SetCursor(NULL);
                 return TRUE;
             }
-            SetCursor(LoadCursor(NULL, IDC_CROSS));
+            SetCursor(LoadCursor(NULL, IDC_HAND));
             return TRUE;
         }
         case WM_KEYDOWN:
@@ -150,7 +150,7 @@ namespace Widgets {
                     g_posCtx.isCursorHidden = false;
                 }
 
-                SetCursor(LoadCursor(NULL, IDC_CROSS));
+                SetCursor(LoadCursor(NULL, IDC_HAND));
                 InvalidateRect(hwnd, NULL, FALSE);
             }
             return 0;

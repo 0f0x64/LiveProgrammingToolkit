@@ -261,15 +261,19 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
 
         Draw({
-            .pos = eval(pos2{-99.13f, -237.78f}),
-            .size = eval(size2{204.42f, 151.43f}),
-            .Angle = eval(angle(176.7f)),
+            .pos = eval(pos2{
+				.x = -232.63f,
+				.y = -319.38f
+				}
+            ),
+            .size = eval(size2{145.70f, 90.54f}),
+            .Angle = eval(angle(227.3f)),
             .type = eval(ptype::box),
             .show = eval(true),
             .color = eval(color3{
-				.r=76, 
-				.g=65,  
-				.b=0
+				.r=0, 
+				.g=18,  
+				.b=87
 				})
             });
 
@@ -278,26 +282,29 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         Draw(eval(Primitive{
             .pos = pos2{
-				.x = 314.61f,
-				.y = -349.70f
+				.x = 178.31f,
+				.y = 71.80f
 				},
             .size = size2{121.06f, x},
-            .Angle = angle(183.2f),
+            .Angle = angle(334.3f),
             .type = ptype::circle,
             .show = true,
-            .color = color3{127, 103, 105}
+            .color = color3{90, 129, 82}
             }));
 
-        pos2 position = eval(pos2{ 10,20 });
+        pos2 position = eval(pos2{ -78,20 });
 
         DrawLine({
             .points = eval(std::vector<HeavyPoint>{
-            { true, pos2{-214.70f, 119.70f}, 58, 956, color3{36, 61, 125} },
-            { true, pos2{-71.80f, 16.80f}, 50, 956, color3{65, 84, 125} },
-            { true, pos2{31.60f, 103.80f}, 38, 956, color3{39, 60, 125} },
-            { true, pos2{93.60f, 274.80f}, 38, 956, color3{39, 60, 125} },
-            { true, pos2{-69.30f, 373.80f}, 38, 956, color3{39, 60, 125} },
-            { true, pos2{-186.20f, 378.50f}, 38, 956, color3{39, 60, 125} },
+            { true, pos2{-332.70f, 136.70f}, 58, 956, color3{239, 61, 125} },
+            { true, pos2{-176.80f, 345.80f}, 50, 956, color3{183, 84, 125} },
+            { true, pos2{23.60f, 54.80f}, 38, 956, color3{100, 60, 125} },
+            { true, pos2{141.40f, 209.20f}, 38, 956, color3{72, 60, 125} },
+                { true, pos2{336.40f, 69.20f}, 38, 956, color3{72, 60, 125} },
+                { true, pos2{336.40f, 69.20f}, 38, 956, color3{72, 60, 125} },
+
+
+            
         })
             });
 
@@ -330,6 +337,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     wc.hInstance = hInstance;
     wc.lpszClassName = CLASS_NAME;
     wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+    wc.hCursor = LoadCursor(NULL, IDC_ARROW);
 
     RegisterClassA(&wc);
 
@@ -360,7 +368,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             DispatchMessage(&msg);
         }
         else {
-
             DWORD currentTick = GetTickCount();
             if (currentTick - lastUpdate > 16) { // ~60 FPS update limit
                 lastUpdate = currentTick;

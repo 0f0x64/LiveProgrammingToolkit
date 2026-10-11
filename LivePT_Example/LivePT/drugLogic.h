@@ -126,7 +126,7 @@ namespace DrugLogic {
         }
 
         // 3. Вычисляем дельту движения мыши
-        float speedScale = input.ctrl ? 1.0f : (input.shift ? 0.01f : 0.1f);
+        float speedScale = input.ctrl ? 10.0f : (input.shift ? 0.1f : 1);
         x += static_cast<float>(input.mouseFrameDeltaX) * speedScale;
         y -= static_cast<float>(input.mouseFrameDeltaY) * speedScale;
 

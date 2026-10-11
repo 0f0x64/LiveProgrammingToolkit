@@ -1,5 +1,6 @@
 #pragma once
 #include <windows.h>
+#include <windowsx.h>
 #include <cmath>
 #include <functional>
 #include <string>
@@ -17,7 +18,6 @@ namespace Widgets {
         std::function<void(float)> textGenerator = nullptr;
 
         bool isTracking = false;
-        bool isCursorHidden = false;
 
         const int width = 120;
         const int height = 120;
@@ -65,14 +65,12 @@ namespace Widgets {
     inline LRESULT CALLBACK AnglePickerWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
         switch (uMsg) {
         case WM_SETCURSOR:
-            if (g_angleCtx.isTracking) {
-                SetCursor(NULL);
-                return TRUE;
-            }
             SetCursor(LoadCursor(NULL, IDC_CROSS));
             return TRUE;
         case WM_KEYDOWN:
             if (wParam == VK_ESCAPE) {
+                g_angleCtx.isTracking = false;
+                ReleaseCapture();
                 DestroyWindow(hwnd);
                 g_angleCtx.hWindow = NULL;
                 return 0;
@@ -149,16 +147,13 @@ namespace Widgets {
             if (dist <= g_angleCtx.radius + 6) {
                 g_angleCtx.isTracking = true;
                 SetCapture(hwnd);
-                if (!g_angleCtx.isCursorHidden) {
-                    g_angleCtx.isCursorHidden = true;
-                }
                 ProcessRadarClick(pt.x, pt.y);
             }
             return 0;
         }
         case WM_MOUSEMOVE: {
             if (g_angleCtx.isTracking) {
-                POINT pt = { LOWORD(lParam), HIWORD(lParam) };
+                POINT pt = { GET_X_LPARAM(lParam),  GET_Y_LPARAM(lParam) };
                 ProcessRadarClick(pt.x, pt.y);
             }
             return 0;
@@ -167,19 +162,10 @@ namespace Widgets {
             if (g_angleCtx.isTracking) {
                 g_angleCtx.isTracking = false;
                 ReleaseCapture();
-                if (g_angleCtx.isCursorHidden) {
-                    ShowCursor(TRUE);
-                    g_angleCtx.isCursorHidden = false;
-                }
-                SetCursor(LoadCursor(NULL, IDC_CROSS));
                 InvalidateRect(hwnd, NULL, FALSE);
             }
             return 0;
         case WM_DESTROY:
-            if (g_angleCtx.isCursorHidden) {
-                ShowCursor(TRUE);
-                g_angleCtx.isCursorHidden = false;
-            }
             break;
         case WM_CLOSE:
             DestroyWindow(hwnd);

@@ -125,12 +125,7 @@ namespace Widgets {
             int dy = pt.y - g_pickerCtx.centerY;
             float distance = std::sqrt(static_cast<float>(dx * dx + dy * dy));
 
-            if (distance <= g_pickerCtx.radius) {
-                SetCursor(LoadCursor(NULL, IDC_CROSS));
-                return TRUE;
-            }
-
-            SetCursor(LoadCursor(NULL, IDC_ARROW));
+            SetCursor(LoadCursor(NULL, distance <= g_pickerCtx.radius ? IDC_CROSS : IDC_ARROW));
             return TRUE;
         }
         case WM_KEYDOWN:
@@ -240,12 +235,10 @@ namespace Widgets {
 
             if (PtInRect(&rcWheel, pt)) {
                 g_pickerCtx.isTrackingWheel = true;
-                SetCapture(hwnd);
                 ProcessWheelClick(pt.x - rcWheel.left, pt.y - rcWheel.top);
             }
             else if (PtInRect(&rcValue, pt)) {
                 g_pickerCtx.isTrackingValue = true;
-                SetCapture(hwnd);
                 ProcessValueClick(pt.y);
             }
             return 0;
@@ -267,7 +260,6 @@ namespace Widgets {
             if (g_pickerCtx.isTrackingWheel || g_pickerCtx.isTrackingValue) {
                 g_pickerCtx.isTrackingWheel = false;
                 g_pickerCtx.isTrackingValue = false;
-                ReleaseCapture();
             }
             return 0;
         case WM_CLOSE:

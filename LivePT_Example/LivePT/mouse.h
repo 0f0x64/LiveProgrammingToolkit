@@ -86,8 +86,8 @@ namespace LivePT {
 
         bool isProportionalStructDrag = false;
         std::vector<float> originalStructValues;
-        bool isCursorHidden = false;  // Флаг того, что системный курсор сейчас спрятан
-        POINT lockMousePos = { 0, 0 }; // Точка старта драга, куда курсор принудительно возвращается
+        bool isCursorHidden = false;  
+        POINT lockMousePos = { 0, 0 }; 
     };
 
     static DragState g_dragState;
@@ -797,18 +797,14 @@ namespace LivePT {
 
     void WidgetBufferUpdate()
     {
-        // Флаг того, зажата ли сейчас основная управляющая кнопка мыши (ЛКМ)
         bool isTriggerButtonDown = (GetAsyncKeyState(LivePT_TriggerButton) & 0x8000) != 0;
         static bool s_WidgetTransactionActive = false;
 
-        // === ИНКАПСУЛЯЦИЯ UNDO В БИБЛИОТЕКЕ ===
-        // Если виджет пушит изменения, и транзакция еще не открыта — библиотека открывает её сама!
         if (g_widgetBuffer.hasChanges && !s_WidgetTransactionActive) {
             StartUndoTransaction(L"LivePT Widget Realtime Update");
             s_WidgetTransactionActive = true;
         }
-
-        // 2. ВЫГРУЖАЕМ БУФЕР ВИДЖЕТОВ: Роботизированная замена по живым EnvDTE-якорям
+        
         if (g_widgetBuffer.hasChanges && !g_widgetBuffer.codeText.empty() && pWidgetEndEditPoint && pWidgetStartEditPoint) {
 
             VARIANT vtActiveDocLocal; VariantInit(&vtActiveDocLocal);
@@ -824,12 +820,12 @@ namespace LivePT {
                 long actualCloseOffset = (vtCloseOffset.vt == VT_I4) ? vtCloseOffset.lVal : g_dragState.dragStartCol;
 
                 if (g_widgetBuffer.line == actualCloseLine) {
-                    // Однострочная быстрая замена
+
                     long newCursorPhysicalCol = g_dragState.dragStartCol + static_cast<long>(g_widgetBuffer.codeText.length());
                     ReplaceTextInActiveVS(g_widgetBuffer.line, g_dragState.dragStartCol, actualCloseOffset, g_widgetBuffer.codeText, newCursorPhysicalCol);
                 }
                 else {
-                    // Многострочный исправленный мемори-буфер (Защита открывающей скобки)
+
                     CComVariant pSafeStartPoint;
                     HRESULT hr = AutoWrap(DISPATCH_METHOD, &pSafeStartPoint, pWidgetStartEditPoint, L"CreateEditPoint", 0);
 
@@ -841,7 +837,7 @@ namespace LivePT {
                         AutoWrap(DISPATCH_PROPERTYGET, &vtStartCharOffset, pWidgetStartEditPoint, L"LineCharOffset", 0);
 
                         long startL = vtStartLineNum.lVal;
-                        long startO = vtStartCharOffset.lVal + 1; // Хирургический сдвиг внутрь скобки {
+                        long startO = vtStartCharOffset.lVal + 1; 
 
                         AutoWrap(DISPATCH_METHOD, NULL, pSafeStartPoint.pdispVal, L"MoveToLineAndOffset", 2, CComVariant(startL), CComVariant(startO));
 
@@ -856,7 +852,6 @@ namespace LivePT {
                         VariantClear(&vtStartCharOffset); VariantClear(&vtStartLineNum);
                     }
 
-                    // Синхронизируем текстовый курсор, чтобы избежать прыжков
                     VARIANT vtSelection; VariantInit(&vtSelection);
                     if (SUCCEEDED(AutoWrap(DISPATCH_PROPERTYGET, &vtSelection, vtActiveDocLocal.pdispVal, L"Selection", 0)) && vtSelection.pdispVal) {
                         VARIANT vtNewCursorLine, vtNewCursorOffset;
@@ -884,9 +879,6 @@ namespace LivePT {
             g_widgetBuffer.hasChanges = false;
         }
 
-        // === АВТОМАТИЧЕСКОЕ ЗАКРЫТИЕ ТРАНЗАКЦИИ БИБЛИОТЕКОЙ ===
-        // Как только пользователь отпустил кнопку мыши после взаимодействия с виджетом,
-        // библиотека сама закрывает транзакцию и атомарно сохраняет документ.
         if (!isTriggerButtonDown && s_WidgetTransactionActive) {
             EndUndoTransaction();
             SaveActiveDocument();
