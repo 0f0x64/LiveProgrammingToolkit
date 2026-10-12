@@ -262,8 +262,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         Draw({
             .pos = eval(pos2{
-				.x = -109.30f,
-				.y = -164.49f
+				.x = -113.30f,
+				.y = -270.49f
 				}
             ),
             .size = eval(size2{177.01f, 113.62f}),
@@ -271,9 +271,9 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             .type = eval(ptype::box),
             .show = eval(true),
             .color = eval(color3{
-				.r=72, 
+				.r=0, 
 				.g=0,  
-				.b=13
+				.b=0
 				})
             });
 
@@ -282,8 +282,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         Draw(eval(Primitive{
             .pos = pos2{
-				.x = 178.31f,
-				.y = 71.80f
+				.x = 246.31f,
+				.y = -99.20f
 				},
             .size = size2{121.06f, x},
             .Angle = angle(334.3f),
@@ -296,7 +296,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         DrawLine({
             .points = eval(std::vector<HeavyPoint>{
-            { true, pos2{-332.70f, 136.70f}, 58, 956, color3{239, 61, 125} },
+            { true, pos2{-382.70f, 160.70f}, 58, 956, color3{239, 61, 125} },
             { true, pos2{-176.80f, 345.80f}, 50, 956, color3{183, 84, 125} },
             { true, pos2{23.60f, 54.80f}, 38, 956, color3{100, 60, 125} },
             { true, pos2{141.40f, 209.20f}, 38, 956, color3{72, 60, 125} },

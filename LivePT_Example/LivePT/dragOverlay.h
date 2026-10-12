@@ -4,66 +4,32 @@
 
 namespace LivePT {
 
-    // =========================================================================
-    // ГЛОБАЛЬНЫЕ УПРАВЛЯЮЩИЕ ПЕРЕМЕННЫЕ (Доступны для изменения извне)
-    // =========================================================================
-    inline HCURSOR      g_OverlayCursor = NULL;       // Хэндл отображаемого курсора (например, LoadCursor(NULL, IDC_SIZEALL))
-    inline std::string  g_OverlayText = "";         // Текст, выводимый под курсором
-    inline bool         g_OverlayShow = false;      // Флаг управления видимостью (true - показать, false - скрыть)
+    inline HCURSOR      g_OverlayCursor = NULL;
+    inline std::string  g_OverlayText = "";
+    inline bool         g_OverlayShow = false;
 
-    // Внутренние переменные модуля
-    static HWND         s_hOverlayWnd = NULL;       // Хэндл пассивного окна
-    static std::mutex   s_OverlayMutex;               // Защита данных при изменении из разных потоков
+    static HWND         s_hOverlayWnd = NULL;
+    static std::mutex   s_OverlayMutex;
 
-    // Размеры окна (расширены, чтобы гарантированно влезал текст)
-    const int OVERLAY_WIDTH = 350;
-    const int OVERLAY_HEIGHT = 100;
+    // БАЗОВЫЕ размеры для 100% масштаба (DPI = 96)
+    const int BASE_OVERLAY_WIDTH = 350;
+    const int BASE_OVERLAY_HEIGHT = 105;
+    const int BASE_FONT_SIZE = 18;
 
-    // Внутренняя оконная процедура для пассивного окна
-    inline LRESULT CALLBACK PassiveOverlayWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
-        if (uMsg == WM_DESTROY) {
-            s_hOverlayWnd = NULL;
-            return 0;
+    // Вспомогательная функция для получения текущего DPI скейла окна
+    inline float GetCurrentDPIScale() {
+        if (s_hOverlayWnd) {
+            // Современный и самый точный способ в Windows 10/11
+            UINT dpi = ::GetDpiForWindow(s_hOverlayWnd);
+            if (dpi > 0) return static_cast<float>(dpi) / 96.0f;
         }
-        return DefWindowProcA(hwnd, uMsg, wParam, lParam);
+        // Фолбэк на системный DPI, если окно еще не создано
+        HDC hdc = GetDC(NULL);
+        int dpiY = GetDeviceCaps(hdc, LOGPIXELSY);
+        ReleaseDC(NULL, hdc);
+        return static_cast<float>(dpiY) / 96.0f;
     }
 
-    // =========================================================================
-    // ИНИЦИАЛИЗАЦИЯ (Вызывается один раз при старте плагина/модуля)
-    // =========================================================================
-
-    inline void InitPassiveOverlay() {
-        if (s_hOverlayWnd) return;
-
-        HINSTANCE hInst = GetModuleHandleA(NULL);
-        const char* className = "LPT_PassiveOverlayWindow";
-
-        WNDCLASSEXA wc = { sizeof(WNDCLASSEXA) };
-        wc.lpfnWndProc = PassiveOverlayWndProc;
-        wc.hInstance = hInst;
-        wc.lpszClassName = className;
-        wc.hCursor = NULL; // Реальный курсор скрывается внешней логикой ShowCursor
-        RegisterClassExA(&wc);
-
-        // Создаем окно-призрак. Оно изначально скрыто.
-        // WS_EX_LAYERED     — попиксельный альфа-блендинг
-        // WS_EX_TRANSPARENT — сквозной клик (мышь полностью игнорирует окно)
-        // WS_EX_NOACTIVATE  — никогда не забирает фокус ввода у Visual Studio
-        // WS_EX_TOOLWINDOW  — убирает из панели задач и Alt+Tab
-        s_hOverlayWnd = CreateWindowExA(
-            WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE | WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
-            className, "LPT_Overlay", WS_POPUP,
-            0, 0, OVERLAY_WIDTH, OVERLAY_HEIGHT,
-            NULL, NULL, hInst, NULL
-        );
-    }
-
-    // =========================================================================
-    // СИСТЕМНЫЙ МЕТОД ОБНОВЛЕНИЯ (Перерисовывает текстуру на основе глобальных переменных)
-    // =========================================================================
-        // =========================================================================
-    // СИСТЕМНЫЙ МЕТОД ОБНОВЛЕНИЯ (С добавлением контрастной подложки под текст)
-    // =========================================================================
     inline void RedrawOverlayBuffer(int screenX, int screenY) {
         if (!s_hOverlayWnd) return;
 
@@ -78,13 +44,29 @@ namespace LivePT {
             localText = g_OverlayText;
         }
 
+        // 1. ДИНАМИЧЕСКИЙ РАСЧЕТ СКЕЙЛА
+        float scale = GetCurrentDPIScale();
+        int currentWidth = static_cast<int>(BASE_OVERLAY_WIDTH * scale);
+        int currentHeight = static_cast<int>(BASE_OVERLAY_HEIGHT * scale);
+        int fontSize = static_cast<int>(BASE_FONT_SIZE * scale);
+
         int hotspotX = 0;
         int hotspotY = 0;
+        int cursorWidth = static_cast<int>(32 * scale); // Базовый размер курсора 32x32
+
         if (localCursor) {
             ICONINFO iconInfo = { 0 };
             if (::GetIconInfo(localCursor, &iconInfo)) {
                 hotspotX = (int)iconInfo.xHotspot;
                 hotspotY = (int)iconInfo.yHotspot;
+
+                // Извлекаем реальные размеры курсора, так как ОС его уже отмасштабировала
+                if (iconInfo.hbmColor) {
+                    BITMAP bmp;
+                    if (GetObject(iconInfo.hbmColor, sizeof(BITMAP), &bmp)) {
+                        cursorWidth = bmp.bmWidth;
+                    }
+                }
                 if (iconInfo.hbmMask)  ::DeleteObject(iconInfo.hbmMask);
                 if (iconInfo.hbmColor) ::DeleteObject(iconInfo.hbmColor);
             }
@@ -104,10 +86,11 @@ namespace LivePT {
         HDC hdcScreen = GetDC(NULL);
         HDC hdcMem = CreateCompatibleDC(hdcScreen);
 
+        // Передаем динамические размеры с учетом масштаба
         BITMAPINFO bmi = { 0 };
         bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-        bmi.bmiHeader.biWidth = OVERLAY_WIDTH;
-        bmi.bmiHeader.biHeight = OVERLAY_HEIGHT;
+        bmi.bmiHeader.biWidth = currentWidth;
+        bmi.bmiHeader.biHeight = currentHeight;
         bmi.bmiHeader.biPlanes = 1;
         bmi.bmiHeader.biBitCount = 32;
         bmi.bmiHeader.biCompression = BI_RGB;
@@ -116,74 +99,66 @@ namespace LivePT {
         HBITMAP hBmp = CreateDIBSection(hdcMem, &bmi, DIB_RGB_COLORS, &pBits, NULL, 0);
         HBITMAP hOldBmp = (HBITMAP)SelectObject(hdcMem, hBmp);
 
-        // Полная очистка холста в прозрачность (Alpha = 0)
-        memset(pBits, 0, OVERLAY_WIDTH * OVERLAY_HEIGHT * 4);
+        memset(pBits, 0, currentWidth * currentHeight * 4);
 
-        // 1. Отрисовка иконки курсора
         if (localCursor) {
             DrawIcon(hdcMem, 0, 0, localCursor);
         }
 
-        // 2. Отрисовка подложки и текста
         if (!localText.empty()) {
-            // Настраиваем шрифт Segoe UI
+            // Применяем отмасштабированный fontSize
             HFONT hFont = CreateFontA(
-                28, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+                fontSize, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
                 DEFAULT_CHARSET, OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS,
                 CLEARTYPE_QUALITY, VARIABLE_PITCH, "Segoe UI"
             );
             HGDIOBJ hOldFont = SelectObject(hdcMem, hFont);
 
-            // Считаем размеры текста, чтобы прямоугольник идеально подгонялся под длину строки
             SIZE textSize;
             GetTextExtentPoint32A(hdcMem, localText.c_str(), (int)localText.length(), &textSize);
 
-            // Координаты плашки под текстом (смещение по Y = 32 пикселя, строго под курсор)
-            // Добавляем отступы (padding) по 6 пикселей слева/справа и 3 пикселя сверху/снизу
-            int rectLeft = hotspotX - 6;
-            int rectTop = 32 - 3;
-            int rectRight = hotspotX + textSize.cx + 6;
-            int rectBottom = 32 + textSize.cy + 3;
+            // Текст выводится строго под нижней границей смасштабированного курсора
+            int textYOffset = cursorWidth;
 
-            // Защита от выхода за границы битмапа
+            // Скейлим отступы плашки (padding)
+            int padX = static_cast<int>(6 * scale);
+            int padY = static_cast<int>(3 * scale);
+
+            int rectLeft = hotspotX - padX;
+            int rectTop = textYOffset - padY;
+            int rectRight = hotspotX + textSize.cx + padX;
+            int rectBottom = textYOffset + textSize.cy + padY;
+
             if (rectLeft < 0) rectLeft = 0;
-            if (rectRight > OVERLAY_WIDTH) rectRight = OVERLAY_WIDTH;
+            if (rectRight > currentWidth) rectRight = currentWidth;
 
-            // Рисуем фон плашки (Темно-серый цвет из темы Visual Studio)
             HBRUSH hBgBrush = CreateSolidBrush(RGB(37, 37, 38));
             RECT rcTextBg = { rectLeft, rectTop, rectRight, rectBottom };
             FillRect(hdcMem, &rcTextBg, hBgBrush);
             DeleteObject(hBgBrush);
 
-            // Рисуем тонкую рамку вокруг плашки (Акцентный синий VS)
             HPEN hBorderPen = CreatePen(PS_SOLID, 1, RGB(0, 122, 204));
             HGDIOBJ hOldPen = SelectObject(hdcMem, hBorderPen);
             HGDIOBJ hOldBrush = SelectObject(hdcMem, GetStockObject(NULL_BRUSH));
 
-            // Рисуем рамку
-            RoundRect(hdcMem, rectLeft, rectTop, rectRight, rectBottom, 3, 3);
+            int roundCorner = static_cast<int>(3 * scale);
+            RoundRect(hdcMem, rectLeft, rectTop, rectRight, rectBottom, roundCorner, roundCorner);
 
             SelectObject(hdcMem, hOldBrush);
             SelectObject(hdcMem, hOldPen);
             DeleteObject(hBorderPen);
 
-            // Выводим сам текст поверх нарисованной плашки
             SetBkMode(hdcMem, TRANSPARENT);
-            SetTextColor(hdcMem, RGB(241, 241, 241)); // Почти белый контрастный текст
-            TextOutA(hdcMem, hotspotX, 32, localText.c_str(), (int)localText.length());
+            SetTextColor(hdcMem, RGB(241, 241, 241));
+            TextOutA(hdcMem, hotspotX, textYOffset, localText.c_str(), (int)localText.length());
 
-            // --- КРИТИЧЕСКИЙ ШАГ: Прошивка Альфа-канала для подложки и текста ---
-            // Проходимся по пикселям в области нашей плашки и выставляем им непрозрачность.
+            // Прошивка Альфа-канала с учетом динамической ширины и высоты буфера
             DWORD* pixels = (DWORD*)pBits;
-
             for (int y = rectTop; y < rectBottom; ++y) {
                 for (int x = rectLeft; x < rectRight; ++x) {
-                    // Инвертируем Y, так как CreateDIBSection создает буфер снизу вверх
-                    int pixelIdx = (OVERLAY_HEIGHT - 1 - y) * OVERLAY_WIDTH + x;
-
-                    if (pixelIdx >= 0 && pixelIdx < OVERLAY_WIDTH * OVERLAY_HEIGHT) {
-                        // 0xFC000000 — задает ~98% непрозрачности (плашка слегка сглаживает фон)
-                        // Если хотите железно матовую подложку, замените на 0xFF000000
+                    // Инвертируем Y для DIB-секции
+                    int pixelIdx = (currentHeight - 1 - y) * currentWidth + x;
+                    if (pixelIdx >= 0 && pixelIdx < currentWidth * currentHeight) {
                         pixels[pixelIdx] |= 0xFC000000;
                     }
                 }
@@ -193,9 +168,8 @@ namespace LivePT {
             DeleteObject(hFont);
         }
 
-        // 3. Аппаратный блендинг окна
         POINT ptZero = { 0, 0 };
-        SIZE sizeWnd = { OVERLAY_WIDTH, OVERLAY_HEIGHT };
+        SIZE sizeWnd = { currentWidth, currentHeight }; // Передаем новые размеры в систему
         BLENDFUNCTION blend = { 0 };
         blend.BlendOp = AC_SRC_OVER;
         blend.SourceConstantAlpha = 255;
@@ -210,19 +184,36 @@ namespace LivePT {
         ReleaseDC(NULL, hdcScreen);
     }
 
+    inline LRESULT CALLBACK PassiveOverlayWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+        if (uMsg == WM_DESTROY) { s_hOverlayWnd = NULL; return 0; }
+        return DefWindowProcA(hwnd, uMsg, wParam, lParam);
+    }
 
+    inline void InitPassiveOverlay() {
+        if (s_hOverlayWnd) return;
+        HINSTANCE hInst = GetModuleHandleA(NULL);
+        const char* className = "LPT_PassiveOverlayWindow";
 
-    // =========================================================================
-    // ОСНОВНОЙ ВНЕШНИЙ МЕТОД: УПРАВЛЕНИЕ ВИДИМОСТЬЮ И ОТРИСОВКОЙ
-    // =========================================================================
-    // Принимает абсолютные координаты мыши (pt) из вашей Update/Drag функции.
-    // Вызывается непрерывно внутри цикла обновлений.
+        WNDCLASSEXA wc = { sizeof(WNDCLASSEXA) };
+        wc.lpfnWndProc = PassiveOverlayWndProc;
+        wc.hInstance = hInst;
+        wc.lpszClassName = className;
+        wc.hCursor = NULL;
+        RegisterClassExA(&wc);
+
+        // Изначально создаем окно с базовыми размерами, UpdateLayeredWindow сам растянет его внутренности
+        s_hOverlayWnd = CreateWindowExA(
+            WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE | WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
+            className, "LPT_Overlay", WS_POPUP,
+            0, 0, BASE_OVERLAY_WIDTH, BASE_OVERLAY_HEIGHT, NULL, NULL, hInst, NULL
+        );
+    }
+
     inline void UpdateOverlayPosition(int screenX, int screenY) {
         if (!s_hOverlayWnd) {
             InitPassiveOverlay();
         }
 
-        // Читаем глобальный флаг видимости
         bool shouldShow = false;
         {
             std::lock_guard<std::mutex> lock(s_OverlayMutex);
@@ -230,16 +221,12 @@ namespace LivePT {
         }
 
         if (shouldShow) {
-            // 1. Постоянно обновляем содержимое буфера и позицию
             RedrawOverlayBuffer(screenX, screenY);
-
-            // 2. Если окно было скрыто — мягко включаем его без перехвата фокуса
             if (!::IsWindowVisible(s_hOverlayWnd)) {
                 ::ShowWindow(s_hOverlayWnd, SW_SHOWNOACTIVATE);
             }
         }
         else {
-            // Если флаг сброшен — мгновенно гасим окно с экрана
             if (::IsWindowVisible(s_hOverlayWnd)) {
                 ::ShowWindow(s_hOverlayWnd, SW_HIDE);
             }
