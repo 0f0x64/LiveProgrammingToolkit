@@ -262,18 +262,18 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         Draw({
             .pos = eval(pos2{
-				.x = -113.30f,
-				.y = -270.49f
+				.x = -103.30f,
+				.y = -349.49f
 				}
             ),
-            .size = eval(size2{177.01f, 113.62f}),
-            .Angle = eval(angle(324.5f)),
+            .size = eval(size2{199.96f, 163.41f}),
+            .Angle = eval(angle(162.8f)),
             .type = eval(ptype::box),
             .show = eval(true),
             .color = eval(color3{
-				.r=0, 
-				.g=0,  
-				.b=0
+				.r=186, 
+				.g=45,  
+				.b=65
 				})
             });
 
@@ -283,10 +283,10 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         Draw(eval(Primitive{
             .pos = pos2{
 				.x = 246.31f,
-				.y = -99.20f
+				.y = -99.23f
 				},
             .size = size2{121.06f, x},
-            .Angle = angle(334.3f),
+            .Angle = angle(258.4f),
             .type = ptype::circle,
             .show = true,
             .color = color3{90, 129, 82}
@@ -300,8 +300,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             { true, pos2{-176.80f, 345.80f}, 50, 956, color3{183, 84, 125} },
             { true, pos2{23.60f, 54.80f}, 38, 956, color3{100, 60, 125} },
             { true, pos2{141.40f, 209.20f}, 38, 956, color3{72, 60, 125} },
-                { true, pos2{336.40f, 69.20f}, 38, 956, color3{72, 60, 125} },
-                { true, pos2{336.40f, 69.20f}, 38, 956, color3{72, 60, 125} },
+            { true, pos2{336.40f, 69.20f}, 38, 956, color3{72, 60, 125} },
+            { true, pos2{336.40f, 69.20f}, 38, 956, color3{72, 60, 125} },
 
 
             

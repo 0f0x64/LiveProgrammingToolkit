@@ -1,18 +1,29 @@
 #pragma once
 #include <windows.h>
+#include <windowsx.h>
 #include <cmath>
 #include <functional>
 #include <string>
 #include <vector>
 #include <any>
 #include <algorithm>
+#include <sstream>
+#include <charconv>
 #include <type_traits>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
 
+// Подключаем системную библиотеку для работы с GetDpiForWindow
+#pragma comment(lib, "User32.lib")
+
+// Базовая структура для передачи цвета, если она отсутствует в проекте
+
 namespace Widgets {
+
+    // Функция получения текущего масштаба интерфейса Windows (1.0 = 100%, 1.5 = 150%)
+
 
     struct ColorPickerContext {
         HWND hWindow = NULL;
@@ -30,14 +41,23 @@ namespace Widgets {
         float currentSat = 0.0f;
         float currentValue = 1.0f;
 
-        const int centerX = 65;
-        const int centerY = 65;
-        const int radius = 58;
+        // ЭТАЛОННЫЕ БАЗОВЫЕ РАЗМЕРЫ ГЕОМЕТРИИ (для масштаба 100% / 96 DPI)
+        const int BASE_windowWidth = 215;
+        const int BASE_windowHeight = 130;
 
-        const int valLeft = 135;
-        const int valTop = 8;
-        const int valWidth = 16;
-        const int valHeight = 114;
+        const int BASE_centerX = 65;
+        const int BASE_centerY = 65;
+        const int BASE_radius = 58;
+
+        const int BASE_valLeft = 135;
+        const int BASE_valTop = 8;
+        const int BASE_valWidth = 16;
+        const int BASE_valHeight = 114;
+
+        const int BASE_previewLeft = 162;
+        const int BASE_previewTop = 8;
+        const int BASE_previewRight = 207;
+        const int BASE_previewBottom = 122;
     };
 
     static ColorPickerContext g_pickerCtx;
@@ -88,58 +108,72 @@ namespace Widgets {
         }
     }
 
-    inline void ProcessWheelClick(int mouseX, int mouseY) {
-        int dx = mouseX - g_pickerCtx.centerX;
-        int dy = mouseY - g_pickerCtx.centerY;
+    inline void ProcessWheelClick(HWND hwnd, int mouseX, int mouseY) {
+        float scale = GetWidgetScale(hwnd);
+        int currentCenterX = static_cast<int>(g_pickerCtx.BASE_centerX * scale);
+        int currentCenterY = static_cast<int>(g_pickerCtx.BASE_centerY * scale);
+        int currentRadius = static_cast<int>(g_pickerCtx.BASE_radius * scale);
+
+        int dx = mouseX - currentCenterX;
+        int dy = mouseY - currentCenterY;
         float distance = std::sqrt(static_cast<float>(dx * dx + dy * dy));
 
-        if (distance > g_pickerCtx.radius) return;
+        // Математически ограничиваем радиус для корректной работы за пределами круга
+        if (distance > currentRadius) distance = static_cast<float>(currentRadius);
 
         float angle = std::atan2(static_cast<float>(-dy), static_cast<float>(dx));
         if (angle < 0) angle += static_cast<float>(2.0 * M_PI);
 
         g_pickerCtx.currentHue = angle * (180.0f / static_cast<float>(M_PI));
-        g_pickerCtx.currentSat = distance / static_cast<float>(g_pickerCtx.radius);
+        g_pickerCtx.currentSat = distance / static_cast<float>(currentRadius);
 
         UpdateLiveCode();
     }
 
-    inline void ProcessValueClick(int mouseY) {
-        int localY = mouseY - g_pickerCtx.valTop;
+    inline void ProcessValueClick(HWND hwnd, int mouseY) {
+        float scale = GetWidgetScale(hwnd);
+        int currentValTop = static_cast<int>(g_pickerCtx.BASE_valTop * scale);
+        int currentValHeight = static_cast<int>(g_pickerCtx.BASE_valHeight * scale);
+
+        int localY = mouseY - currentValTop;
         if (localY < 0) localY = 0;
-        if (localY > g_pickerCtx.valHeight) localY = g_pickerCtx.valHeight;
+        if (localY > currentValHeight) localY = currentValHeight;
 
-        g_pickerCtx.currentValue = 1.0f - (static_cast<float>(localY) / static_cast<float>(g_pickerCtx.valHeight));
+        g_pickerCtx.currentValue = 1.0f - (static_cast<float>(localY) / static_cast<float>(currentValHeight));
 
         UpdateLiveCode();
     }
+}
+namespace Widgets {
 
     inline LRESULT CALLBACK ColorPickerWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
         switch (uMsg) {
         case WM_SETCURSOR: {
-            POINT pt;
-            GetCursorPos(&pt);
-            ScreenToClient(hwnd, &pt);
+            POINT pt; GetCursorPos(&pt); ScreenToClient(hwnd, &pt);
+            float scale = GetWidgetScale(hwnd);
+            int cx = static_cast<int>(g_pickerCtx.BASE_centerX * scale);
+            int cy = static_cast<int>(g_pickerCtx.BASE_centerY * scale);
+            int r = static_cast<int>(g_pickerCtx.BASE_radius * scale);
 
-            int dx = pt.x - g_pickerCtx.centerX;
-            int dy = pt.y - g_pickerCtx.centerY;
+            int dx = pt.x - cx; int dy = pt.y - cy;
             float distance = std::sqrt(static_cast<float>(dx * dx + dy * dy));
-
-            SetCursor(LoadCursor(NULL, distance <= g_pickerCtx.radius ? IDC_CROSS : IDC_ARROW));
+            SetCursor(LoadCursor(NULL, distance <= r ? IDC_CROSS : IDC_ARROW));
             return TRUE;
         }
         case WM_KEYDOWN:
             if (wParam == VK_ESCAPE) {
-                DestroyWindow(hwnd);
-                g_pickerCtx.hWindow = NULL;
-                return 0;
+                if (g_pickerCtx.isTrackingWheel || g_pickerCtx.isTrackingValue) {
+                    ReleaseCapture(); g_pickerCtx.isTrackingWheel = false; g_pickerCtx.isTrackingValue = false;
+                }
+                DestroyWindow(hwnd); g_pickerCtx.hWindow = NULL; return 0;
             }
             break;
         case WM_ACTIVATE:
             if (LOWORD(wParam) == WA_INACTIVE) {
-                DestroyWindow(hwnd);
-                g_pickerCtx.hWindow = NULL;
-                return 0;
+                if (g_pickerCtx.isTrackingWheel || g_pickerCtx.isTrackingValue) {
+                    ReleaseCapture(); g_pickerCtx.isTrackingWheel = false; g_pickerCtx.isTrackingValue = false;
+                }
+                DestroyWindow(hwnd); g_pickerCtx.hWindow = NULL; return 0;
             }
             break;
         case WM_DRAWITEM: {
@@ -149,28 +183,27 @@ namespace Widgets {
             int h = lpDrawItem->rcItem.bottom - lpDrawItem->rcItem.top;
 
             std::vector<DWORD> pixelBuffer(w * h, 0x0030302D);
-
             BITMAPINFO bmi = {};
             bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-            bmi.bmiHeader.biWidth = w;
-            bmi.bmiHeader.biHeight = -h;
-            bmi.bmiHeader.biPlanes = 1;
-            bmi.bmiHeader.biBitCount = 32;
-            bmi.bmiHeader.biCompression = BI_RGB;
+            bmi.bmiHeader.biWidth = w; bmi.bmiHeader.biHeight = -h;
+            bmi.bmiHeader.biPlanes = 1; bmi.bmiHeader.biBitCount = 32; bmi.bmiHeader.biCompression = BI_RGB;
+
+            float scale = GetWidgetScale(hwnd);
 
             if (lpDrawItem->hwndItem == g_pickerCtx.hWheelStatic) {
+                int cx = static_cast<int>(g_pickerCtx.BASE_centerX * scale);
+                int cy = static_cast<int>(g_pickerCtx.BASE_centerY * scale);
+                int r = static_cast<int>(g_pickerCtx.BASE_radius * scale);
+
                 for (int y = 0; y < h; ++y) {
                     for (int x = 0; x < w; ++x) {
-                        int dx = x - g_pickerCtx.centerX;
-                        int dy = y - g_pickerCtx.centerY;
+                        int dx = x - cx; int dy = y - cy;
                         float dist = std::sqrt(static_cast<float>(dx * dx + dy * dy));
-
-                        if (dist <= g_pickerCtx.radius) {
+                        if (dist <= r) {
                             float angle = std::atan2(static_cast<float>(-dy), static_cast<float>(dx));
                             if (angle < 0) angle += static_cast<float>(2.0 * M_PI);
                             float hue = angle * (180.0f / static_cast<float>(M_PI));
-                            float sat = dist / static_cast<float>(g_pickerCtx.radius);
-
+                            float sat = dist / static_cast<float>(r);
                             pixelBuffer[y * w + x] = HsvToGdiColor(hue, sat, g_pickerCtx.currentValue);
                         }
                     }
@@ -180,94 +213,76 @@ namespace Widgets {
                 for (int y = 0; y < h; ++y) {
                     float ratio = 1.0f - (static_cast<float>(y) / static_cast<float>(h));
                     DWORD color = HsvToGdiColor(g_pickerCtx.currentHue, g_pickerCtx.currentSat, ratio);
-
-                    for (int x = 0; x < w; ++x) {
-                        pixelBuffer[y * w + x] = color;
-                    }
+                    for (int x = 0; x < w; ++x) pixelBuffer[y * w + x] = color;
                 }
-
                 int markerY = static_cast<int>((1.0f - g_pickerCtx.currentValue) * h);
-                if (markerY >= 2 && markerY < h - 2) {
-                    for (int my = markerY - 2; my <= markerY + 2; ++my) {
-                        pixelBuffer[my * w + 0] = 0xFFFFFF;
-                        pixelBuffer[my * w + (w - 1)] = 0xFFFFFF;
-                        if (my == markerY - 2 || my == markerY + 2) {
+                int thickness = static_cast<int>(2 * scale); if (thickness < 1) thickness = 1;
+
+                if (markerY >= thickness && markerY < h - thickness) {
+                    for (int my = markerY - thickness; my <= markerY + thickness; ++my) {
+                        pixelBuffer[my * w + 0] = 0xFFFFFF; pixelBuffer[my * w + (w - 1)] = 0xFFFFFF;
+                        if (my == markerY - thickness || my == markerY + thickness) {
                             for (int mx = 0; mx < w; ++mx) pixelBuffer[my * w + mx] = 0xFFFFFF;
                         }
                     }
                 }
             }
-
             StretchDIBits(hdc, 0, 0, w, h, 0, 0, w, h, pixelBuffer.data(), &bmi, DIB_RGB_COLORS, SRCCOPY);
             return TRUE;
         }
         case WM_PAINT: {
-            PAINTSTRUCT ps;
-            HDC hdc = BeginPaint(hwnd, &ps);
-
-            RECT previewRect = { 162, 8, 207, 122 };
-
+            PAINTSTRUCT ps; HDC hdc = BeginPaint(hwnd, &ps);
+            float scale = GetWidgetScale(hwnd);
+            RECT previewRect = {
+                static_cast<int>(g_pickerCtx.BASE_previewLeft * scale), static_cast<int>(g_pickerCtx.BASE_previewTop * scale),
+                static_cast<int>(g_pickerCtx.BASE_previewRight * scale), static_cast<int>(g_pickerCtx.BASE_previewBottom * scale)
+            };
             HBRUSH hPreviewBrush = CreateSolidBrush(RGB(g_pickerCtx.currentRGB.r, g_pickerCtx.currentRGB.g, g_pickerCtx.currentRGB.b));
-            FillRect(hdc, &previewRect, hPreviewBrush);
-            DeleteObject(hPreviewBrush);
+            FillRect(hdc, &previewRect, hPreviewBrush); DeleteObject(hPreviewBrush);
 
-            HPEN hPen = CreatePen(PS_SOLID, 1, RGB(90, 90, 90));
-            HPEN oldPen = (HPEN)SelectObject(hdc, hPen);
-            MoveToEx(hdc, previewRect.left, previewRect.top, NULL);
-            LineTo(hdc, previewRect.right, previewRect.top);
-            LineTo(hdc, previewRect.right, previewRect.bottom);
-            LineTo(hdc, previewRect.left, previewRect.bottom);
-            LineTo(hdc, previewRect.left, previewRect.top);
-            SelectObject(hdc, oldPen);
-            DeleteObject(hPen);
-
-            EndPaint(hwnd, &ps);
-            return 0;
+            HPEN hPen = CreatePen(PS_SOLID, 1, RGB(90, 90, 90)); HPEN oldPen = (HPEN)SelectObject(hdc, hPen);
+            MoveToEx(hdc, previewRect.left, previewRect.top, NULL); LineTo(hdc, previewRect.right, previewRect.top);
+            LineTo(hdc, previewRect.right, previewRect.bottom); LineTo(hdc, previewRect.left, previewRect.bottom);
+            LineTo(hdc, previewRect.left, previewRect.top); SelectObject(hdc, oldPen); DeleteObject(hPen);
+            EndPaint(hwnd, &ps); return 0;
         }
         case WM_LBUTTONDOWN: {
-            POINT pt = { LOWORD(lParam), HIWORD(lParam) };
-            RECT rcWheel, rcValue;
-
-            GetWindowRect(g_pickerCtx.hWheelStatic, &rcWheel);
-            MapWindowPoints(HWND_DESKTOP, hwnd, (LPPOINT)&rcWheel, 2);
-            GetWindowRect(g_pickerCtx.hValueStatic, &rcValue);
-            MapWindowPoints(HWND_DESKTOP, hwnd, (LPPOINT)&rcValue, 2);
+            POINT pt = { LOWORD(lParam), HIWORD(lParam) }; RECT rcWheel, rcValue;
+            GetWindowRect(g_pickerCtx.hWheelStatic, &rcWheel); MapWindowPoints(HWND_DESKTOP, hwnd, (LPPOINT)&rcWheel, 2);
+            GetWindowRect(g_pickerCtx.hValueStatic, &rcValue); MapWindowPoints(HWND_DESKTOP, hwnd, (LPPOINT)&rcValue, 2);
 
             if (PtInRect(&rcWheel, pt)) {
-                g_pickerCtx.isTrackingWheel = true;
-                ProcessWheelClick(pt.x - rcWheel.left, pt.y - rcWheel.top);
+                g_pickerCtx.isTrackingWheel = true; SetCapture(hwnd); // ЗАХВАТ ВЫХОДА МЫШИ
+                ProcessWheelClick(hwnd, pt.x - rcWheel.left, pt.y - rcWheel.top);
             }
             else if (PtInRect(&rcValue, pt)) {
-                g_pickerCtx.isTrackingValue = true;
-                ProcessValueClick(pt.y);
+                g_pickerCtx.isTrackingValue = true; SetCapture(hwnd); // ЗАХВАТ ВЫХОДА МЫШИ
+                ProcessValueClick(hwnd, pt.y);
             }
             return 0;
         }
         case WM_MOUSEMOVE: {
-            POINT pt = { LOWORD(lParam), HIWORD(lParam) };
+            // GET_X_LPARAM поддерживает знаковые отрицательные координаты при выходе за экран
+            POINT pt = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
             if (g_pickerCtx.isTrackingWheel) {
-                RECT rcWheel;
-                GetWindowRect(g_pickerCtx.hWheelStatic, &rcWheel);
+                RECT rcWheel; GetWindowRect(g_pickerCtx.hWheelStatic, &rcWheel);
                 MapWindowPoints(HWND_DESKTOP, hwnd, (LPPOINT)&rcWheel, 2);
-                ProcessWheelClick(pt.x - rcWheel.left, pt.y - rcWheel.top);
+                ProcessWheelClick(hwnd, pt.x - rcWheel.left, pt.y - rcWheel.top);
             }
             else if (g_pickerCtx.isTrackingValue) {
-                ProcessValueClick(pt.y);
+                ProcessValueClick(hwnd, pt.y);
             }
             return 0;
         }
         case WM_LBUTTONUP:
             if (g_pickerCtx.isTrackingWheel || g_pickerCtx.isTrackingValue) {
-                g_pickerCtx.isTrackingWheel = false;
-                g_pickerCtx.isTrackingValue = false;
+                g_pickerCtx.isTrackingWheel = false; g_pickerCtx.isTrackingValue = false;
+                ReleaseCapture(); // БЕЗОПАСНОЕ ОСВОБОЖДЕНИЕ МЫШИ
             }
             return 0;
         case WM_CLOSE:
-            DestroyWindow(hwnd);
-            g_pickerCtx.hWindow = NULL;
-            return 0;
-        case WM_DESTROY:
-            break;
+            if (g_pickerCtx.isTrackingWheel || g_pickerCtx.isTrackingValue) ReleaseCapture();
+            DestroyWindow(hwnd); g_pickerCtx.hWindow = NULL; return 0;
         }
         return DefWindowProcA(hwnd, uMsg, wParam, lParam);
     }
@@ -279,55 +294,35 @@ namespace Widgets {
         if (!pRawText) return;
 
         std::string srcText = *pRawText;
-
-        // 1. АНАЛИЗ СИНТАКСИСA И ФОРМАТА
         bool isMultiLine = (srcText.find('\n') != std::string::npos || srcText.find('\r') != std::string::npos);
         bool hasExplicitFields = (srcText.find(".r") != std::string::npos || srcText.find(".x") != std::string::npos);
-
-        // Флаг флоата по умолчанию сброшен, мы взведем его только если реально найдем 'f' или '.' внутри ЧИСЛА
         bool isFloatingPoint = false;
 
-        // 2. ДЕСЕРИАЛИЗАЦИЯ: Вырезаем три компонента из любого форматирования
-        std::stringstream ss(srcText);
-        std::string token;
-        float rawVals[3] = { 0.0f, 0.0f, 0.0f };
-        int idx = 0;
+        std::stringstream ss(srcText); std::string token;
+        float rawVals[3] = { 0.0f, 0.0f, 0.0f }; int idx = 0;
 
         while (std::getline(ss, token, ',')) {
             if (idx >= 3) break;
-            size_t eqPos = token.find('=');
-            if (eqPos == std::string::npos) eqPos = token.find(':');
+            size_t eqPos = token.find('='); if (eqPos == std::string::npos) eqPos = token.find(':');
             std::string valPart = (eqPos != std::string::npos) ? token.substr(eqPos + 1) : token;
 
-            // Очищаем токен значения, убирая имена полей и их точки (.r, .g, .b)
             valPart.erase(0, valPart.find_first_not_of(" \t\r\n.rgbxyz="));
             valPart.erase(valPart.find_last_not_of(" \t\r\nFfuUlL") + 1);
             if (valPart.empty()) continue;
 
-            // === ИСПРАВЛЕНИЕ: Проверяем на флоат только ЧИСТОЕ ЧИСЛО ===
-            // Если в самом числе есть точка (например "1.0") или суффикс "f" — это честный float
-            if (valPart.find('.') != std::string::npos ||
-                valPart.find('f') != std::string::npos ||
-                valPart.find('F') != std::string::npos) {
+            if (valPart.find('.') != std::string::npos || valPart.find('f') != std::string::npos || valPart.find('F') != std::string::npos) {
                 isFloatingPoint = true;
             }
-
-            float val = 0.0f;
-            std::from_chars(valPart.data(), valPart.data() + valPart.size(), val);
-            rawVals[idx] = val;
-            idx++;
+            float val = 0.0f; std::from_chars(valPart.data(), valPart.data() + valPart.size(), val);
+            rawVals[idx] = val; idx++;
         }
 
         float rNorm = 0.0f, gNorm = 0.0f, bNorm = 0.0f;
         if (isFloatingPoint) {
-            rNorm = std::clamp(rawVals[0], 0.0f, 1.0f);
-            gNorm = std::clamp(rawVals[1], 0.0f, 1.0f);
-            bNorm = std::clamp(rawVals[2], 0.0f, 1.0f);
+            rNorm = std::clamp(rawVals[0], 0.0f, 1.0f); gNorm = std::clamp(rawVals[1], 0.0f, 1.0f); bNorm = std::clamp(rawVals[2], 0.0f, 1.0f);
         }
         else {
-            rNorm = std::clamp(rawVals[0] / 255.0f, 0.0f, 1.0f);
-            gNorm = std::clamp(rawVals[1] / 255.0f, 0.0f, 1.0f);
-            bNorm = std::clamp(rawVals[2] / 255.0f, 0.0f, 1.0f);
+            rNorm = std::clamp(rawVals[0] / 255.0f, 0.0f, 1.0f); gNorm = std::clamp(rawVals[1] / 255.0f, 0.0f, 1.0f); bNorm = std::clamp(rawVals[2] / 255.0f, 0.0f, 1.0f);
         }
 
         g_pickerCtx.currentRGB.r = static_cast<unsigned char>(rNorm * 255.0f);
@@ -335,10 +330,8 @@ namespace Widgets {
         g_pickerCtx.currentRGB.b = static_cast<unsigned char>(bNorm * 255.0f);
         g_pickerCtx.vsUpdaterCallback = vsUpdater;
 
-        float maxVal = (std::max)({ rNorm, gNorm, bNorm });
-        float minVal = (std::min)({ rNorm, gNorm, bNorm });
-        float delta = maxVal - minVal;
-        g_pickerCtx.currentValue = maxVal;
+        float maxVal = (std::max)({ rNorm, gNorm, bNorm }); float minVal = (std::min)({ rNorm, gNorm, bNorm });
+        float delta = maxVal - minVal; g_pickerCtx.currentValue = maxVal;
         g_pickerCtx.currentSat = (maxVal == 0.0f) ? 0.0f : (delta / maxVal);
         if (delta == 0.0f) g_pickerCtx.currentHue = 0.0f;
         else {
@@ -348,108 +341,78 @@ namespace Widgets {
             if (g_pickerCtx.currentHue < 0.0f) g_pickerCtx.currentHue += 360.0f;
         }
 
-        // 3. === АДАПТАЦИЯ СИММЕТРИЧНОГО ГЕНЕРАТОРА КОДА ПОД СХЕМУ С selection ===
         g_pickerCtx.textGenerator = [vsUpdater, isMultiLine, hasExplicitFields, isFloatingPoint](unsigned char r, unsigned char g, unsigned char b) {
             char buf[512]{};
-
             if (isFloatingPoint) {
-                // ВЕТКА ФЛОАТОВ (0.0f - 1.0f)
-                float outR = r / 255.0f;
-                float outG = g / 255.0f;
-                float outB = b / 255.0f;
-                const char* fmt = "%.2ff";
-
+                float outR = r / 255.0f; float outG = g / 255.0f; float outB = b / 255.0f; const char* fmt = "%.2ff";
                 if (isMultiLine) {
-                    std::string line1 = hasExplicitFields ? ".r=" : "";
-                    std::string line2 = hasExplicitFields ? ".g=" : "";
-                    std::string line3 = hasExplicitFields ? ".b=" : "";
-                    std::string masterFmt = "\n\t\t\t\t" + line1 + fmt + ", \n\t\t\t\t" + line2 + fmt + ",  \n\t\t\t\t" + line3 + fmt + "\n\t\t\t\t";
+                    std::string masterFmt = "\n\t\t\t\t" + std::string(hasExplicitFields ? ".r=" : "") + fmt + ", \n\t\t\t\t" + (hasExplicitFields ? ".g=" : "") + fmt + ",  \n\t\t\t\t" + (hasExplicitFields ? ".b=" : "") + fmt + "\n\t\t\t\t";
                     sprintf_s(buf, masterFmt.c_str(), outR, outG, outB);
                 }
                 else {
-                    std::string masterFmt = hasExplicitFields
-                        ? (std::string(".r=") + fmt + ", .g=" + fmt + ", .b=" + fmt)
-                        : (std::string(fmt) + ", " + fmt + ", " + fmt);
+                    std::string masterFmt = hasExplicitFields ? (std::string(".r=") + fmt + ", .g=" + fmt + ", .b=" + fmt) : (std::string(fmt) + ", " + fmt + ", " + fmt);
                     sprintf_s(buf, masterFmt.c_str(), outR, outG, outB);
                 }
             }
             else {
-                // ВЕТКА БАЙТОВ (0 - 255)
-                // Принудительно кастим в int и используем жесткий целочисленный спецификатор %d
-                int outR = static_cast<int>(r);
-                int outG = static_cast<int>(g);
-                int outB = static_cast<int>(b);
-                const char* fmt = "%d";
-
+                int outR = static_cast<int>(r); int outG = static_cast<int>(g); int outB = static_cast<int>(b); const char* fmt = "%d";
                 if (isMultiLine) {
-                    std::string line1 = hasExplicitFields ? ".r=" : "";
-                    std::string line2 = hasExplicitFields ? ".g=" : "";
-                    std::string line3 = hasExplicitFields ? ".b=" : "";
-                    std::string masterFmt = "\n\t\t\t\t" + line1 + fmt + ", \n\t\t\t\t" + line2 + fmt + ",  \n\t\t\t\t" + line3 + fmt + "\n\t\t\t\t";
+                    std::string masterFmt = "\n\t\t\t\t" + std::string(hasExplicitFields ? ".r=" : "") + fmt + ", \n\t\t\t\t" + (hasExplicitFields ? ".g=" : "") + fmt + ",  \n\t\t\t\t" + (hasExplicitFields ? ".b=" : "") + fmt + "\n\t\t\t\t";
                     sprintf_s(buf, masterFmt.c_str(), outR, outG, outB);
                 }
                 else {
-                    std::string masterFmt = hasExplicitFields
-                        ? (std::string(".r=") + fmt + ", .g=" + fmt + ", .b=" + fmt)
-                        : (std::string(fmt) + ", " + fmt + ", " + fmt);
+                    std::string masterFmt = hasExplicitFields ? (std::string(".r=") + fmt + ", .g=" + fmt + ", .b=" + fmt) : (std::string(fmt) + ", " + fmt + ", " + fmt);
                     sprintf_s(buf, masterFmt.c_str(), outR, outG, outB);
                 }
             }
-
             vsUpdater(buf);
             };
 
-        // =========================================================================
-        // [ТВОЙ ОРИГИНАЛЬНЫЙ WIN32 КОД ОКНА ПАЛИТРЫ]: Полностью сохранен
-        // =========================================================================
         if (g_pickerCtx.hWindow && IsWindow(g_pickerCtx.hWindow)) {
-            InvalidateRect(g_pickerCtx.hWindow, NULL, FALSE);
-            SetActiveWindow(g_pickerCtx.hWindow);
-            return;
+            InvalidateRect(g_pickerCtx.hWindow, NULL, FALSE); SetActiveWindow(g_pickerCtx.hWindow); return;
         }
 
-        POINT mousePos;
-        GetCursorPos(&mousePos);
-        HINSTANCE hInst = GetModuleHandleA(NULL);
+        POINT mousePos; GetCursorPos(&mousePos); HINSTANCE hInst = GetModuleHandleA(NULL);
         const char* className = "LPT_CustomColorWheelWin";
 
         static bool registered = [hInst, className]() {
-            WNDCLASSEXA wc = { sizeof(WNDCLASSEXA) };
-            wc.lpfnWndProc = ColorPickerWndProc;
-            wc.hInstance = hInst;
-            wc.lpszClassName = className;
-            wc.hIcon = LoadIcon(NULL, IDI_APPLICATION);
-            wc.hCursor = LoadCursor(NULL, IDC_ARROW);
-            wc.hbrBackground = CreateSolidBrush(RGB(45, 45, 48));
-            return RegisterClassExA(&wc) != 0;
+            WNDCLASSEXA wc = { sizeof(WNDCLASSEXA) }; wc.lpfnWndProc = ColorPickerWndProc;
+            wc.hInstance = hInst; wc.lpszClassName = className;
+            wc.hIcon = LoadIcon(NULL, IDI_APPLICATION); wc.hCursor = LoadCursor(NULL, IDC_ARROW);
+            wc.hbrBackground = CreateSolidBrush(RGB(45, 45, 48)); return RegisterClassExA(&wc) != 0;
             }();
 
-        int calculatedWindowY = mousePos.y - 144;
+        float scale = GetWidgetScale();
+        int scaledWidth = static_cast<int>(g_pickerCtx.BASE_windowWidth * scale);
+        int scaledHeight = static_cast<int>(g_pickerCtx.BASE_windowHeight * scale);
+        int scaledValLeft = static_cast<int>(g_pickerCtx.BASE_valLeft * scale);
+        int scaledValTop = static_cast<int>(g_pickerCtx.BASE_valTop * scale);
+        int scaledValWidth = static_cast<int>(g_pickerCtx.BASE_valWidth * scale);
+        int scaledValHeight = static_cast<int>(g_pickerCtx.BASE_valHeight * scale);
+        int scaledWheelWidth = static_cast<int>(130 * scale);
+
+        int calculatedWindowY = mousePos.y - scaledHeight - 20;
 
         g_pickerCtx.hWindow = CreateWindowExA(
-            WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
-            className, NULL,
-            WS_POPUP | WS_VISIBLE,
-            mousePos.x - 10, calculatedWindowY, 215, 130,
-            NULL, NULL, hInst, NULL
+            WS_EX_TOPMOST | WS_EX_TOOLWINDOW, className, NULL, WS_POPUP | WS_VISIBLE,
+            mousePos.x - 10, calculatedWindowY, scaledWidth, scaledHeight, NULL, NULL, hInst, NULL
         );
 
         if (!g_pickerCtx.hWindow) return;
 
         g_pickerCtx.hWheelStatic = CreateWindowExA(
             0, "STATIC", "", WS_CHILD | WS_VISIBLE | SS_OWNERDRAW,
-            0, 0, 130, 130, g_pickerCtx.hWindow, NULL, hInst, NULL
+            0, 0, scaledWheelWidth, scaledHeight, g_pickerCtx.hWindow, NULL, hInst, NULL
         );
 
         g_pickerCtx.hValueStatic = CreateWindowExA(
             0, "STATIC", "", WS_CHILD | WS_VISIBLE | SS_OWNERDRAW,
-            g_pickerCtx.valLeft, g_pickerCtx.valTop, g_pickerCtx.valWidth, g_pickerCtx.valHeight,
-            g_pickerCtx.hWindow, NULL, hInst, NULL
+            scaledValLeft, scaledValTop, scaledValWidth, scaledValHeight, g_pickerCtx.hWindow, NULL, hInst, NULL
         );
 
-        ShowWindow(g_pickerCtx.hWindow, SW_SHOW);
-        UpdateWindow(g_pickerCtx.hWindow);
-        SetForegroundWindow(g_pickerCtx.hWindow);
+        ShowWindow(g_pickerCtx.hWindow, SW_SHOW); 
+        GetCursorPos(&mousePos);
+        SetForegroundWindow(g_pickerCtx.hWindow); 
         SetFocus(g_pickerCtx.hWindow);
     }
 }
