@@ -149,6 +149,7 @@
     <ClInclude Include="framework.h" />
     <ClInclude Include="LivePT\consistency.h" />
     <ClInclude Include="LivePT\DbgHelpRef.h" />
+    <ClInclude Include="LivePT\dragOverlay.h" />
     <ClInclude Include="LivePT\drugLogic.h" />
     <ClInclude Include="LivePT\enumMenu.h" />
     <ClInclude Include="LivePT\eval.h" />

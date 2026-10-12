@@ -626,6 +626,7 @@ namespace LivePT {
             g_dragState.currentTextLength = cleanText.length();
             g_dragState.oldMouseX = pt.x;
             g_dragState.oldMouseY = pt.y;
+            g_dragState.lockMousePos = pt;
 
             // === ИСПРАВЛЕНИЕ: Считаем смещение строго в физических индексах строки ===
             long physicalCursorIdx = targetCharIdx; // Используем уже переведенный честный индекс!
@@ -1203,6 +1204,13 @@ namespace LivePT {
 
 
     inline void DragNumericValue(const POINT& pt, bool ctrl, bool shift) {
+
+        static HCURSOR hSizeNS = LoadCursor(NULL, IDC_SIZENS);
+
+        ::LivePT::g_OverlayCursor = hSizeNS;
+        ::LivePT::g_OverlayText = "shift=X10,ctrl=X100";
+        ::LivePT::g_OverlayShow = true;
+
         int scale = 1;
         if (ctrl)  scale *= 100;
         if (shift) scale *= 10;
@@ -1327,6 +1335,8 @@ namespace LivePT {
 
         // === ВОЗВРАЩАЕМ КУРСОРУ ВИДИМОСТЬ ===
         if (g_dragState.isCursorHidden) {
+            
+            SetCursorPos(g_dragState.lockMousePos.x, g_dragState.lockMousePos.y);
             ShowCursor(TRUE);
             g_dragState.isCursorHidden = false;
         }

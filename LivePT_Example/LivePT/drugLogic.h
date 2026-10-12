@@ -42,6 +42,21 @@ namespace DrugLogic {
     inline std::string color3Drag(const std::string& currentArgsStr, const ::LivePT::DragMathInput& input) {
         int r = 0, g = 0, b = 0;
 
+        static HCURSOR hSizeAll = LoadCursor(NULL, IDC_SIZEALL);
+        static HCURSOR hSizeNS = LoadCursor(NULL, IDC_SIZENS);
+
+        if (input.shift) {
+            ::LivePT::g_OverlayCursor = hSizeAll;
+            ::LivePT::g_OverlayText = "up-down: saturation, left-right: hue";
+        }
+        else {
+            ::LivePT::g_OverlayCursor = hSizeNS;
+            ::LivePT::g_OverlayText = "brightness. shift to sat/hue";
+        }
+
+
+        ::LivePT::g_OverlayShow = true;
+
         // Extract values regardless of formatting (.r=82 or pure numbers)
         if (sscanf_s(currentArgsStr.c_str(), "%*[^0-9-]%d%*[^0-9-]%d%*[^0-9-]%d", &r, &g, &b) != 3) {
             if (sscanf_s(currentArgsStr.c_str(), "%d, %d, %d", &r, &g, &b) != 3) {
@@ -101,6 +116,12 @@ namespace DrugLogic {
         float x = 0.0f, y = 0.0f;
         bool parsed = false;
 
+        static HCURSOR hSizeAll = LoadCursor(NULL, IDC_SIZEALL);
+
+        ::LivePT::g_OverlayCursor = hSizeAll;
+        ::LivePT::g_OverlayText = "";
+        ::LivePT::g_OverlayShow = true;
+
         // 1. Õ¿ƒ≈∆Õ€… ÃÕŒ√Œ—“–Œ◊Õ€… œ¿–—»Õ√ (.x = ... .y = ...)
         size_t xPos = currentArgsStr.find(".x");
         size_t yPos = currentArgsStr.find(".y");
@@ -156,6 +177,12 @@ namespace DrugLogic {
     inline std::string size2Drag(const std::string& currentArgsStr, const ::LivePT::DragMathInput& input) {
         float w = 0.0f, h = 0.0f;
         bool parsed = false;
+
+        static HCURSOR hSizeAll = LoadCursor(NULL, IDC_SIZENS);
+
+        ::LivePT::g_OverlayCursor = hSizeAll;
+        ::LivePT::g_OverlayText = "";
+        ::LivePT::g_OverlayShow = true;
 
         // 1. Õ¿ƒ≈∆Õ€… ÃÕŒ√Œ—“–Œ◊Õ€… œ¿–—»Õ√ (.w = ... .h = ...)
         size_t wPos = currentArgsStr.find(".w");

@@ -95,6 +95,7 @@ namespace LivePT {
     #include "consistency.h"
 
     #if LivePT_Mouse
+        #include "dragOverlay.h"
         #include "mouse.h"
         #include "drugLogic.h"
     #endif
@@ -147,6 +148,10 @@ namespace LivePT {
 
 #if LivePT_Mouse
         // 1. Выгружаем обычные мышиные буферы одиночных чисел
+        InitPassiveOverlay();
+        g_OverlayShow = g_dragState.isCursorHidden ? true : false;
+        UpdateOverlayPosition(g_dragState.lockMousePos.x, g_dragState.lockMousePos.y);
+
         FlushPendingWritesToVS();
 
         WidgetBufferUpdate();
