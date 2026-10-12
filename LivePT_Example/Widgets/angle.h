@@ -47,11 +47,9 @@ namespace Widgets {
         float angleRad = std::atan2(static_cast<float>(dy), static_cast<float>(dx));
         float targetDeg = angleRad * (180.0f / 3.14159265f);
 
-        if (GetAsyncKeyState(VK_SHIFT) & 0x8000) {
-            float diff = targetDeg - g_angleCtx.currentAngle;
-            while (diff > 180.0f) diff -= 360.0f;
-            while (diff < -180.0f) diff += 360.0f;
-            g_angleCtx.currentAngle += (diff > 0 ? 1.0f : -1.0f);
+        if (GetAsyncKeyState(VK_CONTROL) & 0x8000) {
+            float step = 15;
+            g_angleCtx.currentAngle = floor(targetDeg/ step +.5)* step;
         }
         else {
             g_angleCtx.currentAngle = targetDeg;
