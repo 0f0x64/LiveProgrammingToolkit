@@ -262,18 +262,18 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         Draw({
             .pos = eval(pos2{
-				.x = -69.30f,
-				.y = -173.49f
+				.x = -109.30f,
+				.y = -164.49f
 				}
             ),
-            .size = eval(size2{190.21f, 122.06f}),
+            .size = eval(size2{177.01f, 113.62f}),
             .Angle = eval(angle(324.5f)),
             .type = eval(ptype::box),
             .show = eval(true),
             .color = eval(color3{
-				.r=109, 
+				.r=72, 
 				.g=0,  
-				.b=4
+				.b=13
 				})
             });
 

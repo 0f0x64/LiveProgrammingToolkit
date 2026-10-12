@@ -16,8 +16,8 @@ namespace LivePT {
     static std::mutex   s_OverlayMutex;               // Защита данных при изменении из разных потоков
 
     // Размеры окна (расширены, чтобы гарантированно влезал текст)
-    const int OVERLAY_WIDTH = 250;
-    const int OVERLAY_HEIGHT = 50;
+    const int OVERLAY_WIDTH = 350;
+    const int OVERLAY_HEIGHT = 100;
 
     // Внутренняя оконная процедура для пассивного окна
     inline LRESULT CALLBACK PassiveOverlayWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
@@ -61,119 +61,155 @@ namespace LivePT {
     // =========================================================================
     // СИСТЕМНЫЙ МЕТОД ОБНОВЛЕНИЯ (Перерисовывает текстуру на основе глобальных переменных)
     // =========================================================================
+        // =========================================================================
+    // СИСТЕМНЫЙ МЕТОД ОБНОВЛЕНИЯ (С добавлением контрастной подложки под текст)
+    // =========================================================================
     inline void RedrawOverlayBuffer(int screenX, int screenY) {
-        if (!s_hOverlayWnd) return; //
+        if (!s_hOverlayWnd) return;
 
-        // Внутренний кэш состояний для защиты от лишних перерисовок
-        static HCURSOR     s_LastLoadedCursor = NULL; //
-        static std::string s_LastLoadedText = ""; //
+        static HCURSOR     s_LastLoadedCursor = NULL;
+        static std::string s_LastLoadedText = "";
 
-        HCURSOR     localCursor; //
-        std::string localText; //
+        HCURSOR     localCursor;
+        std::string localText;
         {
-            std::lock_guard<std::mutex> lock(s_OverlayMutex); //
-            localCursor = g_OverlayCursor; //
-            localText = g_OverlayText; //
-        } //
+            std::lock_guard<std::mutex> lock(s_OverlayMutex);
+            localCursor = g_OverlayCursor;
+            localText = g_OverlayText;
+        }
 
-        // Вычисляем Hotspot курсора (точку привязки)
         int hotspotX = 0;
         int hotspotY = 0;
-
         if (localCursor) {
             ICONINFO iconInfo = { 0 };
             if (::GetIconInfo(localCursor, &iconInfo)) {
                 hotspotX = (int)iconInfo.xHotspot;
                 hotspotY = (int)iconInfo.yHotspot;
-
-                // Обязательно удаляем созданные GetIconInfo битмапы, чтобы избежать утечки памяти!
                 if (iconInfo.hbmMask)  ::DeleteObject(iconInfo.hbmMask);
                 if (iconInfo.hbmColor) ::DeleteObject(iconInfo.hbmColor);
             }
         }
 
-        // ОФСЕТ: Если текст и курсор не изменились, просто мгновенно двигаем окно с учетом Hotspot
         if (localCursor == s_LastLoadedCursor && localText == s_LastLoadedText) {
-            // Вычитаем hotspotX и hotspotY, чтобы точка клика совпала с центром/острием курсора
             int targetX = screenX - hotspotX;
             int targetY = screenY - hotspotY;
-
             ::SetWindowPos(s_hOverlayWnd, HWND_TOPMOST, targetX, targetY, 0, 0,
-                SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOREDRAW); //
-            return; //
+                SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOREDRAW);
+            return;
         }
 
-        s_LastLoadedCursor = localCursor; //
-        s_LastLoadedText = localText; //
+        s_LastLoadedCursor = localCursor;
+        s_LastLoadedText = localText;
 
-        HDC hdcScreen = GetDC(NULL); //
-        HDC hdcMem = CreateCompatibleDC(hdcScreen); //
+        HDC hdcScreen = GetDC(NULL);
+        HDC hdcMem = CreateCompatibleDC(hdcScreen);
 
-        BITMAPINFO bmi = { 0 }; //
-        bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER); //
-        bmi.bmiHeader.biWidth = OVERLAY_WIDTH; //
-        bmi.bmiHeader.biHeight = OVERLAY_HEIGHT; //
-        bmi.bmiHeader.biPlanes = 1; //
-        bmi.bmiHeader.biBitCount = 32; //
-        bmi.bmiHeader.biCompression = BI_RGB; //
+        BITMAPINFO bmi = { 0 };
+        bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+        bmi.bmiHeader.biWidth = OVERLAY_WIDTH;
+        bmi.bmiHeader.biHeight = OVERLAY_HEIGHT;
+        bmi.bmiHeader.biPlanes = 1;
+        bmi.bmiHeader.biBitCount = 32;
+        bmi.bmiHeader.biCompression = BI_RGB;
 
-        void* pBits = nullptr; //
-        HBITMAP hBmp = CreateDIBSection(hdcMem, &bmi, DIB_RGB_COLORS, &pBits, NULL, 0); //
-        HBITMAP hOldBmp = (HBITMAP)SelectObject(hdcMem, hBmp); //
+        void* pBits = nullptr;
+        HBITMAP hBmp = CreateDIBSection(hdcMem, &bmi, DIB_RGB_COLORS, &pBits, NULL, 0);
+        HBITMAP hOldBmp = (HBITMAP)SelectObject(hdcMem, hBmp);
 
-        memset(pBits, 0, OVERLAY_WIDTH * OVERLAY_HEIGHT * 4); //
+        // Полная очистка холста в прозрачность (Alpha = 0)
+        memset(pBits, 0, OVERLAY_WIDTH * OVERLAY_HEIGHT * 4);
 
+        // 1. Отрисовка иконки курсора
         if (localCursor) {
-            // Рисуем курсор в левый верхний угол (0, 0) нашего холста
-            DrawIcon(hdcMem, 0, 0, localCursor); //
+            DrawIcon(hdcMem, 0, 0, localCursor);
         }
 
-        if (!localText.empty()) { //
-            SetBkMode(hdcMem, TRANSPARENT); //
-            SetTextColor(hdcMem, RGB(220, 220, 220)); //
-
+        // 2. Отрисовка подложки и текста
+        if (!localText.empty()) {
+            // Настраиваем шрифт Segoe UI
             HFONT hFont = CreateFontA(
-                13, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+                28, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
                 DEFAULT_CHARSET, OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS,
-                CLEARTYPE_QUALITY, //
-                VARIABLE_PITCH, "Consolas"
-            ); //
-            HGDIOBJ hOldFont = SelectObject(hdcMem, hFont); //
+                CLEARTYPE_QUALITY, VARIABLE_PITCH, "Segoe UI"
+            );
+            HGDIOBJ hOldFont = SelectObject(hdcMem, hFont);
 
-            // Рисуем текст. Смещение по X делаем равным hotspotX, чтобы текст 
-            // начинался ровно по вертикальной оси курсора, а не улетал влево.
-            // Смещение по Y = 32 пикселя (строго под иконку курсора)
+            // Считаем размеры текста, чтобы прямоугольник идеально подгонялся под длину строки
+            SIZE textSize;
+            GetTextExtentPoint32A(hdcMem, localText.c_str(), (int)localText.length(), &textSize);
+
+            // Координаты плашки под текстом (смещение по Y = 32 пикселя, строго под курсор)
+            // Добавляем отступы (padding) по 6 пикселей слева/справа и 3 пикселя сверху/снизу
+            int rectLeft = hotspotX - 6;
+            int rectTop = 32 - 3;
+            int rectRight = hotspotX + textSize.cx + 6;
+            int rectBottom = 32 + textSize.cy + 3;
+
+            // Защита от выхода за границы битмапа
+            if (rectLeft < 0) rectLeft = 0;
+            if (rectRight > OVERLAY_WIDTH) rectRight = OVERLAY_WIDTH;
+
+            // Рисуем фон плашки (Темно-серый цвет из темы Visual Studio)
+            HBRUSH hBgBrush = CreateSolidBrush(RGB(37, 37, 38));
+            RECT rcTextBg = { rectLeft, rectTop, rectRight, rectBottom };
+            FillRect(hdcMem, &rcTextBg, hBgBrush);
+            DeleteObject(hBgBrush);
+
+            // Рисуем тонкую рамку вокруг плашки (Акцентный синий VS)
+            HPEN hBorderPen = CreatePen(PS_SOLID, 1, RGB(0, 122, 204));
+            HGDIOBJ hOldPen = SelectObject(hdcMem, hBorderPen);
+            HGDIOBJ hOldBrush = SelectObject(hdcMem, GetStockObject(NULL_BRUSH));
+
+            // Рисуем рамку
+            RoundRect(hdcMem, rectLeft, rectTop, rectRight, rectBottom, 3, 3);
+
+            SelectObject(hdcMem, hOldBrush);
+            SelectObject(hdcMem, hOldPen);
+            DeleteObject(hBorderPen);
+
+            // Выводим сам текст поверх нарисованной плашки
+            SetBkMode(hdcMem, TRANSPARENT);
+            SetTextColor(hdcMem, RGB(241, 241, 241)); // Почти белый контрастный текст
             TextOutA(hdcMem, hotspotX, 32, localText.c_str(), (int)localText.length());
 
-            DWORD* pixels = (DWORD*)pBits; //
-            int totalPixels = OVERLAY_WIDTH * OVERLAY_HEIGHT; //
-            for (int i = 0; i < totalPixels; ++i) { //
-                if (pixels[i] != 0x00000000) { //
-                    pixels[i] |= 0xFF000000; //
-                } //
-            } //
+            // --- КРИТИЧЕСКИЙ ШАГ: Прошивка Альфа-канала для подложки и текста ---
+            // Проходимся по пикселям в области нашей плашки и выставляем им непрозрачность.
+            DWORD* pixels = (DWORD*)pBits;
 
-            SelectObject(hdcMem, hOldFont); //
-            DeleteObject(hFont); //
-        } //
+            for (int y = rectTop; y < rectBottom; ++y) {
+                for (int x = rectLeft; x < rectRight; ++x) {
+                    // Инвертируем Y, так как CreateDIBSection создает буфер снизу вверх
+                    int pixelIdx = (OVERLAY_HEIGHT - 1 - y) * OVERLAY_WIDTH + x;
 
-        POINT ptZero = { 0, 0 }; //
-        SIZE sizeWnd = { OVERLAY_WIDTH, OVERLAY_HEIGHT }; //
-        BLENDFUNCTION blend = { 0 }; //
-        blend.BlendOp = AC_SRC_OVER; //
-        blend.SourceConstantAlpha = 255; //
-        blend.AlphaFormat = AC_SRC_ALPHA; //
+                    if (pixelIdx >= 0 && pixelIdx < OVERLAY_WIDTH * OVERLAY_HEIGHT) {
+                        // 0xFC000000 — задает ~98% непрозрачности (плашка слегка сглаживает фон)
+                        // Если хотите железно матовую подложку, замените на 0xFF000000
+                        pixels[pixelIdx] |= 0xFC000000;
+                    }
+                }
+            }
 
-        // ПРИВЯЗКА ОКНА К ЭКРАНУ: Точное позиционирование окна оверлея с учетом Hotspot
+            SelectObject(hdcMem, hOldFont);
+            DeleteObject(hFont);
+        }
+
+        // 3. Аппаратный блендинг окна
+        POINT ptZero = { 0, 0 };
+        SIZE sizeWnd = { OVERLAY_WIDTH, OVERLAY_HEIGHT };
+        BLENDFUNCTION blend = { 0 };
+        blend.BlendOp = AC_SRC_OVER;
+        blend.SourceConstantAlpha = 255;
+        blend.AlphaFormat = AC_SRC_ALPHA;
+
         POINT ptWnd = { screenX - hotspotX, screenY - hotspotY };
+        UpdateLayeredWindow(s_hOverlayWnd, hdcScreen, &ptWnd, &sizeWnd, hdcMem, &ptZero, 0, &blend, ULW_ALPHA);
 
-        UpdateLayeredWindow(s_hOverlayWnd, hdcScreen, &ptWnd, &sizeWnd, hdcMem, &ptZero, 0, &blend, ULW_ALPHA); //
-
-        SelectObject(hdcMem, hOldBmp); //
-        DeleteObject(hBmp); //
-        DeleteDC(hdcMem); //
-        ReleaseDC(NULL, hdcScreen); //
+        SelectObject(hdcMem, hOldBmp);
+        DeleteObject(hBmp);
+        DeleteDC(hdcMem);
+        ReleaseDC(NULL, hdcScreen);
     }
+
 
 
     // =========================================================================
