@@ -414,6 +414,9 @@ namespace LivePT {
         size_t visualCol = 0;
 
         for (size_t i = 0; i < charIdx && i < lineText.length(); ++i) {
+            if (lineText[i] == L'\r') {
+                continue; // Игнорируем возврат каретки, VS не считает его за колонку
+            }
             if (lineText[i] == L'\t') {
                 visualCol += tabSize - (visualCol % tabSize);
             }
@@ -423,6 +426,7 @@ namespace LivePT {
         }
         return static_cast<long>(visualCol) + 1;
     }
+
 
     inline void ParseAndStoreParamValueDirect(const std::wstring& fileText, int targetId) {
         if (fileText.empty() || targetId < 0 || targetId >= static_cast<int>(paramDesc.size())) {
@@ -449,11 +453,15 @@ namespace LivePT {
         if (nextNL == std::wstring::npos) nextNL = fileText.length();
         std::wstring lineText = fileText.substr(lineStartOffset, nextNL - lineStartOffset);
 
-        // 3. Вычисляем физический символ по p.column
+        // 3. Вычисляем физический символ по p.column с защитой от \r
         long currentVisualCol = 1;
         size_t paramCharIdx = lineText.length();
         for (size_t i = 0; i < lineText.length(); ++i) {
             if (currentVisualCol >= p.column) { paramCharIdx = i; break; }
+
+            if (lineText[i] == L'\r') {
+                continue; // Игнорируем \r, он не имеет визуальной ширины
+            }
             currentVisualCol += (lineText[i] == L'\t') ? (tabSize - ((currentVisualCol - 1) % tabSize)) : 1;
         }
         size_t anchorOffset = lineStartOffset + paramCharIdx;
@@ -464,26 +472,24 @@ namespace LivePT {
         size_t openBracket = fileText.find(L'(', anchorOffset);
 
         if (openBracket != std::wstring::npos && openBracket < fileText.length()) {
-
-            // Используем наш новый безопасный детектор
             size_t closeBracketPos = FindMacroCloseBracket(fileText, openBracket);
 
-            // Если скобка найдена — вырезаем строго внутреннее содержимое макроса
             if (closeBracketPos != std::wstring::npos && closeBracketPos > openBracket) {
                 std::wstring innerValueW = fileText.substr(openBracket + 1, closeBracketPos - openBracket - 1);
+
+                // Удаляем \r из wstring перед конвертацией, чтобы не ломать кодировку
+                innerValueW.erase(std::remove(innerValueW.begin(), innerValueW.end(), L'\r'), innerValueW.end());
+
                 std::string innerValueA = ConvertWStringToUtf8(innerValueW);
 
-                // Очищаем от мусорных переносов строк по краям
-                innerValueA.erase(0, innerValueA.find_first_not_of(" \t\r\n"));
-                innerValueA.erase(innerValueA.find_last_not_of(" \t\r\n") + 1);
+                // Очищаем от мусорных пробелов и переносов строк по краям
+                innerValueA.erase(0, innerValueA.find_first_not_of(" \t\n"));
+                innerValueA.erase(innerValueA.find_last_not_of(" \t\n") + 1);
 
-                // Отправляем чистую строку в базовый рантайм-парсер
                 UpdateParamValue(targetId, innerValueA);
             }
         }
     }
-
-
 
 
     inline std::wstring DownloadCurrentLineText(IDispatch* pActiveDoc) {

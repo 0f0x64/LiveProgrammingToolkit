@@ -7,19 +7,14 @@ namespace LivePT {
         size_t absoluteOffset = std::wstring::npos;
     };
 
-    // Сканирует текст файла НАЗАД от сырых координат компилятора, находя точное начало L"eval"
-    inline PreciseCoord FindEvalTokenBackward(const std::wstring& fileText, long rawLine, long rawColumn) {
+    inline PreciseCoord FindEvalTokenBackward(const std::wstring& fileText, const std::string& filePath, long rawLine, long rawColumn, size_t minAllowedOffset = 0) {
         PreciseCoord result;
         if (fileText.empty()) return result;
 
         std::wstring macroName = GetConfiguredMacroName(); // Получаем L"eval"
-
-        // КРИТИЧЕСКИЙ АРХИТЕКТУРНЫЙ СДВИГ: 
-        // Препроцессор компилятора (MSVC/Clang) ВСЕГДА раздувает символ '\t' до 8 пробелов.
-        // Чтобы стартовая точка поиска не улетела влево, на этапе 2 используем жесткий шаг = 8.
         const long COMPILER_TAB_SIZE = 8;
 
-        // 1. Быстро переходим к началу физической строки rawLine
+        // 1. Переходим к началу физической строки rawLine
         size_t lineStartOffset = 0;
         long currentLineIdx = 1;
         while (currentLineIdx < rawLine && lineStartOffset < fileText.length()) {
@@ -33,11 +28,12 @@ namespace LivePT {
             }
         }
 
-        // 2. Вычисляем символ в строке, соответствующий rawColumn (с компиляторным учетом табов = 8)
+        // 2. Выделяем текст текущей строки
         size_t nextNL = fileText.find(L'\n', lineStartOffset);
         if (nextNL == std::wstring::npos) nextNL = fileText.length();
         std::wstring lineText = fileText.substr(lineStartOffset, nextNL - lineStartOffset);
 
+        // Вычисляем символ в строке, соответствующий rawColumn (с учетом компиляторных табов = 8 и игнорированием \r)
         long currentVisualCol = 1;
         size_t paramCharIdx = lineText.length();
         for (size_t i = 0; i < lineText.length(); ++i) {
@@ -45,19 +41,36 @@ namespace LivePT {
                 paramCharIdx = i;
                 break;
             }
-            // Разворачиваем табы строго по логике компилятора (шаг 8)
-            currentVisualCol += (lineText[i] == L'\t') ? (COMPILER_TAB_SIZE - ((currentVisualCol - 1) % COMPILER_TAB_SIZE)) : 1;
+
+            if (lineText[i] == L'\r') {
+                // Игнорируем возврат каретки: компилятор не считает его за колонку
+                continue;
+            }
+            else if (lineText[i] == L'\t') {
+                currentVisualCol += (COMPILER_TAB_SIZE - ((currentVisualCol - 1) % COMPILER_TAB_SIZE));
+            }
+            else {
+                currentVisualCol += 1;
+            }
         }
 
         // Абсолютное смещение в файле, откуда начинаем искать макрос назад
         size_t searchOrigin = lineStartOffset + paramCharIdx;
         if (searchOrigin > fileText.length()) searchOrigin = fileText.length();
 
+        // Защита: стартовая точка поиска не может быть левее минимально разрешенной границы предыдущего макроса
+        if (searchOrigin < minAllowedOffset) {
+            Log("[LivePT] Error: Search origin (" + std::to_string(searchOrigin) +
+                ") is behind minAllowedOffset (" + std::to_string(minAllowedOffset) +
+                ") in file: " + filePath + " at raw line " + std::to_string(rawLine));
+            return result;
+        }
+
         // 3. Лексическое сканирование текста НАЗАД в поисках макроса
         size_t targetMacroStart = std::wstring::npos;
-        while (searchOrigin > 0) {
+        while (searchOrigin > 0 && searchOrigin >= minAllowedOffset) {
             size_t rfindPos = fileText.rfind(macroName, searchOrigin);
-            if (rfindPos == std::wstring::npos) break;
+            if (rfindPos == std::wstring::npos || rfindPos < minAllowedOffset) break;
 
             // Синтаксическая валидация границ токена (исключаем my_eval, eval_state и т.д.)
             bool validLeft = (rfindPos == 0 || (!iswalnum(fileText[rfindPos - 1]) && fileText[rfindPos - 1] != L'_'));
@@ -73,7 +86,13 @@ namespace LivePT {
             searchOrigin = rfindPos - 1;
         }
 
-        if (targetMacroStart == std::wstring::npos) return result;
+        // Если макрос не найден
+        if (targetMacroStart == std::wstring::npos) {
+            std::string macroNameA(macroName.begin(), macroName.end());
+            Log("[LivePT] Error: Macro '" + macroNameA + "' NOT found backward from raw coordinates. " +
+                "File: " + filePath + ", Raw Line: " + std::to_string(rawLine) + ", Raw Col: " + std::to_string(rawColumn));
+            return result;
+        }
 
         // 4. Математический пересчет абсолютного смещения в честные Line и Column
         long preciseLine = 1;
@@ -92,9 +111,16 @@ namespace LivePT {
             }
         }
 
-        // ВНИМАНИЕ: Переводим остаток строки в визуальные колонки для финальной привязки к Visual Studio!
-        // Внутри GetVisualColumn() честно используется GetVSTabSize(), возвращающий пользовательские 4 пробела.
+        // Выделяем остаток строки до начала макроса 'eval'
         std::wstring preciseLineText = fileText.substr(preciseLineStartOffset, targetMacroStart - preciseLineStartOffset);
+
+        // КРИТИЧЕСКАЯ ОЧИСТКА ДЛЯ CRLF: Удаляем \r из конца/тела строки, если строка пустая или заканчивается на него, 
+        // чтобы GetVisualColumn не посчитал служебный символ \r как обычную букву.
+        if (!preciseLineText.empty() && preciseLineText.back() == L'\r') {
+            preciseLineText.pop_back();
+        }
+
+        // Переводим в визуальные колонки Visual Studio (где учитывается пользовательский размер таба, например, 4)
         long preciseColumn = GetVisualColumn(preciseLineText, preciseLineText.length());
 
         result.line = preciseLine;
@@ -113,34 +139,41 @@ namespace LivePT {
 
         if (content.empty()) return L"";
 
-        // Переводим UTF-8 / ANSI контент в std::wstring для работы с вашими функциями
+        std::wstring wstr;
         int size_needed = MultiByteToWideChar(CP_UTF8, 0, content.c_str(), static_cast<int>(content.size()), NULL, 0);
-        if (size_needed <= 0) {
-            // Если не UTF-8, пробуем текущую ANSI кодировку
+        if (size_needed > 0) {
+            wstr.resize(size_needed);
+            MultiByteToWideChar(CP_UTF8, 0, content.c_str(), static_cast<int>(content.size()), wstr.data(), size_needed);
+        }
+        else {
+            // Если не UTF-8, пробуем текущую ANSI кодировку (например, CP1251 для русских комментариев)
             size_needed = MultiByteToWideChar(CP_ACP, 0, content.c_str(), static_cast<int>(content.size()), NULL, 0);
             if (size_needed <= 0) return L"";
-            std::wstring wstr(size_needed, 0);
+            wstr.resize(size_needed);
             MultiByteToWideChar(CP_ACP, 0, content.c_str(), static_cast<int>(content.size()), wstr.data(), size_needed);
-            return wstr;
         }
 
-        std::wstring wstr(size_needed, 0);
-        MultiByteToWideChar(CP_UTF8, 0, content.c_str(), static_cast<int>(content.size()), wstr.data(), size_needed);
+        // ЗАЩИТА ОТ BOM: Удаляем невидимый маркер Unicode в начале файла, чтобы он не сдвигал колонки
+        if (!wstr.empty() && wstr[0] == L'\xFEFF') {
+            wstr.erase(0, 1);
+        }
+
         return wstr;
     }
+
 
     bool baseIsAligned = false;
 
     inline void AlignDatabaseFastFromDisk() {
-        
+
         if (baseIsAligned) return;
         baseIsAligned = true;
 
-        // Достаем оригинальное дерево, накопленное компилятором в Pre-Main
         auto& fileCompileTree = GetFileCompileTree();
         auto& params = LivePT::getParamDesc();
+        std::wstring macroName = GetConfiguredMacroName();
 
-        // 1. Идем строго по файлам из хэшмапы. Порядок файлов случайный, но заходим в каждый ОДИН раз.
+        // 1. Идем строго по файлам из хэшмапы.
         for (auto& [filePath, fileMap] : fileCompileTree) {
 
             // 2. Читаем файл с диска ровно один раз
@@ -150,20 +183,26 @@ namespace LivePT {
                 continue;
             }
 
+            // Переменная для отслеживания нижней границы предыдущего макроса в этом файле
+            size_t lastValidMacroEndOffset = 0;
+
             // 3. Внутренний map гарантирует, что мы идем по тексту строго сверху вниз
             for (auto& [staticKey, paramId] : fileMap) {
                 if (paramId < 0 || paramId >= static_cast<int>(params.size())) continue;
 
                 auto& p = params[paramId];
 
-                // Ищем честный 'eval' назад от сырых координат компилятора
-                PreciseCoord precise = FindEvalTokenBackward(fileText, staticKey.line, staticKey.column);
+                // Передаем filePath для логов и lastValidMacroEndOffset для защиты от захода за границу предыдущего
+                PreciseCoord precise = FindEvalTokenBackward(fileText, filePath, staticKey.line, staticKey.column, lastValidMacroEndOffset);
 
                 if (precise.absoluteOffset != std::wstring::npos) {
                     // Жестко выставляем координаты на 'e' слова eval
                     p.line = static_cast<int>(precise.line);
                     p.column = static_cast<int>(precise.column);
                     p.loaded = true; // Параметр готов к рантайм-сдвигам
+
+                    // Фиксируем конец текущего макроса: его начало + длина самого слова (например, L"eval")
+                    lastValidMacroEndOffset = precise.absoluteOffset + macroName.length();
                 }
             }
         }

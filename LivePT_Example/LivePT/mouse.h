@@ -52,7 +52,7 @@ namespace LivePT {
                 if (bracketCount == 0) {
                     if (i > currentArgStart) {
                         std::wstring argW = lineText.substr(currentArgStart, i - currentArgStart);
-                        std::string argA(argW.begin(), argW.end());
+                        std::string argA = ConvertWStringToUtf8(argW);
                         args.push_back({ argA, static_cast<long>(currentArgStart + 1), static_cast<long>(i + 1) });
                     }
                     break;
@@ -213,6 +213,14 @@ namespace LivePT {
         return g_dragState.isDragging; 
     }
 
+    inline std::wstring ConvertUtf8ToWString(const std::string& str) {
+        if (str.empty()) return L"";
+        int size_needed = MultiByteToWideChar(CP_UTF8, 0, str.c_str(), static_cast<int>(str.size()), NULL, 0);
+        std::wstring wstr(size_needed, 0);
+        MultiByteToWideChar(CP_UTF8, 0, str.c_str(), static_cast<int>(str.size()), wstr.data(), size_needed);
+        return wstr;
+    }
+
     inline bool ReplaceTextInActiveVS(long line, long visualStartCol, long visualEndCol, const std::string& newText, long newCursorPhysicalCol) {
         if (!pDTE) return false;
 
@@ -243,18 +251,24 @@ namespace LivePT {
             size_t i = 0;
             for (; i < lineText.length(); ++i) {
                 if (currentVisualCol >= static_cast<size_t>(visualStartCol)) break;
+
+                if (lineText[i] == L'\r') continue; // ИГНОРИРУЕМ \r ПРИ РАСЧЕТЕ СТАРТА
+
                 currentVisualCol += (lineText[i] == L'\t') ? (TAB_SIZE - ((currentVisualCol - 1) % TAB_SIZE)) : 1;
             }
             physicalStartCol = static_cast<long>(i) + 1;
 
             for (; i < lineText.length(); ++i) {
                 if (currentVisualCol >= static_cast<size_t>(visualEndCol)) break;
+
+                if (lineText[i] == L'\r') continue; // ИГНОРИРУЕМ \r ПРИ РАСЧЕТЕ КОНЦА
+
                 currentVisualCol += (lineText[i] == L'\t') ? (TAB_SIZE - ((currentVisualCol - 1) % TAB_SIZE)) : 1;
             }
             physicalEndCol = static_cast<long>(i) + 1;
 
-            // ТРАНСЛЯЦИЯ КУРСОРA: Переводим финальную visual-колонку в честный символьный сдвиг
-            std::wstring wNewText(newText.begin(), newText.end());
+            // БЕЗОПАСНАЯ КОНВЕРТАЦИЯ В UTF-16 (Сохраняет русские буквы)
+            std::wstring wNewText = ConvertUtf8ToWString(newText);
             std::wstring modifiedLineText = lineText;
 
             size_t localStartIdx = static_cast<size_t>(physicalStartCol - 1);
@@ -270,6 +284,8 @@ namespace LivePT {
                     exactCharacterOffset = static_cast<long>(k) + 1;
                     break;
                 }
+                if (modifiedLineText[k] == L'\r') continue; // ЗАЩИТА ТРАНСЛЯЦИИ КУРСОРA
+
                 runningVisualCol += (modifiedLineText[k] == L'\t') ? (TAB_SIZE - ((runningVisualCol - 1) % TAB_SIZE)) : 1;
             }
             if (runningVisualCol < static_cast<size_t>(newCursorPhysicalCol)) {
@@ -292,17 +308,17 @@ namespace LivePT {
             hr = AutoWrap(DISPATCH_METHOD, NULL, pEditEnd.pdispVal, L"MoveToLineAndOffset", 2, CComVariant(line), CComVariant(physicalEndCol));
             if (FAILED(hr)) return false;
 
-            std::wstring wText(newText.begin(), newText.end()); CComBSTR bstrText(wText.c_str());
+            CComBSTR bstrText(wNewText.c_str());
             CComVariant vText(bstrText); CComVariant vOption(1L);
 
             hr = AutoWrap(DISPATCH_METHOD, NULL, pEditStart.pdispVal, L"ReplaceText", 3, pEditEnd, vText, vOption);
             if (FAILED(hr)) return false;
 
-            // Передаем точный физический офсет символа строки
             AutoWrap(DISPATCH_METHOD, NULL, vtSelection.pdispVal, L"MoveToLineAndOffset", 3, CComVariant(line), CComVariant(exactCharacterOffset), CComVariant(0L));
         }
         return true;
     }
+
 
 
     inline void SaveActiveDocument() {
@@ -361,7 +377,9 @@ namespace LivePT {
 
             if (lastCols != std::string::npos) {
                 std::string pureTypeName = g_dragState.startTextValue.substr(0, lastCols);
-                wEnumName = std::wstring(pureTypeName.begin(), pureTypeName.end());
+                int sizeNeeded = MultiByteToWideChar(CP_UTF8, 0, pureTypeName.c_str(), -1, NULL, 0);
+                wEnumName.resize(sizeNeeded - 1);
+                MultiByteToWideChar(CP_UTF8, 0, pureTypeName.c_str(), -1, wEnumName.data(), sizeNeeded);
             }
             else {
                 wEnumName = std::wstring(g_dragState.startTextValue.begin(), g_dragState.startTextValue.end());
