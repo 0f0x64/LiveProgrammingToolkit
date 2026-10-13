@@ -8,13 +8,7 @@
 #include <any>
 #include <type_traits>
 
-// Подключаем библиотеку для работы с современным DPI API
-#pragma comment(lib, "User32.lib")
-
 namespace Widgets {
-
-    // Функция получения текущего коэффициента масштабирования для конкретного окна
-
 
     struct AnglePickerContext {
         HWND hWindow = NULL;
@@ -70,9 +64,6 @@ namespace Widgets {
 
         UpdateAngleCode();
     }
-}
-
-namespace Widgets {
 
     inline LRESULT CALLBACK AnglePickerWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
         switch (uMsg) {
@@ -198,9 +189,6 @@ namespace Widgets {
         }
         return DefWindowProcA(hwnd, uMsg, wParam, lParam);
     }
-}
-
-namespace Widgets {
 
     inline void angleCallback(const std::any& anyValue, std::function<void(std::string)> vsUpdater) {
         const std::string* pRawText = std::any_cast<std::string>(&anyValue);

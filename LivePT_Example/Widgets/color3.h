@@ -15,15 +15,7 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-// Подключаем системную библиотеку для работы с GetDpiForWindow
-#pragma comment(lib, "User32.lib")
-
-// Базовая структура для передачи цвета, если она отсутствует в проекте
-
 namespace Widgets {
-
-    // Функция получения текущего масштаба интерфейса Windows (1.0 = 100%, 1.5 = 150%)
-
 
     struct ColorPickerContext {
         HWND hWindow = NULL;
@@ -61,8 +53,6 @@ namespace Widgets {
     };
 
     static ColorPickerContext g_pickerCtx;
-}
-namespace Widgets {
 
     inline DWORD HsvToGdiColor(float H, float S, float V) {
         float r = 0, g = 0, b = 0;
@@ -143,8 +133,6 @@ namespace Widgets {
 
         UpdateLiveCode();
     }
-}
-namespace Widgets {
 
     inline LRESULT CALLBACK ColorPickerWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
         switch (uMsg) {
@@ -286,8 +274,6 @@ namespace Widgets {
         }
         return DefWindowProcA(hwnd, uMsg, wParam, lParam);
     }
-}
-namespace Widgets {
 
     inline void color3Callback(const std::any& anyValue, std::function<void(std::string)> vsUpdater) {
         const std::string* pRawText = std::any_cast<std::string>(&anyValue);

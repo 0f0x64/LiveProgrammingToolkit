@@ -262,18 +262,18 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         Draw({
             .pos = eval(pos2{
-				.x = -5.30f,
-				.y = -369.49f
+				.x = -86.10f,
+				.y = -232.99f
 				}
             ),
-            .size = eval(size2{175.96f, 220.41f}),
-            .Angle = eval(angle(162.8f)),
+            .size = eval(size2{168.77f, 211.38f}),
+            .Angle = eval(angle(0.0f)),
             .type = eval(ptype::box),
             .show = eval(true),
             .color = eval(color3{
-				.r=137, 
-				.g=41,  
-				.b=58
+				.r=188, 
+				.g=66,  
+				.b=53
 				})
             });
 
@@ -286,7 +286,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 				.y = -99.23f
 				},
             .size = size2{121.06f, x},
-            .Angle = angle(264.3f),
+            .Angle = angle(322.3f),
             .type = ptype::circle,
             .show = true,
             .color = color3{110, 38, 190}

@@ -4,6 +4,8 @@
 #define LPT_WM_BUTTONUP   WM_MBUTTONUP
 #endif
 
+#pragma comment(lib, "User32.lib")
+
 #include "enumMenu.h"
 namespace Widgets {
 

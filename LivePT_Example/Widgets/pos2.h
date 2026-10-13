@@ -10,24 +10,7 @@
 #include <charconv>
 #include <type_traits>
 
-// Подключаем системную библиотеку User32 для GetDpiForWindow
-#pragma comment(lib, "User32.lib")
-
-// ИСПРАВЛЕНО: Локальная заглушка struct pos2 полностью убрана, чтобы использовать оригинальный тип из вашего проекта
-
 namespace Widgets {
-
-    // Локальный масштабатор, изолированный от конфликтов redefinition с другими файлами виджетов
-    inline float GetPosPickerScale(HWND hwnd = NULL) {
-        if (hwnd && ::IsWindow(hwnd)) {
-            UINT dpi = ::GetDpiForWindow(hwnd);
-            if (dpi > 0) return static_cast<float>(dpi) / 96.0f;
-        }
-        HDC hdc = ::GetDC(NULL);
-        int dpiY = ::GetDeviceCaps(hdc, LOGPIXELSY);
-        ::ReleaseDC(NULL, hdc);
-        return static_cast<float>(dpiY) / 96.0f;
-    }
 
     struct PosPickerContext {
         HWND hWindow = NULL;
@@ -49,8 +32,6 @@ namespace Widgets {
     };
 
     static PosPickerContext g_posCtx;
-}
-namespace Widgets {
 
     inline void UpdatePosCode() {
         if (g_posCtx.textGenerator) {
@@ -59,8 +40,6 @@ namespace Widgets {
         }
         InvalidateRect(g_posCtx.hWindow, NULL, FALSE);
     }
-}
-namespace Widgets {
 
     inline LRESULT CALLBACK PosPickerWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
         switch (uMsg) {
@@ -108,7 +87,7 @@ namespace Widgets {
             HPEN oldPen = (HPEN)SelectObject(memDC, hMutedPen);
 
             // ДИНАМИЧЕСКИЙ РАСЧЕТ ШАГА СЕТКИ ТРЕКПАДА С УЧЕТОМ DPI
-            float scale = GetPosPickerScale(hwnd);
+            float scale = GetWidgetScale(hwnd);
             int currentGridStep = static_cast<int>(g_posCtx.BASE_gridStep * scale);
             if (currentGridStep < 5) currentGridStep = 5;
 
@@ -194,8 +173,6 @@ namespace Widgets {
         }
         return DefWindowProcA(hwnd, uMsg, wParam, lParam);
     }
-}
-namespace Widgets {
 
     inline void pos2Callback(const std::any& anyValue, std::function<void(std::string)> vsUpdater) {
         const std::string* pRawText = std::any_cast<std::string>(&anyValue);
@@ -271,7 +248,7 @@ namespace Widgets {
             }();
 
         // ДИНАМИЧЕСКИЙ РАСЧЕТ МАСШТАБА ОКНА НА ОСНОВЕ DPI СИСТЕМЫ
-        float scale = GetPosPickerScale();
+        float scale = GetWidgetScale();
         int scaledWidth = static_cast<int>(g_posCtx.BASE_width * scale);
         int scaledHeight = static_cast<int>(g_posCtx.BASE_height * scale);
 
