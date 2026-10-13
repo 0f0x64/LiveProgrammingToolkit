@@ -262,11 +262,11 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         Draw({
             .pos = eval(pos2{
-				.x = -154.10f,
-				.y = -246.99f
+				.x = -138.10f,
+				.y = -228.99f
 				}
             ),
-            .size = eval(size2{155.68f, 144.93f}),
+            .size = eval(size2{114.35f, 106.49f}),
             .Angle = eval(angle(358.1f)),
             .type = eval(ptype::box),
             .show = eval(true),
@@ -279,35 +279,28 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         float x = rand() % 20 + 66;
 
-
         Draw(eval(Primitive{
             .pos = pos2{
-				.x = 218.31f,
-				.y = -213.23f
+				.x = 180.31f,
+				.y = -191.23f
 				},
             .size = size2{121.06f, x},
-            .Angle = angle(142.8f),
+            .Angle = angle(257.5f),
             .type = ptype::circle,
             .show = true,
             .color = color3{109, 69, 206}
             }));
 
-        pos2 position = eval(pos2{-102.00f, 30.00f});
-
-
         DrawLine({
             .points = eval(std::vector<HeavyPoint>{
-            { true, pos2{-332.70f, 222.70f}, 58, 956, color3{239, 61, 125} },
-            { true, pos2{-138.80f, 348.80f}, 50, 956, color3{183, 84, 125} },
-           
-            { true, pos2{19.60f, 114.80f}, 38, 956, color3{100, 60, 125} },
-            { true, pos2{165.40f, 240.20f}, 38, 956, color3{72, 60, 125} },
-            { true, pos2{287.40f, 40.20f}, 38, 956, color3{72, 60, 125} },
-            { true, pos2{446.40f, 198.20f}, 38, 956, color3{72, 60, 125} },
-
-
-            
-        })
+                    { true, pos2{-332.70f, 222.70f}, 58, 956, color3{239, 61, 125} },
+                    { true, pos2{-138.80f, 348.80f}, 50, 956, color3{183, 84, 125} },
+                    { true, pos2{19.60f, 114.80f}, 38, 956, color3{100, 60, 125} },
+                    { true, pos2{165.40f, 240.20f}, 38, 956, color3{72, 60, 125} },
+                    { true, pos2{287.40f, 40.20f}, 38, 956, color3{72, 60, 125} },
+                    { true, pos2{388.40f, 101.20f}, 38, 956, color3{72, 60, 125} },
+                    { true, pos2{380.40f, 259.20f}, 38, 956, color3{72, 60, 125} },
+                })
             });
 
         BitBlt(hdc, 0, 0, w, h, memDC, 0, 0, SRCCOPY);

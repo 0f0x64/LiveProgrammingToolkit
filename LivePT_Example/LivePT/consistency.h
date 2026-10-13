@@ -188,7 +188,7 @@ namespace LivePT {
     }
 
 
-    inline void ShiftDatabaseCoordinates(const std::string& targetFile, long targetLine, long visualStartCol, int lineDelta, int columnDelta) {
+    inline void ShiftDatabaseCoordinates2(const std::string& targetFile, long targetLine, long visualStartCol, int lineDelta, int columnDelta) {
 
         auto& params = LivePT::getParamDesc();
         std::string normalizedTarget = LivePT::NormalizePath(targetFile.c_str());
@@ -207,5 +207,124 @@ namespace LivePT {
             }
         }
     }
+
+    inline void ShiftDatabaseCoordinates(const std::string& targetFile, long targetLine, long visualStartCol, int lineDelta, int columnDelta) {
+        // Если колоночный дельта пришел нулевым и строки не менялись, делать нечего
+        if (lineDelta == 0 && columnDelta == 0) return;
+
+        auto& params = LivePT::getParamDesc();
+        std::string normalizedTarget = LivePT::NormalizePath(targetFile.c_str());
+        long tabSize = GetVSTabSize();
+        std::wstring macroName = GetConfiguredMacroName();
+
+        // Пересчитываем columnDelta из символьного в визуальный, если изменения произошли на targetLine
+        // и в строке присутствуют символы табуляции, которые могли исказить сырую разницу длин.
+        long realVisualColumnDelta = columnDelta;
+
+        if (columnDelta != 0 && !g_lastLineTextBuffer.empty() && !g_currentFileFullText.empty()) {
+            // Находим текущую обновленную строку в файле для точного сравнения колонок
+            size_t currentLineOffset = 0;
+            long currentLineIdx = 1;
+            while (currentLineIdx < targetLine && currentLineOffset < g_currentFileFullText.length()) {
+                size_t nextNL = g_currentFileFullText.find(L'\n', currentLineOffset);
+                if (nextNL != std::wstring::npos) {
+                    currentLineOffset = nextNL + 1;
+                    currentLineIdx++;
+                }
+                else break;
+            }
+
+            size_t nextNL = g_currentFileFullText.find(L'\n', currentLineOffset);
+            if (nextNL == std::wstring::npos) nextNL = g_currentFileFullText.length();
+            std::wstring currentLineText = g_currentFileFullText.substr(currentLineOffset, nextNL - currentLineOffset);
+
+            // Если в старой или новой строке был таб — сырой символьный дельта врет.
+            // Считаем дельту на основе честной визуальной ширины всей строки.
+            if (g_lastLineTextBuffer.find(L'\t') != std::wstring::npos || currentLineText.find(L'\t') != std::wstring::npos) {
+                long oldVisualWidth = GetVisualColumn(g_lastLineTextBuffer, g_lastLineTextBuffer.length());
+                long newVisualWidth = GetVisualColumn(currentLineText, currentLineText.length());
+                realVisualColumnDelta = newVisualWidth - oldVisualWidth;
+            }
+        }
+
+        for (auto& p : params) {
+            if (p.fileName != normalizedTarget) continue;
+
+            // 1. Вычисляем потенциальные новые координаты ПОСЛЕ сдвига
+            long newParamLine = p.line;
+            long newParamColumn = p.column;
+
+            bool affectsLine = (lineDelta != 0 && p.line > targetLine);
+            bool affectsColumn = (realVisualColumnDelta != 0 && p.line == targetLine && p.column > visualStartCol);
+
+            if (affectsLine)   newParamLine += lineDelta;
+            if (affectsColumn) newParamColumn += realVisualColumnDelta;
+
+            // 2. Если элемент попадает под сдвиг, валидируем его БУДУЩЕЕ положение в НОВОМ тексте
+            if (affectsLine || affectsColumn) {
+
+                bool validationFailed = true;
+
+                if (!g_currentFileFullText.empty()) {
+                    // Ищем физическое смещение начала целевой строки в новом тексте
+                    size_t lineStartOffset = 0;
+                    long currentLineIdx = 1;
+                    while (currentLineIdx < newParamLine && lineStartOffset < g_currentFileFullText.length()) {
+                        size_t nextNL = g_currentFileFullText.find(L'\n', lineStartOffset);
+                        if (nextNL != std::wstring::npos) {
+                            lineStartOffset = nextNL + 1;
+                            currentLineIdx++;
+                        }
+                        else break;
+                    }
+
+                    // Вырезаем текст строки
+                    size_t nextNL = g_currentFileFullText.find(L'\n', lineStartOffset);
+                    if (nextNL == std::wstring::npos) nextNL = g_currentFileFullText.length();
+                    std::wstring lineText = g_currentFileFullText.substr(lineStartOffset, nextNL - lineStartOffset);
+
+                    // ПЕРЕВОД: виз. колонка -> физический индекс wchar_t (с учетом динамического размера табов)
+                    long currentVisualCol = 1;
+                    size_t paramCharIdx = lineText.length();
+                    for (size_t i = 0; i < lineText.length(); ++i) {
+                        if (currentVisualCol >= newParamColumn) {
+                            paramCharIdx = i;
+                            break;
+                        }
+                        if (lineText[i] == L'\r') continue; // Полное игнорирование CRLF артефактов
+
+                        // Честный расчет шага табуляции по сетке Visual Studio
+                        if (lineText[i] == L'\t') {
+                            currentVisualCol += tabSize - ((currentVisualCol - 1) % tabSize);
+                        }
+                        else {
+                            currentVisualCol++;
+                        }
+                    }
+
+                    // Проверяем, действительно ли по вычисленному индексу символа сидит макрос
+                    if (paramCharIdx + macroName.length() <= lineText.length()) {
+                        std::wstring possibleMacro = lineText.substr(paramCharIdx, macroName.length());
+                        if (possibleMacro == macroName) {
+                            validationFailed = false; // Проверка пройдена! Макрос обнаружен.
+                        }
+                    }
+                }
+
+                // 3. Защитный барьер: если сдвиг уводит в мусорный код, изолируем только этот элемент
+                if (validationFailed) {
+                    Log("[LivePT Integrity Error] Shift validation failed! Element would move to Line " +
+                        std::to_string(newParamLine) + ", Col " + std::to_string(newParamColumn) +
+                        " but it doesn't contain '" + std::string(macroName.begin(), macroName.end()) + "'. Shift skipped for this element.");
+                    continue; // Мягко пропускаем порчу этой координаты, но продолжаем двигать соседние
+                }
+
+                // Переносим проверенные координаты в рабочую базу данных параметров
+                p.line = newParamLine;
+                p.column = newParamColumn;
+            }
+        }
+    }
+
 
 } // namespace LivePT
