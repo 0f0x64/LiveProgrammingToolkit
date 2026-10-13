@@ -245,7 +245,7 @@ namespace LivePT {
 
             long physicalStartCol = 1;
             long physicalEndCol = 1;
-            const long TAB_SIZE = 4;
+            const long TAB_SIZE = GetVSTabSize();
             size_t currentVisualCol = 1;
 
             size_t i = 0;
@@ -922,7 +922,7 @@ namespace LivePT {
     inline bool ExtractStructBoundaries(const std::wstring& fileText, const std::wstring& lineText, long line, long targetCharIdx, std::string& outInnerArgsA, long& outVisualStartCol, std::string& outTypeNameA) {
         if (fileText.empty() || lineText.empty()) return false;
 
-        // 1. Вырезаем имя типа (токен) из текущей строки
+        // 1. Вырезаем имя типа из текущей строки
         long tokenStart = targetCharIdx; long tokenEnd = targetCharIdx;
         while (tokenStart > 0 && iswalnum(lineText[tokenStart - 1])) tokenStart--;
         while (tokenEnd < static_cast<long>(lineText.length()) && iswalnum(lineText[tokenEnd])) tokenEnd++;
@@ -961,22 +961,33 @@ namespace LivePT {
         }
         if (globalCloseIdx == std::wstring::npos) return false;
 
-        // 4. Вычисляем строки и офсеты для COM EditPoints
+        // 4. Вычисляем строки и офсеты для COM EditPoints с учетом CRLF защиты
         long startLine = line; size_t lastNL_start = lineStartOffset;
         size_t scanNL_start = fileText.find(L'\n', lineStartOffset);
+        long startCrCount = 0; // Считаем \r до открывающей скобки
+
         while (scanNL_start != std::wstring::npos && scanNL_start < globalOpenIdx) {
             startLine++; lastNL_start = scanNL_start + 1;
             scanNL_start = fileText.find(L'\n', lastNL_start);
         }
-        long startOffset = static_cast<long>(globalOpenIdx - lastNL_start) + 1; // Хирургический сдвиг внутрь {
+        for (size_t i = lastNL_start; i < globalOpenIdx; ++i) {
+            if (fileText[i] == L'\r') startCrCount++;
+        }
+        // Вычитаем startCrCount, так как VS не считает \r частью LineCharOffset
+        long startOffset = static_cast<long>(globalOpenIdx - lastNL_start) - startCrCount + 1;
 
         long closeLine = line; size_t lastNL_end = lineStartOffset;
         size_t scanNL_end = fileText.find(L'\n', lineStartOffset);
+        long closeCrCount = 0; // Считаем \r до закрывающей скобки
+
         while (scanNL_end != std::wstring::npos && scanNL_end < globalCloseIdx) {
             closeLine++; lastNL_end = scanNL_end + 1;
             scanNL_end = fileText.find(L'\n', lastNL_end);
         }
-        long closeOffset = static_cast<long>(globalCloseIdx - lastNL_end) + 1; // Ровно на закрывающую скобку }
+        for (size_t i = lastNL_end; i < globalCloseIdx; ++i) {
+            if (fileText[i] == L'\r') closeCrCount++;
+        }
+        long closeOffset = static_cast<long>(globalCloseIdx - lastNL_end) - closeCrCount + 1;
 
         // Пересоздаем глобальные COM-якоря
         if (pWidgetStartEditPoint) { pWidgetStartEditPoint->Release(); pWidgetStartEditPoint = nullptr; }
@@ -1014,6 +1025,7 @@ namespace LivePT {
         outInnerArgsA = ConvertWStringToUtf8(innerArgsW);
         return true;
     }
+
 
     inline bool TryInitStructDragDirect(const std::wstring& fileText, const std::wstring& lineText, long line, long column, long targetCharIdx, const POINT& pt) {
         std::string innerArgsA, typeNameA;

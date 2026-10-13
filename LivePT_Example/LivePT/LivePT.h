@@ -162,8 +162,6 @@ namespace LivePT {
         vsEditor();
     }
 
-
-
 }
 
 //EVAL_NAME_MARKER - DO'NT TOUCH THIS LINE
@@ -174,8 +172,6 @@ namespace LivePT {
         static_cast<int>(__LINE__), \
         static_cast<int>(__builtin_COLUMN()) \
     >(__VA_ARGS__)
-
-
 
 #else
 

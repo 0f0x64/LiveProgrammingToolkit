@@ -11,8 +11,8 @@ namespace LivePT {
         PreciseCoord result;
         if (fileText.empty()) return result;
 
-        std::wstring macroName = GetConfiguredMacroName(); // Получаем L"eval"
-        const long COMPILER_TAB_SIZE = 8;
+        std::wstring macroName = GetConfiguredMacroName();
+        long tabSize = GetVSTabSize(); // Динамический размер вместо жестко зашитого COMPILER_TAB_SIZE = 8
 
         // 1. Переходим к началу физической строки rawLine
         size_t lineStartOffset = 0;
@@ -23,9 +23,7 @@ namespace LivePT {
                 lineStartOffset = nextNL + 1;
                 currentLineIdx++;
             }
-            else {
-                break;
-            }
+            else break;
         }
 
         // 2. Выделяем текст текущей строки
@@ -33,7 +31,7 @@ namespace LivePT {
         if (nextNL == std::wstring::npos) nextNL = fileText.length();
         std::wstring lineText = fileText.substr(lineStartOffset, nextNL - lineStartOffset);
 
-        // Вычисляем символ в строке, соответствующий rawColumn (с учетом компиляторных табов = 8 и игнорированием \r)
+        // Вычисляем символ в строке, соответствующий rawColumn
         long currentVisualCol = 1;
         size_t paramCharIdx = lineText.length();
         for (size_t i = 0; i < lineText.length(); ++i) {
@@ -41,28 +39,20 @@ namespace LivePT {
                 paramCharIdx = i;
                 break;
             }
+            if (lineText[i] == L'\r') continue; // Игнорируем возврат каретки
 
-            if (lineText[i] == L'\r') {
-                // Игнорируем возврат каретки: компилятор не считает его за колонку
-                continue;
-            }
-            else if (lineText[i] == L'\t') {
-                currentVisualCol += (COMPILER_TAB_SIZE - ((currentVisualCol - 1) % COMPILER_TAB_SIZE));
+            if (lineText[i] == L'\t') {
+                currentVisualCol += (tabSize - ((currentVisualCol - 1) % tabSize));
             }
             else {
                 currentVisualCol += 1;
             }
         }
 
-        // Абсолютное смещение в файле, откуда начинаем искать макрос назад
         size_t searchOrigin = lineStartOffset + paramCharIdx;
         if (searchOrigin > fileText.length()) searchOrigin = fileText.length();
 
-        // Защита: стартовая точка поиска не может быть левее минимально разрешенной границы предыдущего макроса
         if (searchOrigin < minAllowedOffset) {
-            Log("[LivePT] Error: Search origin (" + std::to_string(searchOrigin) +
-                ") is behind minAllowedOffset (" + std::to_string(minAllowedOffset) +
-                ") in file: " + filePath + " at raw line " + std::to_string(rawLine));
             return result;
         }
 
@@ -72,7 +62,6 @@ namespace LivePT {
             size_t rfindPos = fileText.rfind(macroName, searchOrigin);
             if (rfindPos == std::wstring::npos || rfindPos < minAllowedOffset) break;
 
-            // Синтаксическая валидация границ токена (исключаем my_eval, eval_state и т.д.)
             bool validLeft = (rfindPos == 0 || (!iswalnum(fileText[rfindPos - 1]) && fileText[rfindPos - 1] != L'_'));
             bool validRight = (rfindPos + macroName.length() >= fileText.length() ||
                 (!iswalnum(fileText[rfindPos + macroName.length()]) && fileText[rfindPos + macroName.length()] != L'_'));
@@ -86,15 +75,11 @@ namespace LivePT {
             searchOrigin = rfindPos - 1;
         }
 
-        // Если макрос не найден
         if (targetMacroStart == std::wstring::npos) {
-            std::string macroNameA(macroName.begin(), macroName.end());
-            Log("[LivePT] Error: Macro '" + macroNameA + "' NOT found backward from raw coordinates. " +
-                "File: " + filePath + ", Raw Line: " + std::to_string(rawLine) + ", Raw Col: " + std::to_string(rawColumn));
             return result;
         }
 
-        // 4. Математический пересчет абсолютного смещения в честные Line и Column
+        // 4. Математический пересчет абсолютного смещения в Line и Column
         long preciseLine = 1;
         size_t preciseLineStartOffset = 0;
         size_t scanOffset = 0;
@@ -106,21 +91,14 @@ namespace LivePT {
                 preciseLineStartOffset = nextNLOffset + 1;
                 scanOffset = nextNLOffset + 1;
             }
-            else {
-                break;
-            }
+            else break;
         }
 
-        // Выделяем остаток строки до начала макроса 'eval'
         std::wstring preciseLineText = fileText.substr(preciseLineStartOffset, targetMacroStart - preciseLineStartOffset);
 
-        // КРИТИЧЕСКАЯ ОЧИСТКА ДЛЯ CRLF: Удаляем \r из конца/тела строки, если строка пустая или заканчивается на него, 
-        // чтобы GetVisualColumn не посчитал служебный символ \r как обычную букву.
-        if (!preciseLineText.empty() && preciseLineText.back() == L'\r') {
-            preciseLineText.pop_back();
-        }
+        // КРИТИЧЕСКАЯ ОЧИСТКА ДЛЯ CRLF: вырезаем все возможные \r, чтобы они не искажали GetVisualColumn
+        preciseLineText.erase(std::remove(preciseLineText.begin(), preciseLineText.end(), L'\r'), preciseLineText.end());
 
-        // Переводим в визуальные колонки Visual Studio (где учитывается пользовательский размер таба, например, 4)
         long preciseColumn = GetVisualColumn(preciseLineText, preciseLineText.length());
 
         result.line = preciseLine;
@@ -128,6 +106,7 @@ namespace LivePT {
         result.absoluteOffset = targetMacroStart;
         return result;
     }
+
 
     inline std::wstring ReadFileFromDisk(const std::string& filePath) {
         std::ifstream file(filePath, std::ios::in | std::ios::binary);
