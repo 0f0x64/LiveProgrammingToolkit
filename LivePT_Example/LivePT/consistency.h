@@ -7,12 +7,13 @@ namespace LivePT {
         size_t absoluteOffset = std::wstring::npos;
     };
 
-    inline PreciseCoord FindEvalTokenBackward(const std::wstring& fileText, const std::string& filePath, long rawLine, long rawColumn, size_t minAllowedOffset = 0) {
+    inline PreciseCoord FindEvalTokenBackward(const std::wstring& fileText, const std::string& filePath, long rawLine, long rawColumn, const std::string& macroNameStr, size_t minAllowedOffset = 0) {
         PreciseCoord result;
         if (fileText.empty()) return result;
 
-        std::wstring macroName = GetConfiguredMacroName();
-        long tabSize = GetVSTabSize(); // Динамический размер вместо жестко зашитого COMPILER_TAB_SIZE = 8
+        // Конвертируем имя макроса/функции из базы данных (std::string) в wstring для работы с текстом
+        std::wstring macroName(macroNameStr.begin(), macroNameStr.end());
+        long tabSize = GetVSTabSize();
 
         // 1. Переходим к началу физической строки rawLine
         size_t lineStartOffset = 0;
@@ -39,7 +40,7 @@ namespace LivePT {
                 paramCharIdx = i;
                 break;
             }
-            if (lineText[i] == L'\r') continue; // Игнорируем возврат каретки
+            if (lineText[i] == L'\r') continue;
 
             if (lineText[i] == L'\t') {
                 currentVisualCol += (tabSize - ((currentVisualCol - 1) % tabSize));
@@ -56,7 +57,7 @@ namespace LivePT {
             return result;
         }
 
-        // 3. Лексическое сканирование текста НАЗАД в поисках макроса
+        // 3. Лексическое сканирование текста НАЗАД в поисках конкретного токена p.macroName
         size_t targetMacroStart = std::wstring::npos;
         while (searchOrigin > 0 && searchOrigin >= minAllowedOffset) {
             size_t rfindPos = fileText.rfind(macroName, searchOrigin);
@@ -95,8 +96,6 @@ namespace LivePT {
         }
 
         std::wstring preciseLineText = fileText.substr(preciseLineStartOffset, targetMacroStart - preciseLineStartOffset);
-
-        // КРИТИЧЕСКАЯ ОЧИСТКА ДЛЯ CRLF: вырезаем все возможные \r, чтобы они не искажали GetVisualColumn
         preciseLineText.erase(std::remove(preciseLineText.begin(), preciseLineText.end(), L'\r'), preciseLineText.end());
 
         long preciseColumn = GetVisualColumn(preciseLineText, preciseLineText.length());
@@ -144,66 +143,38 @@ namespace LivePT {
     bool baseIsAligned = false;
 
     inline void AlignDatabaseFastFromDisk() {
-
         if (baseIsAligned) return;
         baseIsAligned = true;
 
         auto& fileCompileTree = GetFileCompileTree();
         auto& params = LivePT::getParamDesc();
-        std::wstring macroName = GetConfiguredMacroName();
 
-        // 1. Идем строго по файлам из хэшмапы.
         for (auto& [filePath, fileMap] : fileCompileTree) {
-
-            // 2. Читаем файл с диска ровно один раз
             std::wstring fileText = ReadFileFromDisk(filePath);
             if (fileText.empty()) {
                 Log("[LivePT Disk Init] File read error or file is empty: " + filePath);
                 continue;
             }
 
-            // Переменная для отслеживания нижней границы предыдущего макроса в этом файле
             size_t lastValidMacroEndOffset = 0;
 
-            // 3. Внутренний map гарантирует, что мы идем по тексту строго сверху вниз
             for (auto& [staticKey, paramId] : fileMap) {
                 if (paramId < 0 || paramId >= static_cast<int>(params.size())) continue;
 
                 auto& p = params[paramId];
 
-                // Передаем filePath для логов и lastValidMacroEndOffset для защиты от захода за границу предыдущего
-                PreciseCoord precise = FindEvalTokenBackward(fileText, filePath, staticKey.line, staticKey.column, lastValidMacroEndOffset);
+                // [ИСПРАВЛЕНО]: Передаем p.macroName прямо из базы данных параметра!
+                PreciseCoord precise = FindEvalTokenBackward(fileText, filePath, staticKey.line, staticKey.column, p.macroName, lastValidMacroEndOffset);
 
                 if (precise.absoluteOffset != std::wstring::npos) {
-                    // Жестко выставляем координаты на 'e' слова eval
                     p.line = static_cast<int>(precise.line);
                     p.column = static_cast<int>(precise.column);
-                    p.loaded = true; // Параметр готов к рантайм-сдвигам
+                    p.loaded = true;
 
-                    // Фиксируем конец текущего макроса: его начало + длина самого слова (например, L"eval")
-                    lastValidMacroEndOffset = precise.absoluteOffset + macroName.length();
+                    // Конвертируем имя для вычисления длины
+                    std::wstring wMacroName(p.macroName.begin(), p.macroName.end());
+                    lastValidMacroEndOffset = precise.absoluteOffset + wMacroName.length();
                 }
-            }
-        }
-    }
-
-
-    inline void ShiftDatabaseCoordinates2(const std::string& targetFile, long targetLine, long visualStartCol, int lineDelta, int columnDelta) {
-
-        auto& params = LivePT::getParamDesc();
-        std::string normalizedTarget = LivePT::NormalizePath(targetFile.c_str());
-
-        for (auto& p : params) {
-            if (p.fileName != normalizedTarget) continue;
-
-            // 1. Сдвиг строк для всех элементов строго ниже изменения
-            if (lineDelta != 0 && p.line > targetLine) {
-                p.line += lineDelta;
-            }
-
-            // 2. Сдвиг колонок для элементов на той же строке правее изменения
-            if (columnDelta != 0 && p.line == targetLine && p.column > visualStartCol) {
-                p.column += columnDelta;
             }
         }
     }
@@ -215,37 +186,6 @@ namespace LivePT {
         auto& params = LivePT::getParamDesc();
         std::string normalizedTarget = LivePT::NormalizePath(targetFile.c_str());
         long tabSize = GetVSTabSize();
-        std::wstring macroName = GetConfiguredMacroName();
-
-        // Пересчитываем columnDelta из символьного в визуальный, если изменения произошли на targetLine
-        // и в строке присутствуют символы табуляции, которые могли исказить сырую разницу длин.
-        long realVisualColumnDelta = columnDelta;
-
-        if (columnDelta != 0 && !g_lastLineTextBuffer.empty() && !g_currentFileFullText.empty()) {
-            // Находим текущую обновленную строку в файле для точного сравнения колонок
-            size_t currentLineOffset = 0;
-            long currentLineIdx = 1;
-            while (currentLineIdx < targetLine && currentLineOffset < g_currentFileFullText.length()) {
-                size_t nextNL = g_currentFileFullText.find(L'\n', currentLineOffset);
-                if (nextNL != std::wstring::npos) {
-                    currentLineOffset = nextNL + 1;
-                    currentLineIdx++;
-                }
-                else break;
-            }
-
-            size_t nextNL = g_currentFileFullText.find(L'\n', currentLineOffset);
-            if (nextNL == std::wstring::npos) nextNL = g_currentFileFullText.length();
-            std::wstring currentLineText = g_currentFileFullText.substr(currentLineOffset, nextNL - currentLineOffset);
-
-            // Если в старой или новой строке был таб — сырой символьный дельта врет.
-            // Считаем дельту на основе честной визуальной ширины всей строки.
-            if (g_lastLineTextBuffer.find(L'\t') != std::wstring::npos || currentLineText.find(L'\t') != std::wstring::npos) {
-                long oldVisualWidth = GetVisualColumn(g_lastLineTextBuffer, g_lastLineTextBuffer.length());
-                long newVisualWidth = GetVisualColumn(currentLineText, currentLineText.length());
-                realVisualColumnDelta = newVisualWidth - oldVisualWidth;
-            }
-        }
 
         for (auto& p : params) {
             if (p.fileName != normalizedTarget) continue;
@@ -255,10 +195,10 @@ namespace LivePT {
             long newParamColumn = p.column;
 
             bool affectsLine = (lineDelta != 0 && p.line > targetLine);
-            bool affectsColumn = (realVisualColumnDelta != 0 && p.line == targetLine && p.column > visualStartCol);
+            bool affectsColumn = (columnDelta != 0 && p.line == targetLine && p.column > visualStartCol);
 
             if (affectsLine)   newParamLine += lineDelta;
-            if (affectsColumn) newParamColumn += realVisualColumnDelta;
+            if (affectsColumn) newParamColumn += columnDelta;
 
             // 2. Если элемент попадает под сдвиг, валидируем его БУДУЩЕЕ положение в НОВОМ тексте
             if (affectsLine || affectsColumn) {
@@ -302,11 +242,14 @@ namespace LivePT {
                         }
                     }
 
-                    // Проверяем, действительно ли по вычисленному индексу символа сидит макрос
+                    // [ИСПРАВЛЕНО]: Переводим ANSI-имя из базы данных (p.macroName) в wstring для валидации
+                    std::wstring macroName(p.macroName.begin(), p.macroName.end());
+
+                    // Проверяем, действительно ли по вычисленному индексу символа сидит наш макрос/функция
                     if (paramCharIdx + macroName.length() <= lineText.length()) {
                         std::wstring possibleMacro = lineText.substr(paramCharIdx, macroName.length());
                         if (possibleMacro == macroName) {
-                            validationFailed = false; // Проверка пройдена! Макрос обнаружен.
+                            validationFailed = false; // Проверка пройдена!
                         }
                     }
                 }
@@ -315,7 +258,7 @@ namespace LivePT {
                 if (validationFailed) {
                     Log("[LivePT Integrity Error] Shift validation failed! Element would move to Line " +
                         std::to_string(newParamLine) + ", Col " + std::to_string(newParamColumn) +
-                        " but it doesn't contain '" + std::string(macroName.begin(), macroName.end()) + "'. Shift skipped for this element.");
+                        " but it doesn't contain '" + p.macroName + "'. Shift skipped for this element.");
                     continue; // Мягко пропускаем порчу этой координаты, но продолжаем двигать соседние
                 }
 

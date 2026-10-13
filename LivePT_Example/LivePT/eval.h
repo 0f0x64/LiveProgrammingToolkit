@@ -38,6 +38,7 @@ namespace LivePT {
         int line = 0;
         int column = 0;
         std::function<void(std::any& targetAny, const std::string& textValue)> stringUpdater = nullptr;
+        std::string macroName;
     };
 
     inline std::vector<ref>& getParamDesc() {
@@ -135,9 +136,8 @@ namespace LivePT {
         return fileCompileTree;
     }
 
-    inline int RegisterEvalPreMain(const char* file, std::any value, int line, int column, EnumTypeDesc enumDesc) {
+    inline int RegisterEvalPreMain(const char* file, const char* macroName, std::any value, int line, int column, EnumTypeDesc enumDesc) {
         std::string absolutePath = NormalizePath(file);
-
         auto& fileCompileTree = GetFileCompileTree();
 
         StaticOrderKey key{ line, column };
@@ -154,10 +154,12 @@ namespace LivePT {
             .fileName = absolutePath,
             .counterID = 0,
             .enumInfo = enumDesc,
+            .validFieldsMask = {}, // Явное обнуление полей структуры для агрегата
             .typeMinBound = 0,
             .typeMaxBound = 0,
             .line = line,
-            .column = column
+            .column = column,
+            .macroName = std::string(macroName) // <-- Железное сохранение имени в std::string
             });
 
         fileMap[key] = paramID;
@@ -185,28 +187,29 @@ namespace LivePT {
     };
     template <size_t N> FixedString(const char(&str)[N]) -> FixedString<N>;
 
-    template <typename T, FixedString<260> AbsoluteFile, int Line, int Column>
+    template <typename T, auto MacroName, FixedString<260> AbsoluteFile, int Line, int Column>
     struct GlobalEvalRegistry {
         static inline const int cached_id = []() {
             if constexpr (std::is_enum_v<T>) {
-                return RegisterEvalPreMain(AbsoluteFile.c_str(), std::any{ static_cast<int>(T{}) }, Line, Column, EnumTypeDesc{ .isEnum = true });
+                return RegisterEvalPreMain(AbsoluteFile.c_str(), MacroName.c_str(), std::any{ static_cast<int>(T{}) }, Line, Column, EnumTypeDesc{ .isEnum = true });
             }
             else {
                 if constexpr (std::is_default_constructible_v<T>) {
-                    return RegisterEvalPreMain(AbsoluteFile.c_str(), std::any{ T{} }, Line, Column, EnumTypeDesc{ false });
+                    return RegisterEvalPreMain(AbsoluteFile.c_str(), MacroName.c_str(), std::any{ T{} }, Line, Column, EnumTypeDesc{ false });
                 }
                 else {
-                    return RegisterEvalPreMain(AbsoluteFile.c_str(), std::any{}, Line, Column, EnumTypeDesc{ false });
+                    return RegisterEvalPreMain(AbsoluteFile.c_str(), MacroName.c_str(), std::any{}, Line, Column, EnumTypeDesc{ false });
                 }
             }
             }();
     };
 
-    template <typename TargetType, FixedString<260> AbsoluteFile, int Line, int Column>
+    template <typename TargetType, auto MacroName, FixedString<260> AbsoluteFile, int Line, int Column>
     struct EvalSyntaxShield {
         template <typename TLiteral>
         inline static TargetType Get(TLiteral literalValue) {
-            int target_id = GlobalEvalRegistry<TargetType, AbsoluteFile, Line, Column>::cached_id;
+            // Передаем MacroName дальше в реестр
+            int target_id = GlobalEvalRegistry<TargetType, MacroName, AbsoluteFile, Line, Column>::cached_id;
 
             if (target_id < 0 || target_id >= static_cast<int>(paramDesc.size())) {
                 return static_cast<TargetType>(literalValue);
@@ -605,12 +608,11 @@ namespace LivePT {
     }
 
     // ЧАСТИЧНАЯ СПЕЦИАЛИЗАЦИЯ ДЛЯ ДИНАМИЧЕСКИХ ВЕКТОРОВ НА СТУДО-ЯКОРЯХ
-
-    template <typename ElementType, FixedString<260> AbsoluteFile, int Line, int Column>
-    struct EvalSyntaxShield<std::vector<ElementType>, AbsoluteFile, Line, Column> {
+    template <typename ElementType, auto MacroName, FixedString<260> AbsoluteFile, int Line, int Column>
+    struct EvalSyntaxShield<std::vector<ElementType>, MacroName, AbsoluteFile, Line, Column> {
 
         inline static std::vector<ElementType> Get(const std::vector<ElementType>& literalValue) {
-            int target_id = GlobalEvalRegistry<std::vector<ElementType>, AbsoluteFile, Line, Column>::cached_id;
+            int target_id = GlobalEvalRegistry<std::vector<ElementType>, MacroName, AbsoluteFile, Line, Column>::cached_id;
 
             if (target_id < 0 || target_id >= static_cast<int>(paramDesc.size())) {
                 return literalValue;
@@ -968,7 +970,7 @@ namespace LivePT {
     template <typename T> struct is_initializer_list : std::false_type {};
     template <typename E> struct is_initializer_list<std::initializer_list<E>> : std::true_type { using element_type = E; };
 
-    template <typename LiteralType, FixedString<260> AbsoluteFile, int Line, int Column>
+    template <typename LiteralType, auto MacroName, FixedString<260> AbsoluteFile, int Line, int Column>
     struct LazyTypeDetector {
         LiteralType rawValue;
 
@@ -977,15 +979,15 @@ namespace LivePT {
         template <typename TargetType>
         inline operator TargetType() const {
             if constexpr (std::is_enum_v<LiteralType>) {
-                return static_cast<TargetType>(EvalSyntaxShield<LiteralType, AbsoluteFile, Line, Column>::Get(rawValue));
+                return static_cast<TargetType>(EvalSyntaxShield<LiteralType, MacroName, AbsoluteFile, Line, Column>::Get(rawValue));
             }
             else {
-                return EvalSyntaxShield<TargetType, AbsoluteFile, Line, Column>::Get(rawValue);
+                return EvalSyntaxShield<TargetType, MacroName, AbsoluteFile, Line, Column>::Get(rawValue);
             }
         }
 
         inline operator LiteralType() const {
-            return EvalSyntaxShield<LiteralType, AbsoluteFile, Line, Column>::Get(rawValue);
+            return EvalSyntaxShield<LiteralType, MacroName, AbsoluteFile, Line, Column>::Get(rawValue);
         }
 
         template <typename TTarget>

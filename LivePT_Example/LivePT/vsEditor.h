@@ -605,7 +605,6 @@ namespace LivePT {
         auto& params = LivePT::getParamDesc();
         int targetParamId = -1;
 
-        // 1. Линейно находим последний макрос, начавшийся выше или на строке курсора
         for (int localId = 0; ; ++localId) {
             std::string vsLookupKey = normalizedFile + ":" + std::to_string(localId);
             int paramId = LivePT::getID(vsLookupKey);
@@ -627,9 +626,8 @@ namespace LivePT {
         }
 
         const auto& p = params[targetParamId];
-        long tabSize = GetVSTabSize(); // Используем динамический размер таба вместо зашитого
+        long tabSize = GetVSTabSize();
 
-        // 2. Вычисляем абсолютное смещение начала строки найденного макроса
         size_t macroLineOffset = 0;
         long currentLineIdx = 1;
         while (currentLineIdx < p.line && macroLineOffset < g_currentFileFullText.length()) {
@@ -641,7 +639,6 @@ namespace LivePT {
             else break;
         }
 
-        // 3. Вычисляем абсолютное смещение курсора в файле
         size_t cursorLineOffset = 0;
         currentLineIdx = 1;
         while (currentLineIdx < cursorLine && cursorLineOffset < g_currentFileFullText.length()) {
@@ -653,7 +650,6 @@ namespace LivePT {
             else break;
         }
 
-        // Переводим визуальную колонку курсора в честный физический индекс символа
         long currentVisualCol = 1;
         size_t cursorCharIdx = 0;
         size_t nextNL = g_currentFileFullText.find(L'\n', cursorLineOffset);
@@ -665,14 +661,18 @@ namespace LivePT {
                 cursorCharIdx = i;
                 break;
             }
-            if (cursorLineText[i] == L'\r') continue; // Полная защита от CRLF
+            if (cursorLineText[i] == L'\r') continue;
             currentVisualCol += (cursorLineText[i] == L'\t') ? (tabSize - ((currentVisualCol - 1) % tabSize)) : 1;
         }
         if (currentVisualCol < cursorColumn) cursorCharIdx = cursorLineText.length();
 
         size_t cursorAbsoluteOffset = cursorLineOffset + cursorCharIdx;
 
-        // 4. Находим открывающую скобку макроса
+        // [ИСПРАВЛЕНО]: Ищем открывающую скобку '(' конкретного макроса/функции
+        // Имя берем прямо из структуры p.macroName
+        std::wstring wMacroName(p.macroName.begin(), p.macroName.end());
+
+        // Поиск символа '(' начинается сразу за концом имени токена (p.column + длина имени)
         size_t openBracketPos = g_currentFileFullText.find(L'(', macroLineOffset + (p.column > 0 ? p.column - 1 : 0));
         if (openBracketPos == std::wstring::npos || openBracketPos >= g_currentFileFullText.length()) {
             return -1;
@@ -683,7 +683,7 @@ namespace LivePT {
             return -1;
         }
 
-        // Контроль попадания курсора внутрь макроса (правее 'eval(' и левее/равно ')')
+        // Контроль попадания курсора внутрь скобок
         if (cursorAbsoluteOffset <= openBracketPos || cursorAbsoluteOffset > closeBracketPos) {
             return -1;
         }

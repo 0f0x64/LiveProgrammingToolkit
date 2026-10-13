@@ -40,48 +40,6 @@
 
 namespace LivePT {
 
-    inline std::wstring GetConfiguredMacroName() {
-        static const std::wstring cachedMacroName = []() {
-            constexpr auto location = std::source_location::current();
-            std::string selfPath = location.file_name();
-
-            std::ifstream file(selfPath);
-            if (!file.is_open()) {
-                return std::wstring(L"eval");
-            }
-
-            std::string line;
-            std::string marker = "//EVAL_NAME_MARKER - DO'NT TOUCH THIS LINE";
-
-            while (std::getline(file, line)) {
-
-                if (line.find(marker) != std::string::npos) {
-
-                    while (std::getline(file, line)) {
-
-                        line.erase(0, line.find_first_not_of(" \t\r\n"));
-                        if (line.empty()) continue; 
-
-                        if (line.rfind("#define", 0) == 0) {
-                            line.erase(0, 7); 
-                            line.erase(0, line.find_first_not_of(" \t\r\n"));
-
-                            size_t endPos = line.find_first_of(" \t(");
-                            if (endPos != std::string::npos) {
-                                std::string name = line.substr(0, endPos);
-                                return std::wstring(name.begin(), name.end());
-                            }
-                        }
-                    }
-                    break;
-                }
-            }
-            return std::wstring(L"eval");
-            }();
-
-        return cachedMacroName;
-    }
-
     inline void Log(const std::string& text, bool nl = true) {
         OutputDebugStringA(text.c_str());
         if (nl) OutputDebugStringA("\n");
@@ -164,14 +122,15 @@ namespace LivePT {
 
 }
 
-//EVAL_NAME_MARKER - DO'NT TOUCH THIS LINE
 #define eval(...) \
     LivePT::LazyTypeDetector< \
         std::decay_t<decltype(__VA_ARGS__)>, \
+        LivePT::FixedString{"eval"}, \
         LivePT::FixedString<260>{__FILE__}, \
         static_cast<int>(__LINE__), \
         static_cast<int>(__builtin_COLUMN()) \
     >(__VA_ARGS__)
+
 
 #else
 
