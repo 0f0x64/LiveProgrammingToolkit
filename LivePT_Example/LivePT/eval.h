@@ -203,7 +203,28 @@ namespace LivePT {
             }
             }();
     };
+    //----
 
+    inline std::vector<StructMemberDesc> LookupStructMembersFromParams(const std::string& typeNameStr) {
+        std::string cleanName = typeNameStr;
+        cleanName.erase(0, cleanName.find_first_not_of(" \t\r\n."));
+        cleanName.erase(cleanName.find_last_not_of(" \t\r\n") + 1);
+
+        if (cleanName.rfind("struct ", 0) == 0) cleanName.erase(0, 7);
+        if (cleanName.rfind("class ", 0) == 0) cleanName.erase(0, 6);
+
+        for (const auto& p : paramDesc) {
+            if (p.structInfo.isStruct) {
+                std::string pTypeName = p.value.type().name();
+                if (pTypeName.find(cleanName) != std::string::npos) {
+                    return p.structInfo.members;
+                }
+            }
+        }
+        return std::vector<StructMemberDesc>();
+    }
+
+    //----
     template <typename TargetType, auto MacroName, FixedString<260> AbsoluteFile, int Line, int Column>
     struct EvalSyntaxShield {
         template <typename TLiteral>
@@ -298,27 +319,11 @@ namespace LivePT {
                             return resTokens;
                             };
 
-                        auto LocalLookupStructMembersFromParams = [](const std::string& typeNameStr) -> std::vector<StructMemberDesc> {
-                            std::string cleanName = typeNameStr;
-                            cleanName.erase(0, cleanName.find_first_not_of(" \t\r\n.")); cleanName.erase(cleanName.find_last_not_of(" \t\r\n") + 1);
-                            if (cleanName.rfind("struct ", 0) == 0) cleanName.erase(0, 7);
-                            if (cleanName.rfind("class ", 0) == 0) cleanName.erase(0, 6);
-
-                            for (const auto& p : paramDesc) {
-                                if (p.structInfo.isStruct) {
-                                    std::string pTypeName = p.value.type().name();
-                                    if (pTypeName.find(cleanName) != std::string::npos) {
-                                        return p.structInfo.members;
-                                    }
-                                }
-                            }
-                            return std::vector<StructMemberDesc>();
-                            };
 
                         std::function<void(char*, const std::string&, const std::string&, DWORD)> LocalWriteStructBytes =
                             [&](char* byteBase, const std::string& curTypeName, const std::string& curInnerText, DWORD absoluteBaseOffset) {
 
-                            std::vector<StructMemberDesc> membersCache = LocalLookupStructMembersFromParams(curTypeName);
+                            std::vector<StructMemberDesc> membersCache = LookupStructMembersFromParams(curTypeName);
 
                             if (membersCache.empty()) {
                                 std::string valClean = curInnerText;
@@ -400,7 +405,7 @@ namespace LivePT {
                                     paramDesc[target_id].validFieldsMask.resize(structTotalSize, false);
                                 }
 
-                                if (!LocalLookupStructMembersFromParams(member->typeName).empty()) {
+                                if (!LookupStructMembersFromParams(member->typeName).empty()) {
                                     size_t openB = valueStr.find('{'); size_t closeB = valueStr.rfind('}');
                                     if (openB == std::string::npos) openB = valueStr.find('(');
                                     if (closeB == std::string::npos) closeB = valueStr.rfind(')');

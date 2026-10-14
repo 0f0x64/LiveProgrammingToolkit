@@ -261,18 +261,18 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         Draw({
             .pos = eval(pos2{
-				.x = -198.10f,
-				.y = -230.99f
+				.x = -270.10f,
+				.y = -305.99f
 				}
             ),
-            .size = eval(size2{148.81f, 138.61f}),
-            .Angle = eval(angle(359.1f)),
+            .size = eval(size2{157.51f, 146.73f}),
+            .Angle = eval(angle(350.1f)),
             .type = eval(ptype::box),
             .show = eval(true),
             .color = eval(color3{
-				.r=143, 
-				.g=37,  
-				.b=23
+				.r=113, 
+				.g=16,  
+				.b=4
 				})
             });
 
@@ -280,25 +280,27 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         Draw(eval(Primitive{
             .pos = pos2{
-				.x = 180.31f,
-				.y = -442.23f
+				.x = 206.31f,
+				.y = -341.23f
 				},
-            .size = size2{121.06f, x},
+            .size = size2{164.06f, x},
             .Angle = angle(226.5f),
-            .type = ptype::circle,
+            .type = ptype::box,
             .show = true,
-            .color = color3{32, 54, 206}
+            .color = color3{76, 213, 90}
             }));
+
+
 
         DrawLine({
             .points = eval(std::vector<HeavyPoint>{
-                    { true, pos2{-430.70f, 204.70f}, 58, 956, color3{239, 61, 125} },
+                    { true, pos2{-455.70f, 186.70f}, 58, 956, color3{239, 61, 125} },
                     { true, pos2{-233.80f, 317.80f}, 50, 956, color3{183, 84, 125} },
                     { true, pos2{19.60f, 114.80f}, 38, 956, color3{100, 60, 125} },
                     { true, pos2{164.40f, 227.20f}, 38, 956, color3{72, 60, 125} },
                     { true, pos2{287.40f, 40.20f}, 38, 956, color3{72, 60, 125} },
                     { true, pos2{388.40f, 101.20f}, 38, 956, color3{72, 60, 125} },
-                    { true, pos2{466.40f, 264.20f}, 38, 956, color3{72, 60, 125} },
+                    { true, pos2{448.40f, 323.20f}, 38, 956, color3{72, 60, 125} },
                 })
             });
 
