@@ -743,243 +743,35 @@ namespace LivePT {
                     size_t elemSize = sizeof(ElementType);
                     size_t vectorTotalBytes = pVec->size() * elemSize;
 
+                    // Гарантируем, что размер маски валидности соответствует общему числу байт вектора
                     if (paramDesc[target_id].validFieldsMask.size() < vectorTotalBytes) {
                         paramDesc[target_id].validFieldsMask.resize(vectorTotalBytes, false);
                     }
 
-                    auto LocalSplitByOuterCommas = [](const std::string& input) {
-                        std::vector<std::string> resTokens; std::string curT;
-                        int bCount = 0; int pCount = 0;
-                        for (size_t i = 0; i < input.length(); ++i) {
-                            char c = input[i];
-                            if (c == '{') bCount++; else if (c == '}') bCount--;
-                            else if (c == '(') pCount++; else if (c == ')') pCount--;
-                            if (c == ',' && bCount == 0 && pCount == 0) { resTokens.push_back(curT); curT.clear(); }
-                            else curT += c;
-                        }
-                        if (!curT.empty()) resTokens.push_back(curT);
-                        for (auto& t : resTokens) {
-                            t.erase(0, t.find_first_not_of(" \t\r\n")); t.erase(t.find_last_not_of(" \t\r\n") + 1);
-                        }
-                        resTokens.erase(std::remove_if(resTokens.begin(), resTokens.end(), [](const std::string& s) { return s.empty(); }), resTokens.end());
-                        return resTokens;
-                        };
-
-                    auto LocalLookupStructMembersFromParams = [target_id](const std::string& typeNameStr) -> std::vector<StructMemberDesc> {
-                        std::string cleanName = typeNameStr;
-                        cleanName.erase(0, cleanName.find_first_not_of(" \t\r\n.")); cleanName.erase(cleanName.find_last_not_of(" \t\r\n") + 1);
-                        if (cleanName.rfind("struct ", 0) == 0) cleanName.erase(0, 7);
-                        if (cleanName.rfind("class ", 0) == 0) cleanName.erase(0, 6);
-
-                        std::string baseVectorTypeName = typeid(ElementType).name();
-                        if (baseVectorTypeName.find(cleanName) != std::string::npos) {
-                            return paramDesc[target_id].structInfo.members;
-                        }
-
-                        for (const auto& p : paramDesc) {
-                            if (p.structInfo.isStruct) {
-                                std::string pTypeName = p.value.type().name();
-                                if (pTypeName.find(cleanName) != std::string::npos) {
-                                    return p.structInfo.members;
-                                }
-                            }
-                        }
-                        return std::vector<StructMemberDesc>();
-                        };
-
-                    std::function<void(char*, const std::string&, const std::string&, DWORD)> LocalWriteStructBytes =
-                        [&](char* subByteBase, const std::string& curTypeName, const std::string& curInnerText, DWORD absoluteBaseOffset) {
-
-                        std::vector<StructMemberDesc> membersCache = LocalLookupStructMembersFromParams(curTypeName);
-
-                        if (membersCache.empty()) {
-                            std::string valClean = curInnerText;
-                            size_t subOpen = valClean.find('('); size_t subClose = valClean.rfind(')');
-                            if (subOpen != std::string::npos && subClose != std::string::npos && subClose > subOpen) {
-                                valClean = valClean.substr(subOpen + 1, subClose - subOpen - 1);
-                            }
-                            while (!valClean.empty() && (valClean.back() == 'f' || valClean.back() == 'F' || valClean.back() == 'u' || valClean.back() == 'U')) {
-                                valClean.pop_back();
-                            }
-                            const char* sS = valClean.data(); const char* sE = valClean.data() + valClean.size();
-                            float fV = 0.0f; std::from_chars(sS, sE, fV);
-                            *reinterpret_cast<float*>(subByteBase) = fV;
-                            return;
-                        }
-
-                        auto tokens = LocalSplitByOuterCommas(curInnerText);
-                        size_t positionalIndex = 0;
-
-                        for (const auto& token : tokens) {
-                            size_t eq = token.find('=');
-                            std::string fieldName = ""; std::string valueStr = token;
-                            const StructMemberDesc* member = nullptr;
-
-                            if (eq != std::string::npos) {
-                                fieldName = token.substr(0, eq);
-                                fieldName.erase(0, fieldName.find_first_not_of(" \t\r\n."));
-                                fieldName.erase(fieldName.find_last_not_of(" \t\r\n") + 1);
-                                valueStr = token.substr(eq + 1);
-                                valueStr.erase(0, valueStr.find_first_not_of(" \t\r\n"));
-                                valueStr.erase(valueStr.find_last_not_of(" \t\r\n") + 1);
-
-                                for (size_t mIdx = 0; mIdx < membersCache.size(); ++mIdx) {
-                                    if (membersCache[mIdx].name == fieldName) { member = &membersCache[mIdx]; break; }
-                                }
-                            }
-                            else {
-                                if (positionalIndex < membersCache.size()) {
-                                    member = &membersCache[positionalIndex];
-                                }
-                                positionalIndex++;
-                            }
-
-                            if (!member) continue;
-                            char* fieldAddress = subByteBase + member->offset;
-
-                            DWORD currentAbsoluteFieldOffset = absoluteBaseOffset + member->offset;
-
-                            if (!LocalLookupStructMembersFromParams(member->typeName).empty()) {
-                                size_t openB = valueStr.find('{'); size_t closeB = valueStr.rfind('}');
-                                if (openB == std::string::npos) openB = valueStr.find('(');
-                                if (closeB == std::string::npos) closeB = valueStr.rfind(')');
-
-                                if (openB != std::string::npos && closeB != std::string::npos && closeB > openB) {
-                                    std::string nestedInnerText = valueStr.substr(openB + 1, closeB - openB - 1);
-                                    LocalWriteStructBytes(fieldAddress, member->typeName, nestedInnerText, currentAbsoluteFieldOffset);
-                                }
-                            }
-                            else {
-                                std::string cleanPrimitiveStr = valueStr;
-                                size_t pOpen = cleanPrimitiveStr.find('('); size_t pClose = cleanPrimitiveStr.rfind(')');
-                                if (pOpen != std::string::npos && pClose != std::string::npos && pClose > pOpen) {
-                                    cleanPrimitiveStr = cleanPrimitiveStr.substr(pOpen + 1, pClose - pOpen - 1);
-                                }
-
-                                while (!cleanPrimitiveStr.empty() && (cleanPrimitiveStr.back() == 'f' || cleanPrimitiveStr.back() == 'F' ||
-                                    cleanPrimitiveStr.back() == 'u' || cleanPrimitiveStr.back() == 'U' ||
-                                    cleanPrimitiveStr.back() == 'l' || cleanPrimitiveStr.back() == 'L')) {
-                                    cleanPrimitiveStr.pop_back();
-                                }
-
-                                size_t dColon = cleanPrimitiveStr.rfind("::");
-                                if (dColon != std::string::npos) {
-                                    std::string enumValueToken = cleanPrimitiveStr.substr(dColon + 2);
-                                    enumValueToken.erase(0, enumValueToken.find_first_not_of(" \t\r\n"));
-                                    enumValueToken.erase(enumValueToken.find_last_not_of(" \t\r\n") + 1);
-
-                                    int finalEnumInt = 0; bool enumFound = false;
-                                    for (const auto& pr : paramDesc) {
-                                        if (pr.enumInfo.isEnum && !pr.enumInfo.elements.empty()) {
-                                            for (const auto& elem : pr.enumInfo.elements) {
-                                                std::string cleanElemName = elem.name;
-                                                size_t subC = cleanElemName.rfind("::");
-                                                if (subC != std::string::npos) cleanElemName = cleanElemName.substr(subC + 2);
-
-                                                if (cleanElemName == enumValueToken || elem.name == enumValueToken) {
-                                                    finalEnumInt = elem.value; enumFound = true; break;
-                                                }
-                                            }
-                                        }
-                                        if (enumFound) break;
-                                    }
-
-                                    if (!enumFound) {
-                                        if (enumValueToken == "circle") finalEnumInt = 0;
-                                        else if (enumValueToken == "box") finalEnumInt = 1;
-                                        else if (enumValueToken == "roundbox") finalEnumInt = 2;
-                                    }
-
-                                    *reinterpret_cast<int*>(fieldAddress) = finalEnumInt;
-
-                                    for (DWORD b = 0; b < member->size; ++b) {
-                                        if (currentAbsoluteFieldOffset + b < vectorTotalBytes) {
-                                            paramDesc[target_id].validFieldsMask[currentAbsoluteFieldOffset + b] = true;
-                                        }
-                                    }
-                                    continue;
-                                }
-
-                                const char* strStart = cleanPrimitiveStr.data();
-                                const char* strEnd = cleanPrimitiveStr.data() + cleanPrimitiveStr.size();
-
-                                if (member->size == 4) {
-                                    float val = 0.0f;
-                                    auto [ptr, ec] = std::from_chars(strStart, strEnd, val);
-                                    bool isConstant = (ec == std::errc{});
-
-                                    if (isConstant) {
-                                        if (member->typeName == "int" || member->typeName == "long") {
-                                            *reinterpret_cast<int*>(subByteBase + member->offset) = static_cast<int>(val);
-                                        }
-                                        else {
-                                            *reinterpret_cast<float*>(subByteBase + member->offset) = val;
-                                        }
-                                    }
-
-                                    for (DWORD b = 0; b < member->size; ++b) {
-                                        if (currentAbsoluteFieldOffset + b < vectorTotalBytes) {
-                                            paramDesc[target_id].validFieldsMask[currentAbsoluteFieldOffset + b] = isConstant;
-                                        }
-                                    }
-                                }
-                                else if (member->size == 8) {
-                                    double val = 0.0; auto [ptr, ec] = std::from_chars(strStart, strEnd, val);
-                                    bool isConstant = (ec == std::errc{});
-                                    if (isConstant) {
-                                        *reinterpret_cast<double*>(fieldAddress) = val;
-                                    }
-                                    for (DWORD b = 0; b < member->size; ++b) {
-                                        if (currentAbsoluteFieldOffset + b < vectorTotalBytes) {
-                                            paramDesc[target_id].validFieldsMask[currentAbsoluteFieldOffset + b] = isConstant;
-                                        }
-                                    }
-                                }
-                                else if (member->size == 1) {
-                                    bool isConstant = false;
-                                    if (member->typeName == "bool") {
-                                        if (cleanPrimitiveStr == "true" || cleanPrimitiveStr == "1" || cleanPrimitiveStr == "True") {
-                                            *reinterpret_cast<bool*>(fieldAddress) = true; isConstant = true;
-                                        }
-                                        else if (cleanPrimitiveStr == "false" || cleanPrimitiveStr == "0" || cleanPrimitiveStr == "False") {
-                                            *reinterpret_cast<bool*>(fieldAddress) = false; isConstant = true;
-                                        }
-                                    }
-                                    else {
-                                        int val = 0; auto [ptr, ec] = std::from_chars(strStart, strEnd, val);
-                                        if (ec == std::errc{}) {
-                                            *reinterpret_cast<unsigned char*>(fieldAddress) = static_cast<unsigned char>(val);
-                                            isConstant = true;
-                                        }
-                                    }
-                                    if (currentAbsoluteFieldOffset < vectorTotalBytes) {
-                                        paramDesc[target_id].validFieldsMask[currentAbsoluteFieldOffset] = isConstant;
-                                    }
-                                }
-                            }
-                        }
-                        };
-
+                    // Получаем чистое текстовое имя типа элемента вектора для метаданных PDB
                     std::string mainTypeName = typeid(ElementType).name();
                     if (mainTypeName.rfind("struct ", 0) == 0) mainTypeName.erase(0, 7);
                     if (mainTypeName.rfind("class ", 0) == 0) mainTypeName.erase(0, 6);
 
+                    // ПЕРЕИСПОЛЬЗОВАНИЕ: Последовательно гоним каждый элемент вектора через общую WriteStructBytes
                     for (size_t idx = 0; idx < elements.size(); ++idx) {
                         char* targetElementAddr = byteBase + (idx * elemSize);
                         std::string structToken = elements[idx];
 
+                        // Снимаем внешние фигурные скобки самого элемента, если они есть (например, {1, 2} -> 1, 2)
                         size_t subOpen = structToken.find('{');
                         size_t subClose = structToken.rfind('}');
                         if (subOpen != std::string::npos && subClose != std::string::npos && subClose > subOpen) {
                             structToken = structToken.substr(subOpen + 1, subClose - subOpen - 1);
                         }
 
+                        // Считаем сквозное абсолютное смещение байт для текущего элемента массива в маске
                         DWORD elementAbsoluteBaseOffset = static_cast<DWORD>(idx * elemSize);
-                        LocalWriteStructBytes(targetElementAddr, mainTypeName, structToken, elementAbsoluteBaseOffset);
+
+                        // Вызываем общую проверенную функцию одиночной структуры
+                        LivePT::WriteStructBytes(targetElementAddr, mainTypeName, structToken, elementAbsoluteBaseOffset, target_id, vectorTotalBytes);
                     }
-                };
-
-
+                }; 
             paramDesc[target_id].loaded = true;
         }
 
@@ -1022,9 +814,6 @@ namespace LivePT {
     }
 };
 
-
-    template <typename T> struct is_initializer_list : std::false_type {};
-    template <typename E> struct is_initializer_list<std::initializer_list<E>> : std::true_type { using element_type = E; };
 
     template <typename LiteralType, auto MacroName, FixedString<260> AbsoluteFile, int Line, int Column>
     struct LazyTypeDetector {

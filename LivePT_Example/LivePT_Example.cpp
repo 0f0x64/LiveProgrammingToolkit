@@ -292,13 +292,13 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         DrawLine({
             .points = eval(std::vector<HeavyPoint>{
-                    { true, pos2{-436.70f, 184.70f}, 58, 944, color3{239, 61, 125} },
-                    { true, pos2{-233.80f, 317.80f}, 20, 956, color3{95, 35, 59} },
-                    { true, pos2{19.60f, 114.80f}, 21, 956, color3{75, 34, 99} },
-                    { true, pos2{164.40f, 227.20f}, 19, 956, color3{73, 56, 158} },
-                    { true, pos2{287.40f, 40.20f}, 19, 956, color3{72, 60, 125} },
-                    { true, pos2{388.40f, 101.20f}, 29, 956, color3{60, 50, 120} },
-                    { true, pos2{476.40f, 289.20f}, 15, 956, color3{103, 82, 183} },
+                    { true, pos2{-441.70f, 197.70f}, 58, 944, color3{239, 61, 125} },
+                    { true, pos2{-261.80f, 319.80f}, 20, 956, color3{95, 35, 59} },
+                    { true, pos2{-9.40f, 142.80f}, 21, 956, color3{75, 34, 99} },
+                    { true, pos2{154.40f, 262.20f}, 19, 956, color3{73, 56, 158} },
+                    { true, pos2{257.40f, 71.20f}, 19, 956, color3{72, 60, 125} },
+                    { true, pos2{406.40f, 176.20f}, 30, 956, color3{60, 50, 120} },
+                    { true, pos2{520.40f, 301.20f}, 15, 956, color3{103, 82, 183} },
                 })
             });
 
