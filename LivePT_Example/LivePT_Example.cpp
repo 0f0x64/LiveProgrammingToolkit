@@ -261,8 +261,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         Draw({
             .pos = eval(pos2{
-				.x = -275.10f,
-				.y = -374.99f
+				.x = -64.10f,
+				.y = -140.99f
 				}
             ),
             .size = eval(size2{175.59f, 163.58f}),
@@ -280,8 +280,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         Draw(eval(Primitive{
             .pos = pos2{
-				.x = 340.31f,
-				.y = -347.23f
+				.x = 210.31f,
+				.y = -511.23f
 				},
             .size = size2{164.06f, x},
             .Angle = angle(-18.5f),

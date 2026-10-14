@@ -151,6 +151,35 @@ namespace LivePT {
         }
     }
 
+    inline std::string NormalizeTextEndings(std::string text, const std::wstring& fileFullText) {
+        // Если в тексте вообще нет переносов (одиночные числа), выходим мгновенно за 0 тактов
+        if (text.find('\n') == std::string::npos) {
+            return text;
+        }
+
+        // Проверяем конвеншн файла по наличию хотя бы одного \r\n в документе
+        bool isFileCRLF = (fileFullText.find(L"\r\n") != std::wstring::npos);
+
+        if (isFileCRLF) {
+            // Если файл Windows-стиля (CRLF), гарантируем \r\n без дублирования \r
+            size_t pos = 0;
+            while ((pos = text.find("\r\n", pos)) != std::string::npos) {
+                text.replace(pos, 2, "\n");
+            }
+            pos = 0;
+            while ((pos = text.find('\n', pos)) != std::string::npos) {
+                text.replace(pos, 1, "\r\n");
+                pos += 2;
+            }
+        }
+        else {
+            // Если файл Unix-стиля (LF), принудительно очищаем от любых \r
+            text.erase(std::remove(text.begin(), text.end(), '\r'), text.end());
+        }
+
+        return text;
+    }
+
     static HWND g_hShieldWnd = NULL;
     static DWORD g_vsThreadId = 0;
 
@@ -268,7 +297,7 @@ namespace LivePT {
             physicalEndCol = static_cast<long>(i) + 1;
 
             // БЕЗОПАСНАЯ КОНВЕРТАЦИЯ В UTF-16 (Сохраняет русские буквы)
-            std::wstring wNewText = ConvertUtf8ToWString(newText);
+            std::wstring wNewText = ConvertUtf8ToWString(NormalizeTextEndings(newText, fileText));
             std::wstring modifiedLineText = lineText;
 
             size_t localStartIdx = static_cast<size_t>(physicalStartCol - 1);
@@ -542,6 +571,8 @@ namespace LivePT {
                     // ХИРУРГИЧЕСКАЯ ЗАЩИТА: Делаем шаг на 1 символ вправо у временной точки,
                     // чтобы уйти внутрь открывающей скобки и не затереть её (как в логике ProcessEdit!)
                     AutoWrap(DISPATCH_METHOD, NULL, pSafeStartPoint.pdispVal, L"CharRight", 1, CComVariant(1L));
+
+                    updatedArgsText = LivePT::NormalizeTextEndings(updatedArgsText, g_currentFileFullText);
 
                     std::wstring wText(updatedArgsText.begin(), updatedArgsText.end());
                     CComBSTR bstrText(wText.c_str());
@@ -873,6 +904,8 @@ namespace LivePT {
                         long startO = vtStartCharOffset.lVal + 1; 
 
                         AutoWrap(DISPATCH_METHOD, NULL, pSafeStartPoint.pdispVal, L"MoveToLineAndOffset", 2, CComVariant(startL), CComVariant(startO));
+
+                        g_widgetBuffer.codeText = LivePT::NormalizeTextEndings(g_widgetBuffer.codeText, g_currentFileFullText);
 
                         std::wstring wText(g_widgetBuffer.codeText.begin(), g_widgetBuffer.codeText.end());
                         CComBSTR bstrText(wText.c_str());
