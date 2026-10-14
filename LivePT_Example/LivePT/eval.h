@@ -224,6 +224,40 @@ namespace LivePT {
         return std::vector<StructMemberDesc>();
     }
 
+    inline std::vector<std::string> SplitByOuterCommas(const std::string& input) {
+        std::vector<std::string> resTokens;
+        std::string curT;
+        int bCount = 0;
+        int pCount = 0;
+
+        for (size_t i = 0; i < input.length(); ++i) {
+            char c = input[i];
+            if (c == '{') bCount++;
+            else if (c == '}') bCount--;
+            else if (c == '(') pCount++;
+            else if (c == ')') pCount--;
+
+            if (c == ',' && bCount == 0 && pCount == 0) {
+                resTokens.push_back(curT);
+                curT.clear();
+            }
+            else {
+                curT += c;
+            }
+        }
+        if (!curT.empty()) resTokens.push_back(curT);
+
+        for (auto& t : resTokens) {
+            t.erase(0, t.find_first_not_of(" \t\r\n"));
+            t.erase(t.find_last_not_of(" \t\r\n") + 1);
+        }
+
+        resTokens.erase(std::remove_if(resTokens.begin(), resTokens.end(),
+            [](const std::string& s) { return s.empty(); }), resTokens.end());
+
+        return resTokens;
+    }
+
     //----
     template <typename TargetType, auto MacroName, FixedString<260> AbsoluteFile, int Line, int Column>
     struct EvalSyntaxShield {
@@ -301,24 +335,7 @@ namespace LivePT {
                             innerArgs += c;
                         }
 
-                        auto LocalSplitByOuterCommas = [](const std::string& input) {
-                            std::vector<std::string> resTokens; std::string curT;
-                            int bCount = 0; int pCount = 0;
-                            for (size_t i = 0; i < input.length(); ++i) {
-                                char c = input[i];
-                                if (c == '{') bCount++; else if (c == '}') bCount--;
-                                else if (c == '(') pCount++; else if (c == ')') pCount--;
-                                if (c == ',' && bCount == 0 && pCount == 0) { resTokens.push_back(curT); curT.clear(); }
-                                else curT += c;
-                            }
-                            if (!curT.empty()) resTokens.push_back(curT);
-                            for (auto& t : resTokens) {
-                                t.erase(0, t.find_first_not_of(" \t\r\n")); t.erase(t.find_last_not_of(" \t\r\n") + 1);
-                            }
-                            resTokens.erase(std::remove_if(resTokens.begin(), resTokens.end(), [](const std::string& s) { return s.empty(); }), resTokens.end());
-                            return resTokens;
-                            };
-
+                        
 
                         std::function<void(char*, const std::string&, const std::string&, DWORD)> LocalWriteStructBytes =
                             [&](char* byteBase, const std::string& curTypeName, const std::string& curInnerText, DWORD absoluteBaseOffset) {
@@ -340,7 +357,7 @@ namespace LivePT {
                                 return;
                             }
 
-                            auto tokens = LocalSplitByOuterCommas(curInnerText);
+                            auto tokens = SplitByOuterCommas(curInnerText);
                             size_t positionalIndex = 0;
 
                             // === АТОМАРНАЯ ИЗОЛЯЦИЯ И ИСПРАВЛЕННЫЙ ПОИСК ЗНАКА РАВЕНСТВА ===
