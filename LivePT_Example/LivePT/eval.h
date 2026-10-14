@@ -258,6 +258,38 @@ namespace LivePT {
         return resTokens;
     }
 
+    inline bool ExtractAndStripComments(const std::string& textValue, std::string& outInnerArgs) {
+        size_t openBrace = textValue.find('{');
+        size_t closeBrace = textValue.rfind('}');
+        if (openBrace == std::string::npos || closeBrace == std::string::npos || closeBrace <= openBrace) {
+            return false;
+        }
+
+        std::string rawInnerArgs = textValue.substr(openBrace + 1, closeBrace - openBrace - 1);
+        outInnerArgs.clear();
+        outInnerArgs.reserve(rawInnerArgs.length());
+
+        bool inComment = false;
+
+        for (size_t i = 0; i < rawInnerArgs.length(); ++i) {
+            char c = rawInnerArgs[i];
+            char nextC = (i + 1 < rawInnerArgs.length()) ? rawInnerArgs[i + 1] : '\0';
+
+            if (inComment) {
+                if (c == '\n' || c == '\r') inComment = false;
+                continue;
+            }
+            if ((c == '/' && nextC == '/') || c == '#') {
+                inComment = true;
+                if (c == '/') i++;
+                continue;
+            }
+            outInnerArgs += c;
+        }
+
+        return true;
+    }
+
     //----
     template <typename TargetType, auto MacroName, FixedString<260> AbsoluteFile, int Line, int Column>
     struct EvalSyntaxShield {
@@ -319,23 +351,8 @@ namespace LivePT {
                 else {
                     // === ЧАСТЬ 1: РЕКУРСИВНЫЙ ПАРСЕР С АБСОЛЮТНЫМИ ОФСЕТАМИ ===
                     paramDesc[target_id].stringUpdater = [target_id](std::any& targetAny, const std::string& textValue) {
-                        size_t openBrace = textValue.find('{');
-                        size_t closeBrace = textValue.rfind('}');
-                        if (openBrace == std::string::npos || closeBrace == std::string::npos || closeBrace <= openBrace) return;
-
-                        std::string rawInnerArgs = textValue.substr(openBrace + 1, closeBrace - openBrace - 1);
-                        std::string innerArgs = "";
-                        bool inComment = false;
-
-                        for (size_t i = 0; i < rawInnerArgs.length(); ++i) {
-                            char c = rawInnerArgs[i];
-                            char nextC = (i + 1 < rawInnerArgs.length()) ? rawInnerArgs[i + 1] : '\0';
-                            if (inComment) { if (c == '\n' || c == '\r') inComment = false; continue; }
-                            if ((c == '/' && nextC == '/') || c == '#') { inComment = true; if (c == '/') i++; continue; }
-                            innerArgs += c;
-                        }
-
-                        
+                        std::string innerArgs;
+                        if (!LivePT::ExtractAndStripComments(textValue, innerArgs)) return;
 
                         std::function<void(char*, const std::string&, const std::string&, DWORD)> LocalWriteStructBytes =
                             [&](char* byteBase, const std::string& curTypeName, const std::string& curInnerText, DWORD absoluteBaseOffset) {
