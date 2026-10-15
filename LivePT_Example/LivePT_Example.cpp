@@ -259,8 +259,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         drawCounter = 0;
 
-        float x = eval(292.0f);
-        float y = eval(27.0f);
+        float x = eval(277.0f);
+        float y = eval(-6.0f);
 
         Draw({
             .pos = pos2{
@@ -281,8 +281,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         Draw({
             .pos = eval(pos2{
-				.x = -241.10f,
-				.y = -206.99f
+				.x = -240.10f,
+				.y = -220.99f
 				}
             ),
             .size = eval(size2{221.59f, 128.58f}),
@@ -300,8 +300,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         Draw(eval(Primitive{
             .pos = pos2{
-				.x = 193.31f,
-				.y = -511.23f
+				.x = 215.31f,
+				.y = -469.23f
 				},
             .size = size2{164.06f, rr},
             .Angle = angle(-18.5f),
@@ -315,14 +315,14 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         DrawLine({
             .points = eval(std::vector<HeavyPoint>{
-                    { true, pos2{-456.70f, 154.70f}, 58, 944, color3{239, 61, 125} },
+                    { true, pos2{-477.70f, 157.70f}, 58, 944, color3{239, 61, 125} },
                     { true, pos2{-261.80f, 319.80f}, 20, 956, color3{95, 35, 59} },
                     { true, pos2{-9.40f, 142.80f}, 21, 956, color3{75, 34, 99} },
                     { true, pos2{154.40f, 262.20f}, 19, 956, color3{73, 56, 158} },
                     { true, pos2{257.40f, 71.20f}, 19, 956, color3{72, 60, 125} },
                     { true, pos2{406.40f, 176.20f}, 30, 956, color3{60, 50, 120} },
                     { true, pos2{497.40f, 356.20f}, 15, 956, color3{103, 82, 183} },
-                    { true, pos2{297.40f, 518.20f}, 15, 956, color3{103, 82, 183} },
+                    { true, pos2{308.40f, 533.20f}, 15, 956, color3{103, 82, 183} },
                 })
             });
 
@@ -377,7 +377,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
     MSG msg = {};
 
-    DWORD lastUpdate = GetTickCount();
     while (true) {
 
         if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
@@ -386,11 +385,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             DispatchMessage(&msg);
         }
         else {
-            DWORD currentTick = GetTickCount();
-            if (currentTick - lastUpdate > 16) { // ~60 FPS update limit
-                lastUpdate = currentTick;
-                LivePT::ProcessEdit();// don't forget this call
-            }
+            LivePT::ProcessEdit();// don't forget this call
         }
     }
 

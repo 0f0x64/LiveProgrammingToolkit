@@ -104,6 +104,14 @@ namespace LivePT {
 
         if (!g_IsLptPdbWarmupCompleted) return;
 
+        static DWORD lastUpdate = 0;
+
+        DWORD currentTick = GetTickCount();
+        if (currentTick - lastUpdate < 16) { // ~60 FPS update limit
+            return;
+        }
+        lastUpdate = currentTick;
+
 #if LivePT_Mouse
         // 1. Выгружаем обычные мышиные буферы одиночных чисел
         InitPassiveOverlay();
