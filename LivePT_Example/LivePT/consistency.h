@@ -156,28 +156,126 @@ namespace LivePT {
                 continue;
             }
 
-            size_t lastValidMacroEndOffset = 0;
+            // Вырезаем \r для идеальной синхронности с рантайм-буфером VS
+            fileText.erase(std::remove(fileText.begin(), fileText.end(), L'\r'), fileText.end());
 
             for (auto& [staticKey, paramId] : fileMap) {
                 if (paramId < 0 || paramId >= static_cast<int>(params.size())) continue;
 
                 auto& p = params[paramId];
+                std::wstring wMacroName(p.macroName.begin(), p.macroName.end());
 
-                // [ИСПРАВЛЕНО]: Передаем p.macroName прямо из базы данных параметра!
-                PreciseCoord precise = FindEvalTokenBackward(fileText, filePath, staticKey.line, staticKey.column, p.macroName, lastValidMacroEndOffset);
+                // 1. Переходим к физической строке, которую передал компилятор (staticKey.line)
+                size_t lineStartOffset = 0;
+                long currentLineIdx = 1;
+                while (currentLineIdx < staticKey.line && lineStartOffset < fileText.length()) {
+                    size_t nextNL = fileText.find(L'\n', lineStartOffset);
+                    if (nextNL != std::wstring::npos) {
+                        lineStartOffset = nextNL + 1;
+                        currentLineIdx++;
+                    }
+                    else break;
+                }
 
-                if (precise.absoluteOffset != std::wstring::npos) {
-                    p.line = static_cast<int>(precise.line);
-                    p.column = static_cast<int>(precise.column);
+                size_t nextNL = fileText.find(L'\n', lineStartOffset);
+                if (nextNL == std::wstring::npos) nextNL = fileText.length();
+                std::wstring lineText = fileText.substr(lineStartOffset, nextNL - lineStartOffset);
+
+                // 2. Считаем индекс макроса на этой строке среди его соседей
+                int orderIndexOnLine = 0;
+                for (const auto& [subKey, subParamId] : fileMap) {
+                    if (subKey.line == staticKey.line && subKey.column < staticKey.column) {
+                        orderIndexOnLine++;
+                    }
+                }
+
+                // 3. Пробуем найти токен на текущей строке
+                size_t macroPosInLine = lineText.find(wMacroName);
+                int currentScanIndex = 0;
+
+                while (macroPosInLine != std::wstring::npos) {
+                    size_t absPos = lineStartOffset + macroPosInLine;
+                    bool validLeft = (absPos == 0 || (!iswalnum(fileText[absPos - 1]) && fileText[absPos - 1] != L'_'));
+                    bool validRight = (absPos + wMacroName.length() >= fileText.length() ||
+                        (!iswalnum(fileText[absPos + wMacroName.length()]) && fileText[absPos + wMacroName.length()] != L'_'));
+
+                    if (validLeft && validRight) {
+                        if (currentScanIndex == orderIndexOnLine) break;
+                        currentScanIndex++;
+                    }
+                    macroPosInLine = lineText.find(wMacroName, macroPosInLine + 1);
+                }
+
+                // 4. СКАНИРУЮЩИЙ НАЗАД ПОИСК ДЛЯ МНОГОСТРОЧНИКОВ:
+                // Если слово "eval" не нашлось на строке закрытия (как у .pos), мы идем по тексту 
+                // строго НАЗАД (вверх по файлу), чтобы найти истинное начало этого макроса!
+                size_t finalAbsoluteOffset = std::wstring::npos;
+
+                if (macroPosInLine != std::wstring::npos) {
+                    finalAbsoluteOffset = lineStartOffset + macroPosInLine;
+                }
+                else {
+                    size_t reverseSearchStart = nextNL;
+                    while (reverseSearchStart > 0) {
+                        size_t rfindPos = fileText.rfind(wMacroName, reverseSearchStart);
+                        if (rfindPos == std::wstring::npos) break;
+
+                        bool vL = (rfindPos == 0 || (!iswalnum(fileText[rfindPos - 1]) && fileText[rfindPos - 1] != L'_'));
+                        bool vR = (rfindPos + wMacroName.length() >= fileText.length() || (!iswalnum(fileText[rfindPos + wMacroName.length()]) && fileText[rfindPos + wMacroName.length()] != L'_'));
+
+                        if (vL && vR) {
+                            size_t openBrk = fileText.find(L'(', rfindPos + wMacroName.length());
+                            if (openBrk != std::wstring::npos) {
+                                size_t closeBrk = FindMacroCloseBracket(fileText, openBrk);
+                                if (closeBrk != std::wstring::npos && closeBrk >= lineStartOffset && closeBrk <= nextNL) {
+                                    finalAbsoluteOffset = rfindPos; // Нашли истинный старт многострочника
+                                    break;
+                                }
+                            }
+                        }
+                        if (rfindPos == 0) break;
+                        reverseSearchStart = rfindPos - 1;
+                    }
+                }
+
+                // 5. Пересчет и фиксация координат в params
+                if (finalAbsoluteOffset != std::wstring::npos) {
+                    long preciseLine = 1;
+                    size_t preciseLineStartOffset = 0;
+                    size_t scanOffset = 0;
+
+                    while (scanOffset < finalAbsoluteOffset) {
+                        size_t nextNLOffset = fileText.find(L'\n', scanOffset);
+                        if (nextNLOffset != std::wstring::npos && nextNLOffset < finalAbsoluteOffset) {
+                            preciseLine++;
+                            preciseLineStartOffset = nextNLOffset + 1;
+                            scanOffset = nextNLOffset + 1;
+                        }
+                        else break;
+                    }
+
+                    size_t nextLineEnd = fileText.find(L'\n', preciseLineStartOffset);
+                    if (nextLineEnd == std::wstring::npos) nextLineEnd = fileText.length();
+
+                    // ИСПРАВЛЕНО: берем подстроку от правильного точного смещения начала строки
+                    std::wstring preciseLineText = fileText.substr(preciseLineStartOffset, nextLineEnd - preciseLineStartOffset);
+
+                    size_t localIdx = finalAbsoluteOffset - preciseLineStartOffset;
+                    long preciseColumn = GetVisualColumn(preciseLineText, localIdx);
+
+                    p.line = static_cast<int>(preciseLine);
+                    p.column = static_cast<int>(preciseColumn);
                     p.loaded = true;
-
-                    // Конвертируем имя для вычисления длины
-                    std::wstring wMacroName(p.macroName.begin(), p.macroName.end());
-                    lastValidMacroEndOffset = precise.absoluteOffset + wMacroName.length();
+                }
+                else {
+                    p.line = static_cast<int>(staticKey.line);
+                    p.column = static_cast<int>(staticKey.column);
+                    p.loaded = true;
                 }
             }
         }
     }
+
 
     inline void ShiftDatabaseCoordinates(const std::string& targetFile, long targetLine, long visualStartCol, int lineDelta, int columnDelta) {
         // Если колоночный дельта пришел нулевым и строки не менялись, делать нечего
