@@ -4,6 +4,7 @@
 #define LivePT_WindowManagement true //auto split screen on single monitor
 #define LivePT_AppToSecondaryDisplay false //auto move your app to second monitor
 #define LivePT_TriggerButton VK_LBUTTON  // you can use VK_MBUTTON for alternative
+#define LivePT_ShowEditPointsInLog true  // you can use VK_MBUTTON for alternative
 
 // -------------------
 

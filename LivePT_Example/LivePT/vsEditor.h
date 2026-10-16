@@ -7,7 +7,7 @@ namespace LivePT {
     inline std::wstring DownloadCurrentLineText(IDispatch* pActiveDoc);
     inline size_t FindCloseBracket(const std::wstring& text, size_t openBracketPos);
 
-    std::string ConvertWStringToUtf8(const std::wstring& wstr) {
+    inline std::string ConvertWStringToUtf8(const std::wstring& wstr) {
 
         if (wstr.empty()) return "";
 
@@ -21,7 +21,7 @@ namespace LivePT {
         return str;
     }
 
-    HRESULT AutoWrap(int autoType, VARIANT* pvResult, IDispatch* pDisp, LPCOLESTR ptName, int cArgs...) {
+    inline HRESULT AutoWrap(int autoType, VARIANT* pvResult, IDispatch* pDisp, LPCOLESTR ptName, int cArgs...) {
 
         if (!pDisp) return E_FAIL;
 
@@ -66,7 +66,7 @@ namespace LivePT {
         return hr;
     }
 
-    std::wstring ToLower(std::wstring str) {
+    inline std::wstring ToLower(std::wstring str) {
 
         std::transform(str.begin(), str.end(), str.begin(), ::towlower);
         return str;
@@ -117,7 +117,7 @@ namespace LivePT {
         return studioPid;
     }
 
-    IDispatch* GetDTEByPid(DWORD targetPid) {
+    inline IDispatch* GetDTEByPid(DWORD targetPid) {
 
         IRunningObjectTable* pROT = nullptr;
         if (FAILED(GetRunningObjectTable(0, &pROT))) return nullptr;
@@ -160,7 +160,7 @@ namespace LivePT {
         return pTargetDTE;
     }
 
-    bool initVsEditor()
+    inline bool initVsEditor()
     {
         if (pDTE) return true;
 
@@ -177,7 +177,7 @@ namespace LivePT {
         return true;
     }
 
-    void ResetDTEConnection() {
+    inline void ResetDTEConnection() {
         if (pDTE) {
             pDTE->Release();
             pDTE = nullptr;
@@ -185,7 +185,7 @@ namespace LivePT {
         }
     }
 
-    void StartUndoTransaction(const std::wstring& name) {
+    inline void StartUndoTransaction(const std::wstring& name) {
 
         if (!pDTE) return;
 
@@ -201,7 +201,7 @@ namespace LivePT {
         }
     }
 
-    void EndUndoTransaction() {
+    inline void EndUndoTransaction() {
 
         if (!pDTE) return;
 
@@ -590,7 +590,7 @@ namespace LivePT {
     static long g_cachedEvalCol = -1;
     static std::wstring g_cachedEvalTextHash = L"";
 
-    std::string g_currentActiveFile = "";
+    static std::string g_currentActiveFile = "";
     //static long          g_lastLineCount = -1;
     //static size_t        g_lastLineLength = 0;
 

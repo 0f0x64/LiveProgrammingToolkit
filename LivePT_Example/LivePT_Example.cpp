@@ -264,8 +264,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         Draw({
             .pos = pos2{
-                .x = x,
-                .y = y
+                .x = 1,
+                .y = 1
                 }
             ,
             .size = eval(size2{222.59f, 128.58f}),

@@ -140,7 +140,7 @@ namespace LivePT {
     }
 
 
-    bool baseIsAligned = false;
+    static bool baseIsAligned = false;
 
     inline void AlignDatabaseFastFromDisk() {
         if (baseIsAligned) return;
@@ -148,6 +148,10 @@ namespace LivePT {
 
         auto& fileCompileTree = GetFileCompileTree();
         auto& params = LivePT::getParamDesc();
+
+        #if LivePT_ShowEditPointsInLog
+            Log("[LivePT] Editable points:");
+        #endif  
 
         for (auto& [filePath, fileMap] : fileCompileTree) {
             std::wstring fileText = ReadFileFromDisk(filePath);
@@ -270,6 +274,11 @@ namespace LivePT {
                     p.line = static_cast<int>(staticKey.line);
                     p.column = static_cast<int>(staticKey.column);
                 }
+
+                #if LivePT_ShowEditPointsInLog
+                    Log(filePath + "(" + std::to_string(p.line) + ")");
+                #endif
+
             }
         }
     }

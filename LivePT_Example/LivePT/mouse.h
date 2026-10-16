@@ -859,7 +859,7 @@ namespace LivePT {
     }
     
 
-    void WidgetBufferUpdate()
+    inline void WidgetBufferUpdate()
     {
         bool isTriggerButtonDown = (GetAsyncKeyState(LivePT_TriggerButton) & 0x8000) != 0;
         static bool s_WidgetTransactionActive = false;
