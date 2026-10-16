@@ -265,12 +265,10 @@ namespace LivePT {
 
                     p.line = static_cast<int>(preciseLine);
                     p.column = static_cast<int>(preciseColumn);
-                    p.loaded = true;
                 }
                 else {
                     p.line = static_cast<int>(staticKey.line);
                     p.column = static_cast<int>(staticKey.column);
-                    p.loaded = true;
                 }
             }
         }
