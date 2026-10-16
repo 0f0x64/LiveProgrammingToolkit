@@ -156,6 +156,65 @@ void DrawLine(LinePrimitive lp, std::source_location location = std::source_loca
     }
 }
 
+struct TestRect {
+    pos2 pos;
+    size2 size;
+    angle Angle;
+    color3 color;
+    bool fill;
+};
+
+
+void DrawTestRect(TestRect ref, std::source_location location = std::source_location::current()) {
+    // ¬с€ WinAPI отрисовка и логика оригинального Draw идет сюда
+    TestRect r = ref;
+
+    int posX = (gc.w / 2) + r.pos.x;
+    int posY = (gc.h / 2) + r.pos.y;
+
+    if (IsPrimitiveSelected(posX, posY, gc.hWnd)) {
+        LivePT::OpenFileAndMoveCursorToLocation(location);
+    }
+
+    BOOL highlight = LivePT::IsCursorInsideFunctionCall(location);
+
+    HBRUSH hBrush = r.fill ? CreateSolidBrush(RGB(r.color.r, r.color.g, r.color.b)) : (HBRUSH)GetStockObject(NULL_BRUSH);
+    HPEN hPen = CreatePen(PS_SOLID, highlight ? 4 : 2, RGB(r.color.r, r.color.g, r.color.b));
+
+    HBRUSH hOldBrush = (HBRUSH)SelectObject(gc.memDC, hBrush);
+    HPEN hOldPen = (HPEN)SelectObject(gc.memDC, hPen);
+
+    float radians = r.Angle * (3.14159265f / 180.0f);
+    float cosA = std::cos(radians);
+    float sinA = std::sin(radians);
+
+    XFORM xForm;
+    xForm.eM11 = cosA;  xForm.eM12 = sinA;
+    xForm.eM21 = -sinA; xForm.eM22 = cosA;
+    xForm.eDx = (float)posX;
+    xForm.eDy = (float)posY;
+
+    XFORM oldForm;
+    GetWorldTransform(gc.memDC, &oldForm);
+    SetWorldTransform(gc.memDC, &xForm);
+
+    Rectangle(gc.memDC, -r.size.w, -r.size.h, r.size.w, r.size.h);
+
+    SelectObject(gc.memDC, hOldBrush);
+    SelectObject(gc.memDC, hOldPen);
+    DeleteObject(hPen);
+    if (r.fill) DeleteObject(hBrush);
+
+    hBrush = highlight ? CreateSolidBrush(RGB(255, 255, 255)) : CreateSolidBrush(RGB(122, 122, 122));
+    hOldBrush = (HBRUSH)SelectObject(gc.memDC, hBrush);
+    Ellipse(gc.memDC, -12, -12, 12, 12);
+    SelectObject(gc.memDC, hOldBrush);
+    DeleteObject(hBrush);
+
+    SetWorldTransform(gc.memDC, &oldForm);
+    drawCounter++;
+}
+
 
 void Draw(Primitive p, std::source_location location = std::source_location::current()) {
 
@@ -259,8 +318,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         drawCounter = 0;
 
-        float x = eval(277.0f);
-        float y = eval(-6.0f);
+        float x = eval(292.0f);
+        float y = eval(-1.0f);
 
         Draw({
             .pos = pos2{
@@ -268,7 +327,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
                 .y = 1
                 }
             ,
-            .size = eval(size2{222.59f, 128.58f}),
+            .size = eval(size2{210.50f, 121.56f}),
             .Angle = eval(angle(110.6f)),
             .type = eval(ptype::box),
             .show = eval(true),
@@ -281,8 +340,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         Draw({
             .pos = eval(pos2{
-				.x = -240.10f,
-				.y = -220.99f
+				.x = -349.10f,
+				.y = -345.99f
 				}
             ),
             .size = eval(size2{221.59f, 128.58f}),
@@ -290,9 +349,9 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             .type = eval(ptype::box),
             .show = eval(true),
             .color = eval(color3{
-				.r=78, 
-				.g=84,  
-				.b=131
+				.r=66, 
+				.g=75,  
+				.b=138
 				})
             });
 
@@ -300,14 +359,14 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         Draw(eval(Primitive{
             .pos = pos2{
-				.x = 215.31f,
-				.y = -469.23f
+				.x = 239.31f,
+				.y = -451.24f
 				},
             .size = size2{164.06f, rr},
-            .Angle = angle(-18.5f),
+            .Angle = angle(-16.5f),
             .type = ptype::circle,
             .show = true,
-            .color = color3{35, 190, 93}
+            .color = color3{9, 148, 63}
             }));
 
 
@@ -315,16 +374,26 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         DrawLine({
             .points = eval(std::vector<HeavyPoint>{
-                    { true, pos2{-477.70f, 157.70f}, 58, 944, color3{239, 61, 125} },
+                    { true, pos2{-431.70f, 211.70f}, 58, 944, color3{239, 61, 125} },
                     { true, pos2{-261.80f, 319.80f}, 20, 956, color3{95, 35, 59} },
                     { true, pos2{-9.40f, 142.80f}, 21, 956, color3{75, 34, 99} },
                     { true, pos2{154.40f, 262.20f}, 19, 956, color3{73, 56, 158} },
                     { true, pos2{257.40f, 71.20f}, 19, 956, color3{72, 60, 125} },
                     { true, pos2{406.40f, 176.20f}, 30, 956, color3{60, 50, 120} },
                     { true, pos2{497.40f, 356.20f}, 15, 956, color3{103, 82, 183} },
-                    { true, pos2{308.40f, 533.20f}, 15, 956, color3{103, 82, 183} },
+                    { true, pos2{315.40f, 492.20f}, 15, 956, color3{103, 82, 183} },
                 })
             });
+
+
+        DrawTestRect({
+                .pos = pos2{.x = 150.0f, .y = -50.0f },
+                .size = size2{ 80.0f, 50.0f },
+                .Angle = angle(45.0f),
+                .color = color3{ 255, 128, 0 },
+                .fill = true
+            });
+
 
         BitBlt(hdc, 0, 0, w, h, memDC, 0, 0, SRCCOPY);
         SelectObject(memDC, oldBM);
