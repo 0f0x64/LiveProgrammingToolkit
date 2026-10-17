@@ -156,16 +156,17 @@ void DrawLine(LinePrimitive lp, std::source_location location = std::source_loca
     }
 }
 
-#define LPT_LIVE_FUNCTION(ReturnType, FuncName, StructType) \
-    ReturnType FuncName##_Live(StructType r, int runtimeId, std::source_location location); \
+#define LPT_LIVE_FUNCTION(ReturnType, FuncName, StructType, VarName) \
+    ReturnType FuncName##_Live(StructType VarName, int runtimeId, std::source_location location); \
+    \
     template <typename T = StructType> \
-    inline ReturnType FuncName(T&& r, const char* file = __builtin_FILE(), int line = __builtin_LINE(), int col = __builtin_COLUMN(), std::source_location loc = std::source_location::current()) { \
+    inline ReturnType FuncName(T&& raw_r, const char* file = __builtin_FILE(), int line = __builtin_LINE(), int col = __builtin_COLUMN(), std::source_location loc = std::source_location::current()) { \
         std::string absPath = LivePT::NormalizePath(file); \
-        int rId = LivePT::RegisterEvalPreMain(absPath.c_str(), #FuncName, std::any{ r }, line, col, LivePT::EnumTypeDesc{ false }); \
+        int rId = LivePT::RegisterEvalPreMain(absPath.c_str(), #FuncName, std::any{ raw_r }, line, col, LivePT::EnumTypeDesc{ false }); \
         \
-        /* √¿–¿Õ“»–”≈Ã »Õ»÷»¿À»«¿÷»ﬁ œ¿–—≈–¿ —“–” “”–€ ¡≈« Ã¿ –Œ—¿ EVAL */ \
+        /* »ÌËˆË‡ÎËÁËÛÂÏ Ô‡ÒÂ ÒÚÓÍ ÔË ÔÂ‚ÓÏ ‚˚ÁÓ‚Â */ \
         if (rId >= 0 && rId < static_cast<int>(LivePT::paramDesc.size()) && !LivePT::paramDesc[rId].loaded) { \
-            LivePT::paramDesc[rId].value = std::any{ static_cast<StructType>(r) }; \
+            LivePT::paramDesc[rId].value = std::any{ static_cast<StructType>(raw_r) }; \
             LivePT::paramDesc[rId].stringUpdater = [rId](std::any& targetAny, const std::string& textValue) { \
                 std::string innerArgs; \
                 size_t openBrace = textValue.find('{'); \
@@ -175,8 +176,7 @@ void DrawLine(LinePrimitive lp, std::source_location location = std::source_loca
                     innerArgs.reserve(rawInner.length()); \
                     bool inComment = false; \
                     for (size_t i = 0; i < rawInner.length(); ++i) { \
-                        char c = rawInner[i]; \
-                        char nextC = (i + 1 < rawInner.length()) ? rawInner[i + 1] : '\0'; \
+                        char c = rawInner[i]; char nextC = (i + 1 < rawInner.length()) ? rawInner[i + 1] : '\0'; \
                         if (inComment) { if (c == '\n' || c == '\r') inComment = false; continue; } \
                         if ((c == '/' && nextC == '/') || c == '#') { inComment = true; if (c == '/') i++; continue; } \
                         innerArgs += c; \
@@ -186,17 +186,13 @@ void DrawLine(LinePrimitive lp, std::source_location location = std::source_loca
                 } \
                 StructType* pStructInstance = std::any_cast<StructType>(&targetAny); \
                 if (!pStructInstance) return; \
-                char* byteBase = reinterpret_cast<char*>(pStructInstance); \
-                std::string mainTypeName = typeid(StructType).name(); \
-                if (mainTypeName.rfind("struct ", 0) == 0) mainTypeName.erase(0, 7); \
-                if (mainTypeName.rfind("class ", 0) == 0) mainTypeName.erase(0, 6); \
-                LivePT::WriteStructBytes(byteBase, mainTypeName, innerArgs, 0, rId, sizeof(StructType)); \
+                LivePT::WriteStructBytes(reinterpret_cast<char*>(pStructInstance), typeid(StructType).name(), innerArgs, 0, rId, sizeof(StructType)); \
             }; \
             LivePT::paramDesc[rId].loaded = true; \
         } \
         \
-        /* ¿¬“ŒÃ¿“»◊≈— »… œ–Œ¡–Œ— »«  ›ÿ¿ ¬ œ≈–≈Ã≈ÕÕ”ﬁ 'RAW_R' œ≈–≈ƒ ¬€«Œ¬ŒÃ */ \
-        StructType live_r = std::forward<T>(r); \
+        /* œÓ·‡Ò˚‚‡ÂÏ ËÁÏÂÌÂÌÌ˚Â ‰‡ÌÌ˚Â ËÁ ·‡Á˚ LivePT ‚ ÎÓÍ‡Î¸ÌÛ˛ ÔÂÂÏÂÌÌÛ˛ */ \
+        StructType live_r = std::forward<T>(raw_r); \
         if (rId >= 0 && rId < static_cast<int>(LivePT::paramDesc.size())) { \
             std::string actualKey = absPath + ":" + std::to_string(LivePT::paramDesc[rId].counterID); \
             int real_id = LivePT::getID(actualKey); \
@@ -216,7 +212,7 @@ void DrawLine(LinePrimitive lp, std::source_location location = std::source_loca
         } \
         return FuncName##_Live(std::move(live_r), rId, loc); \
     } \
-    ReturnType FuncName##_Live(StructType r, int runtimeId, std::source_location location)
+    ReturnType FuncName##_Live(StructType VarName, int runtimeId, std::source_location location)
 
 
 struct TestRect {
@@ -228,10 +224,10 @@ struct TestRect {
 };
 
 
-LPT_LIVE_FUNCTION(void, DrawTestRect, TestRect) {
+LPT_LIVE_FUNCTION(void, DrawTestRect, TestRect, in) {
  
-    int posX = (gc.w / 2) + r.pos.x;
-    int posY = (gc.h / 2) + r.pos.y;
+    int posX = (gc.w / 2) + in.pos.x;
+    int posY = (gc.h / 2) + in.pos.y;
     if (IsPrimitiveSelected(posX, posY, gc.hWnd)) {
         LivePT::OpenFileAndMoveCursorToLocation(location);
     }
@@ -239,13 +235,13 @@ LPT_LIVE_FUNCTION(void, DrawTestRect, TestRect) {
 
     BOOL highlight = LivePT::IsCursorInsideFunctionCall(location);
 
-    HBRUSH hBrush = r.fill ? CreateSolidBrush(RGB(r.color.r, r.color.g, r.color.b)) : (HBRUSH)GetStockObject(NULL_BRUSH);
-    HPEN hPen = CreatePen(PS_SOLID, highlight ? 4 : 2, RGB(r.color.r, r.color.g, r.color.b));
+    HBRUSH hBrush = in.fill ? CreateSolidBrush(RGB(in.color.r, in.color.g, in.color.b)) : (HBRUSH)GetStockObject(NULL_BRUSH);
+    HPEN hPen = CreatePen(PS_SOLID, highlight ? 4 : 2, RGB(in.color.r, in.color.g, in.color.b));
 
     HBRUSH hOldBrush = (HBRUSH)SelectObject(gc.memDC, hBrush);
     HPEN hOldPen = (HPEN)SelectObject(gc.memDC, hPen);
 
-    float radians = r.Angle * (3.14159265f / 180.0f);
+    float radians = in.Angle * (3.14159265f / 180.0f);
     float cosA = std::cos(radians);
     float sinA = std::sin(radians);
 
@@ -259,12 +255,12 @@ LPT_LIVE_FUNCTION(void, DrawTestRect, TestRect) {
     GetWorldTransform(gc.memDC, &oldForm);
     SetWorldTransform(gc.memDC, &xForm);
 
-    Rectangle(gc.memDC, -r.size.w, -r.size.h, r.size.w, r.size.h);
+    Rectangle(gc.memDC, -in.size.w, -in.size.h, in.size.w, in.size.h);
 
     SelectObject(gc.memDC, hOldBrush);
     SelectObject(gc.memDC, hOldPen);
     DeleteObject(hPen);
-    if (r.fill) DeleteObject(hBrush);
+    if (in.fill) DeleteObject(hBrush);
 
     hBrush = highlight ? CreateSolidBrush(RGB(255, 255, 255)) : CreateSolidBrush(RGB(122, 122, 122));
     hOldBrush = (HBRUSH)SelectObject(gc.memDC, hBrush);
@@ -384,8 +380,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         Draw({
             .pos = pos2{
-                .x = -55.00f,
-                .y = -133.00f
+                .x = -15.00f,
+                .y = -152.00f
                 }
             ,
             .size = eval(size2{210.50f, 121.56f}),
@@ -393,16 +389,16 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             .type = eval(ptype::box),
             .show = eval(true),
             .color = eval(color3{
-        .r = 131,
-        .g = 52,
-        .b = 60
-        })
+                            .r = 131,
+                            .g = 52,
+                            .b = 60
+                            })
             });
 
         Draw({
             .pos = eval(pos2{
-				.x = -289.10f,
-				.y = -335.99f
+				.x = -361.10f,
+				.y = -332.99f
 				}
             ),
             .size = eval(size2{221.59f, 128.58f}),
@@ -420,42 +416,33 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         Draw(eval(Primitive{
             .pos = pos2{
-				.x = 273.31f,
-				.y = -444.24f
+				.x = 319.31f,
+				.y = -475.24f
 				},
-            .size = size2{211.06f, rr},
-            .Angle = angle(-13.5f),
+            .size = size2{156.06f, rr},
+            .Angle = angle(-39.5f),
             .type = ptype::circle,
             .show = true,
             .color = color3{0, 172, 50}
             }));
 
-
-
-
         DrawLine({
             .points = eval(std::vector<HeavyPoint>{
-                    { true, pos2{-430.70f, 223.70f}, 58, 944, color3{239, 61, 125} },
+                    { true, pos2{-467.70f, 214.70f}, 58, 944, color3{239, 61, 125} },
                     { true, pos2{-261.80f, 319.80f}, 20, 956, color3{95, 35, 59} },
                     { true, pos2{-9.40f, 142.80f}, 21, 956, color3{75, 34, 99} },
                     { true, pos2{154.40f, 262.20f}, 19, 956, color3{73, 56, 158} },
                     { true, pos2{257.40f, 71.20f}, 19, 956, color3{72, 60, 125} },
                     { true, pos2{406.40f, 176.20f}, 30, 956, color3{60, 50, 120} },
                     { true, pos2{497.40f, 356.20f}, 15, 956, color3{103, 82, 183} },
-                    { true, pos2{409.40f, 506.20f}, 15, 956, color3{103, 82, 183} },
+                    { true, pos2{277.40f, 534.20f}, 15, 956, color3{103, 82, 183} },
                 })
             });
 
-
-
-
-
-
-
         DrawTestRect({
                 .pos = pos2{
-				    .x = 372.00f,
-				    .y = -151.13f
+				    .x = 328.00f,
+				    .y = -51.13f
 				    },
                 .size = size2{86.33f, 113.94f},
                 .Angle = angle(45.0f),
@@ -465,8 +452,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         DrawTestRect({
                 .pos = pos2{
-                    .x = -190.00f,
-                    .y = 78.87f
+                    .x = -297.00f,
+                    .y = 55.87f
                     },
                 .size = size2{80.81f, 50.47f},
                 .Angle = angle(45.0f),
