@@ -538,21 +538,22 @@ namespace LivePT {
 
 
     inline void DragProportionalStructValue(const POINT& pt, bool ctrl, bool shift) {
-        int id = g_dragState.targetParamId;
-        if (id == -1) return;
-
+        // ЧЕСТНАЯ АВТОНОМНОСТЬ: Убираем проверку targetParamId == -1
         auto& registry = LivePT::GetCustomDragRegistry();
+
+        // Ищем коллбэк драга по чистому текстовому имени типа, сохраненному при старте
         auto it = registry.find(g_dragState.oldValueStr);
         if (it == registry.end()) return;
 
-        LivePT::CustomTypeDragCallback typeCallback = it->second;
+        CustomTypeDragCallback typeCallback = it->second;
 
-        LivePT::DragMathInput input;
+        DragMathInput input;
         input.mouseFrameDeltaX = pt.x - g_dragState.lockMousePos.x;
         input.mouseFrameDeltaY = -(pt.y - g_dragState.lockMousePos.y);
         input.ctrl = ctrl;
         input.shift = shift;
 
+        // Вызываем пользовательский коллбэк (например, DrugLogic::pos2Drag или color3Drag)
         std::string updatedArgsText = typeCallback(g_dragState.startTextValue, input);
 
         if (updatedArgsText != g_dragState.startTextValue) {
@@ -562,14 +563,11 @@ namespace LivePT {
             }
 
             if (pWidgetStartEditPoint && pWidgetEndEditPoint) {
-
                 CComVariant pSafeStartPoint;
                 HRESULT hr = AutoWrap(DISPATCH_METHOD, &pSafeStartPoint, pWidgetStartEditPoint, L"CreateEditPoint", 0);
 
                 if (SUCCEEDED(hr) && pSafeStartPoint.vt == VT_DISPATCH && pSafeStartPoint.pdispVal) {
-
-                    // ХИРУРГИЧЕСКАЯ ЗАЩИТА: Делаем шаг на 1 символ вправо у временной точки,
-                    // чтобы уйти внутрь открывающей скобки и не затереть её (как в логике ProcessEdit!)
+                    // Сдвигаемся внутрь открывающей скобки, чтобы не затереть её
                     AutoWrap(DISPATCH_METHOD, NULL, pSafeStartPoint.pdispVal, L"CharRight", 1, CComVariant(1L));
 
                     updatedArgsText = LivePT::NormalizeTextEndings(updatedArgsText, g_currentFileFullText);
@@ -577,6 +575,7 @@ namespace LivePT {
                     std::wstring wText(updatedArgsText.begin(), updatedArgsText.end());
                     CComBSTR bstrText(wText.c_str());
 
+                    // Прямая замена текста в буфере VS через EditPoints
                     AutoWrap(DISPATCH_METHOD, NULL, pSafeStartPoint.pdispVal, L"ReplaceText", 3,
                         CComVariant(pWidgetEndEditPoint),
                         CComVariant(bstrText),
@@ -588,7 +587,6 @@ namespace LivePT {
             g_dragState.startTextValue = updatedArgsText;
         }
     }
-
 
 
     inline long AdjustCursorIndexForNumericContext(const std::wstring& lineText, long originalVisualColumn) {
@@ -955,7 +953,7 @@ namespace LivePT {
     inline bool ExtractStructBoundaries(const std::wstring& fileText, const std::wstring& lineText, long line, long targetCharIdx, std::string& outInnerArgsA, long& outVisualStartCol, std::string& outTypeNameA) {
         if (fileText.empty() || lineText.empty()) return false;
 
-        // 1. Вырезаем имя типа из текущей строки
+        // 1. Вырезаем имя типа из текущей строки (например, "pos2")
         long tokenStart = targetCharIdx; long tokenEnd = targetCharIdx;
         while (tokenStart > 0 && iswalnum(lineText[tokenStart - 1])) tokenStart--;
         while (tokenEnd < static_cast<long>(lineText.length()) && iswalnum(lineText[tokenEnd])) tokenEnd++;
@@ -964,7 +962,7 @@ namespace LivePT {
         std::wstring typeNameW = lineText.substr(tokenStart, tokenEnd - tokenStart);
         outTypeNameA = std::string(typeNameW.begin(), typeNameW.end());
 
-        // 2. Находим абсолютное смещение конца имени типа в файле
+        // 2. Находим абсолютное смещение начала и конца строки в файле
         size_t lineStartOffset = 0; long currentLineIdx = 1;
         while (currentLineIdx < line && lineStartOffset < fileText.length()) {
             size_t nextNL = fileText.find(L'\n', lineStartOffset);
@@ -973,16 +971,18 @@ namespace LivePT {
         }
         size_t absoluteTokenEndOffset = lineStartOffset + tokenEnd;
 
-        // 3. Сканируем скобки вправо с защитой многострочников
+        // 3. АВТОНОМНЫЙ ПОИСК СКОБОК СТРУКТУРЫ: сканируем текст вперед от имени типа
         size_t globalOpenIdx = std::wstring::npos;
         wchar_t openChar = L'\0'; wchar_t closeChar = L'\0';
         for (size_t k = absoluteTokenEndOffset; k < fileText.length(); ++k) {
             if (fileText[k] == L'{') { openChar = L'{'; closeChar = L'}'; globalOpenIdx = k; break; }
             if (fileText[k] == L'(') { openChar = L'('; closeChar = L')'; globalOpenIdx = k; break; }
-            if (!iswspace(fileText[k])) break;
+            // Если встретили не пробельный символ до скобки (например, имя другой функции) — это не наш тип
+            if (!iswspace(fileText[k]) && fileText[k] != L'.') break;
         }
         if (globalOpenIdx == std::wstring::npos) return false;
 
+        // Честно считаем баланс вложенности скобок
         size_t globalCloseIdx = std::wstring::npos;
         int bracketCount = 1;
         for (size_t k = globalOpenIdx + 1; k < fileText.length(); ++k) {
@@ -994,10 +994,10 @@ namespace LivePT {
         }
         if (globalCloseIdx == std::wstring::npos) return false;
 
-        // 4. Вычисляем строки и офсеты для COM EditPoints с учетом CRLF защиты
+        // 4. ГЕНЕРАЦИЯ И ЗАЩИТА РОДНЫХ COM EDITPOINTS ДЛЯ VISUAL STUDIO
         long startLine = line; size_t lastNL_start = lineStartOffset;
         size_t scanNL_start = fileText.find(L'\n', lineStartOffset);
-        long startCrCount = 0; // Считаем \r до открывающей скобки
+        long startCrCount = 0;
 
         while (scanNL_start != std::wstring::npos && scanNL_start < globalOpenIdx) {
             startLine++; lastNL_start = scanNL_start + 1;
@@ -1006,12 +1006,11 @@ namespace LivePT {
         for (size_t i = lastNL_start; i < globalOpenIdx; ++i) {
             if (fileText[i] == L'\r') startCrCount++;
         }
-        // Вычитаем startCrCount, так как VS не считает \r частью LineCharOffset
         long startOffset = static_cast<long>(globalOpenIdx - lastNL_start) - startCrCount + 1;
 
         long closeLine = line; size_t lastNL_end = lineStartOffset;
         size_t scanNL_end = fileText.find(L'\n', lineStartOffset);
-        long closeCrCount = 0; // Считаем \r до закрывающей скобки
+        long closeCrCount = 0;
 
         while (scanNL_end != std::wstring::npos && scanNL_end < globalCloseIdx) {
             closeLine++; lastNL_end = scanNL_end + 1;
@@ -1022,7 +1021,7 @@ namespace LivePT {
         }
         long closeOffset = static_cast<long>(globalCloseIdx - lastNL_end) - closeCrCount + 1;
 
-        // Пересоздаем глобальные COM-якоря
+        // Пересоздаем и привязываем глобальные COM-маркеры правок к границам текста внутри скобок
         if (pWidgetStartEditPoint) { pWidgetStartEditPoint->Release(); pWidgetStartEditPoint = nullptr; }
         if (pWidgetEndEditPoint) { pWidgetEndEditPoint->Release(); pWidgetEndEditPoint = nullptr; }
 
@@ -1064,63 +1063,53 @@ namespace LivePT {
         std::string innerArgsA, typeNameA;
         long visualStartCol = 0;
 
+        // Вырезаем границы скобок автономно по тексту
         if (!ExtractStructBoundaries(fileText, lineText, line, targetCharIdx, innerArgsA, visualStartCol, typeNameA)) {
             return false;
         }
 
-        // === УМНЫЙ ЛЕКСИЧЕСКИЙ ФИЛЬТР ДЛЯ СМЕШАННОГО СОДЕРЖИМОГО (ДРАГ) ===
+        // Фильтр переменных (ваша оригинальная защита кода)
         {
             bool hasAlphaVariables = false;
-            // Итерируемся по строке аргументов, чтобы найти изолированные переменные типа 'x'
             for (size_t i = 0; i < innerArgsA.length(); ++i) {
                 char c = innerArgsA[i];
                 if (std::isalpha(static_cast<unsigned char>(c))) {
-                    // Игнорируем признаки float-констант 'f'/'F'
                     if (c == 'f' || c == 'F') continue;
-
-                    // Проверяем контекст: не является ли это полем C++20 (например, .x = ...)
                     bool isDesignatedInitializer = false;
-
-                    // Проверяем налево: нет ли там точки?
                     size_t left = i;
                     while (left > 0) {
                         left--;
                         if (innerArgsA[left] == '.') { isDesignatedInitializer = true; break; }
                         if (!std::isspace(static_cast<unsigned char>(innerArgsA[left]))) break;
                     }
-
-                    // Проверяем направо: нет ли там знака равенства '='?
                     size_t right = i;
                     while (right < innerArgsA.length() - 1) {
                         right++;
                         if (innerArgsA[right] == '=') { isDesignatedInitializer = true; break; }
                         if (!std::isspace(static_cast<unsigned char>(innerArgsA[right]))) break;
                     }
-
-                    if (!isDesignatedInitializer) {
-                        hasAlphaVariables = true; // Нашли чистую переменную типа 'x'!
-                        break;
-                    }
+                    if (!isDesignatedInitializer) { hasAlphaVariables = true; break; }
                 }
             }
-
-            if (hasAlphaVariables) {
-                return false; // Блокируем драг только для реальных переменных, защищая рантайм-динамику
-            }
+            if (hasAlphaVariables) return false;
         }
 
+        // Проверяем наличие обработчика в текстовом реестре драга
         auto& dragRegistry = GetCustomDragRegistry();
         if (dragRegistry.find(typeNameA) == dragRegistry.end()) return false;
 
+        // Заполняем параметры сессии
         g_dragState.dragLine = line;
         g_dragState.dragStartCol = visualStartCol;
         g_dragState.currentTextLength = innerArgsA.length();
-        g_dragState.oldValueStr = typeNameA;
+        g_dragState.oldValueStr = typeNameA;  // Имя типа для покадрового поиска коллбэка
         g_dragState.startTextValue = innerArgsA;
         g_dragState.oldMouseX = pt.x;
         g_dragState.oldMouseY = pt.y;
         g_dragState.lockMousePos = pt;
-        g_dragState.isDragging = false;
+
+        g_dragState.targetParamId = -1; // Полная независимость от Pre-Main базы
+        g_dragState.isDragging = true;  // Активируем оба флага, чтобы удовлетворить оригинальный Update()
         g_dragState.isProportionalStructDrag = true;
 
         StartUndoTransaction(L"LivePT Proportional Struct Drag");
@@ -1129,9 +1118,6 @@ namespace LivePT {
             ShowCursor(FALSE);
             g_dragState.isCursorHidden = true;
         }
-
-        std::string normalizedPath = LivePT::NormalizePath(g_currentActiveFile.c_str());
-        g_dragState.targetParamId = FindParamIdByStrictGeometry(normalizedPath, line, column);
 
         return true;
     }
@@ -1426,6 +1412,9 @@ namespace LivePT {
         g_dragState.isProportionalStructDrag = false;
         g_dragState.targetParamId = -1;
         g_dragState.originalStructValues.clear();
+
+        g_OverlayShow = false;
+        g_OverlayText = "";
 
         if (g_hShieldWnd) {
             ReleaseCapture();

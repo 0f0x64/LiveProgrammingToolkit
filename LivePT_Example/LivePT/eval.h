@@ -605,9 +605,44 @@ namespace LivePT {
                 }
                 else {
                     // === ЧАСТЬ 1: ОЧИЩЕННЫЙ РЕКУРСИВНЫЙ ПАРСЕР СТРУКТУР ===
+// Найти в файле eval.h внутри EvalSyntaxShield::Get 
+// блок "=== ЧАСТЬ 1: ОЧИЩЕННЫЙ РЕКУРСИВНЫЙ ПАРСЕР СТРУКТУР ===" 
+// и заменить лямбду stringUpdater на эту:
+
                     paramDesc[target_id].stringUpdater = [target_id](std::any& targetAny, const std::string& textValue) {
                         std::string innerArgs;
-                        if (!LivePT::ExtractAndStripComments(textValue, innerArgs)) return;
+
+                        // Новая логика: ищем самую первую открывающую фигурную скобку '{' 
+                        // во всей строке вызова функции (например, "DrawTestRect({ .pos = ... })")
+                        size_t openBrace = textValue.find('{');
+                        size_t closeBrace = textValue.rfind('}');
+
+                        if (openBrace != std::string::npos && closeBrace != std::string::npos && closeBrace > openBrace) {
+                            // Извлекаем только то, что находится внутри корневых фигурных скобок
+                            std::string rawInner = textValue.substr(openBrace + 1, closeBrace - openBrace - 1);
+
+                            // Очищаем от однострочных комментариев и символов '#'
+                            innerArgs.reserve(rawInner.length());
+                            bool inComment = false;
+                            for (size_t i = 0; i < rawInner.length(); ++i) {
+                                char c = rawInner[i];
+                                char nextC = (i + 1 < rawInner.length()) ? rawInner[i + 1] : '\0';
+                                if (inComment) {
+                                    if (c == '\n' || c == '\r') inComment = false;
+                                    continue;
+                                }
+                                if ((c == '/' && nextC == '/') || c == '#') {
+                                    inComment = true;
+                                    if (c == '/') i++;
+                                    continue;
+                                }
+                                innerArgs += c;
+                            }
+                        }
+                        else {
+                            // Резервный вариант на случай круглых скобок
+                            if (!LivePT::ExtractAndStripComments(textValue, innerArgs)) return;
+                        }
 
                         TargetType* pStructInstance = std::any_cast<TargetType>(&targetAny);
                         if (!pStructInstance) return;
@@ -619,9 +654,10 @@ namespace LivePT {
 
                         size_t structTotalSize = sizeof(TargetType);
 
-                        // Перенаправляем выполнение в чистую вынесенную функцию
+                        // Запускаем ваш побайтовый движок LivePT
                         WriteStructBytes(byteBase, mainTypeName, innerArgs, 0, target_id, structTotalSize);
-                    };
+                        };
+
                 }
                 paramDesc[target_id].loaded = true;
             }
@@ -842,6 +878,63 @@ namespace LivePT {
         }
     };
 
+
+
+    // 2. Шаблонный триггер для форсирования выполнения кода ДО main()
+    template <auto FunctionNameStr, auto AbsoluteFileStr, int Line, int Column, typename T>
+    struct RuntimeFunctionRegistry {
+        static inline const int cached_id = []() {
+            // Вызываем ваш оригинальныйRegisterEvalPreMain из source: 4
+            // В качестве macroName передается имя целевой функции (например, "Draw")
+            if constexpr (std::is_enum_v<T>) {
+                return RegisterEvalPreMain(AbsoluteFileStr.c_str(), FunctionNameStr.c_str(), std::any{ static_cast<int>(T{}) }, Line, Column, EnumTypeDesc{ .isEnum = true });
+            }
+            else {
+                if constexpr (std::is_default_constructible_v<T>) {
+                    return RegisterEvalPreMain(AbsoluteFileStr.c_str(), FunctionNameStr.c_str(), std::any{ T{} }, Line, Column, EnumTypeDesc{ false });
+                }
+                else {
+                    return RegisterEvalPreMain(AbsoluteFileStr.c_str(), FunctionNameStr.c_str(), std::any{}, Line, Column, EnumTypeDesc{ false });
+                }
+            }
+            }();
+    };
+
+    // 3. Умный безмакросный прокси-контейнер для параметров функций
+        // 3. Умный безмакросный прокси-контейнер для параметров функций
+    template <typename T>
+    struct LiveRef {
+        T value;
+        int runtimeId = -1;
+
+        // Перехват Lvalue (переменные, ссылки)
+        template <size_t N, size_t M>
+        constexpr LiveRef(
+            const T& val,
+            const char(&fnName)[N] = __builtin_FUNCTION(),
+            const char(&fileName)[M] = __builtin_FILE(),
+            int line = __builtin_LINE(),
+            int column = __builtin_COLUMN()
+        ) : value(val) {
+            constexpr auto staticFn = FixedString(fnName);
+            constexpr auto staticFile = FixedString(fileName);
+            runtimeId = RuntimeFunctionRegistry<staticFn, staticFile, line, column, T>::cached_id;
+        }
+
+        // Перехват Rvalue (временные объекты, литералы, агрегатная инициализация {...})
+        template <size_t N, size_t M>
+        constexpr LiveRef(
+            T&& val,
+            const char(&fnName)[N] = __builtin_FUNCTION(),
+            const char(&fileName)[M] = __builtin_FILE(),
+            int line = __builtin_LINE(),
+            int column = __builtin_COLUMN()
+        ) : value(std::move(val)) {
+            constexpr auto staticFn = FixedString(fnName);
+            constexpr auto staticFile = FixedString(fileName);
+            runtimeId = RuntimeFunctionRegistry<staticFn, staticFile, line, column, T>::cached_id;
+        }
+    };
 
 
     }

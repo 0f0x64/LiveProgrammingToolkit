@@ -902,7 +902,18 @@ namespace LivePT {
         size_t scanOffset = (nextLineNL != std::wstring::npos) ? nextLineNL : g_currentFileFullText.length();
 
         // Ищем начало вызова Draw назад от курсора
-        size_t drawOffset = g_currentFileFullText.rfind(L"Draw", scanOffset);
+        auto& params = LivePT::getParamDesc();
+        // Нам нужно вытащить имя макроса (функции) для текущей точки
+        std::string targetFuncName = ""; // дефолт для обратной совместимости
+        for (const auto& p : params) {
+            if (static_cast<long>(location.line()) == p.line && p.fileName == activeFile) {
+                targetFuncName = p.macroName;
+                break;
+            }
+        }
+        std::wstring wFuncName(targetFuncName.begin(), targetFuncName.end());
+        size_t drawOffset = g_currentFileFullText.rfind(wFuncName, scanOffset);
+        ;
         if (drawOffset != std::wstring::npos) {
 
             long foundStartLine = 1;
