@@ -770,18 +770,43 @@ namespace LivePT {
 
   
     inline void OpenFileAndMoveCursorToLocation(const std::source_location& location) {
-        if (!LivePT::initVsEditor() || !LivePT::pDTE) {
-            return;
-        }
+        if (!LivePT::initVsEditor() || !LivePT::pDTE) return;
 
         std::string rawPath = location.file_name();
-        std::wstring wRawPath(rawPath.begin(), rawPath.end());
-        long targetLine = static_cast<long>(location.line());
+        std::string normalizedPath = LivePT::NormalizePath(rawPath.c_str());
+        long staticLine = static_cast<long>(location.line());
+        long staticColumn = static_cast<long>(location.column());
 
+        // СТРОГИЙ ЛУКАП: Ищем точное совпадение скомпилированной Live-функции
+        auto& fileCompileTree = GetFileCompileTree();
+        auto itFile = fileCompileTree.find(normalizedPath);
+        if (itFile == fileCompileTree.end()) return; // Незарегана — выходим!
+
+        StaticOrderKey staticKey{ static_cast<int>(staticLine), static_cast<int>(staticColumn) };
+        auto itParam = itFile->second.find(staticKey);
+        if (itParam == itFile->second.end()) return; // Незарегана — выходим!
+
+        int baseParamId = itParam->second;
+        auto& params = LivePT::getParamDesc();
+        if (baseParamId < 0 || baseParamId >= static_cast<int>(params.size())) return;
+
+        // ВТОРОЙ ЛУКАП: Находим динамический живой ID
+        unsigned int counterID = params[baseParamId].counterID;
+        std::string vsLookupKey = normalizedPath + ":" + std::to_string(counterID);
+        int realParamId = LivePT::getID(vsLookupKey);
+        if (realParamId < 0 || realParamId >= static_cast<int>(params.size())) realParamId = baseParamId;
+
+        // БЕРЕМ ИДЕАЛЬНО СДВИГНУТЫЕ КООРДИНАТЫ ИЗ БАЗЫ
+        const auto& liveParam = params[realParamId];
+        long targetLine = static_cast<long>(liveParam.line);
+        long targetCol = static_cast<long>(liveParam.column);
+
+        std::wstring wTargetDocPath(liveParam.fileName.begin(), liveParam.fileName.end());
         wchar_t absoluteBuffer[MAX_PATH] = { 0 };
-        GetFullPathNameW(wRawPath.c_str(), MAX_PATH, absoluteBuffer, nullptr);
-        std::wstring wTargetDocPath = absoluteBuffer;
+        GetFullPathNameW(wTargetDocPath.c_str(), MAX_PATH, absoluteBuffer, nullptr);
+        wTargetDocPath = absoluteBuffer;
 
+        // --- Фокусировка окна Visual Studio ---
         HWND hVSMainWnd = NULL;
         CComVariant vtMainWindow;
         if (SUCCEEDED(LivePT::AutoWrap(DISPATCH_PROPERTYGET, &vtMainWindow, LivePT::pDTE, L"MainWindow", 0)) && vtMainWindow.pdispVal) {
@@ -790,168 +815,158 @@ namespace LivePT {
                 hVSMainWnd = (HWND)(ULONG_PTR)vtHWnd.lVal;
             }
         }
-
         if (hVSMainWnd && ::IsWindow(hVSMainWnd)) {
             ::ReleaseCapture();
-
             DWORD gameThreadId = ::GetCurrentThreadId();
             DWORD vsThreadId = ::GetWindowThreadProcessId(hVSMainWnd, NULL);
-
-            if (gameThreadId != vsThreadId) {
-                ::AttachThreadInput(gameThreadId, vsThreadId, TRUE);
-            }
-
+            if (gameThreadId != vsThreadId) ::AttachThreadInput(gameThreadId, vsThreadId, TRUE);
             ::ShowWindow(hVSMainWnd, SW_SHOW);
             ::SetForegroundWindow(hVSMainWnd);
             ::SetFocus(hVSMainWnd);
-
-            if (gameThreadId != vsThreadId) {
-                ::AttachThreadInput(gameThreadId, vsThreadId, FALSE);
-            }
-
+            if (gameThreadId != vsThreadId) ::AttachThreadInput(gameThreadId, vsThreadId, FALSE);
         }
 
+        // --- Открытие документа через EnvDTE ---
         CComVariant vtItemOperations;
-        HRESULT hr = LivePT::AutoWrap(DISPATCH_PROPERTYGET, &vtItemOperations, LivePT::pDTE, L"ItemOperations", 0);
-        if (FAILED(hr) || !vtItemOperations.pdispVal) return;
+        if (FAILED(LivePT::AutoWrap(DISPATCH_PROPERTYGET, &vtItemOperations, LivePT::pDTE, L"ItemOperations", 0)) || !vtItemOperations.pdispVal) return;
 
         CComBSTR bstrPath(wTargetDocPath.c_str());
-        CComBSTR bstrKind(L"{00000000-0000-0000-0000-000000000000}"); // vsViewKindPrimary
+        CComBSTR bstrKind(L"{00000000-0000-0000-0000-000000000000}");
         CComVariant vtTargetWindow;
-
-        // ИСПРАВЛЕН ПОРЯДОК: Сначала передаем FileName (bstrPath), затем ViewKind (bstrKind)
-        // Внутри вашей AutoWrap они перевернутся в (bstrKind, bstrPath), как и требует COM Invoke!
-        hr = LivePT::AutoWrap(DISPATCH_METHOD, &vtTargetWindow, vtItemOperations.pdispVal, L"OpenFile", 2,
-            CComVariant(bstrPath),
-            CComVariant(bstrKind));
-
-        if (FAILED(hr) || !vtTargetWindow.pdispVal) {
-            //LivePT::Log("OpenFileAndMoveCursorToLocation: ItemOperations->OpenFile failed due to bad late binding order.");
-            return;
-        }
+        if (FAILED(LivePT::AutoWrap(DISPATCH_METHOD, &vtTargetWindow, vtItemOperations.pdispVal, L"OpenFile", 2, CComVariant(bstrPath), CComVariant(bstrKind))) || !vtTargetWindow.pdispVal) return;
 
         LivePT::AutoWrap(DISPATCH_METHOD, NULL, vtTargetWindow.pdispVal, L"Activate", 0);
-
+        HRESULT hr;
         CComVariant vtSelection;
-        hr = LivePT::AutoWrap(DISPATCH_PROPERTYGET, &vtSelection, vtTargetWindow.pdispVal, L"Selection", 0);
-
-        if (SUCCEEDED(hr) && vtSelection.vt == VT_DISPATCH && vtSelection.pdispVal) {
-            // Передаем аргументы строго слева направо: Line (targetLine), Offset (1L), Extend (0L)
+        if (SUCCEEDED(LivePT::AutoWrap(DISPATCH_PROPERTYGET, &vtSelection, vtTargetWindow.pdispVal, L"Selection", 0)) && vtSelection.pdispVal) {
             LivePT::AutoWrap(DISPATCH_METHOD, NULL, vtSelection.pdispVal, L"MoveToLineAndOffset", 3,
                 CComVariant(targetLine),
-                CComVariant(1L),
+                CComVariant(targetCol > 0 ? targetCol : 1L),
                 CComVariant(0L));
 
-
             VARIANT vtActiveDoc; VariantInit(&vtActiveDoc);
-            HRESULT hr = pDTE ? AutoWrap(DISPATCH_PROPERTYGET, &vtActiveDoc, pDTE, L"ActiveDocument", 0) : E_FAIL;
-
-            if (hr == CO_E_OBJNOTCONNECTED || hr == RPC_E_DISCONNECTED || hr == E_ACCESSDENIED) {
-                ResetDTEConnection();
-                return;
+            if (SUCCEEDED(hr = pDTE ? AutoWrap(DISPATCH_PROPERTYGET, &vtActiveDoc, pDTE, L"ActiveDocument", 0) : E_FAIL) && vtActiveDoc.pdispVal) {
+                IDispatch* pActiveDoc = vtActiveDoc.pdispVal;
+                g_currentActiveFile = GetActiveDocumentPath(pActiveDoc);
+                g_lastLineTextBuffer = DownloadCurrentLineText(pActiveDoc);
+                g_lastLine = targetLine;
+                g_lastCol = targetCol > 0 ? targetCol : 1L;
+                VariantClear(&vtActiveDoc);
             }
-            if (FAILED(hr) || !vtActiveDoc.pdispVal) { VariantClear(&vtActiveDoc); return; }
-
-            IDispatch* pActiveDoc = vtActiveDoc.pdispVal;
-            std::string currentActiveFile = GetActiveDocumentPath(pActiveDoc);
-            g_currentActiveFile = currentActiveFile;
-            if (currentActiveFile.empty()) { VariantClear(&vtActiveDoc); return; }
-
-            long line = 0, column = 0;
-            if (!GetCursorCoordinates(pActiveDoc, line, column)) { VariantClear(&vtActiveDoc); return; }
-            g_lastLineTextBuffer = DownloadCurrentLineText(pActiveDoc);
-            g_lastLine = targetLine;
-            g_lastCol = 1;
         }
     }
 
-    inline bool IsCursorInsideFunctionCall(const std::source_location& location) {
-        std::string activeFile = LivePT::NormalizePath(location.file_name());
 
+    inline bool IsCursorInsideFunctionCall(const std::source_location& location) {
+        if (g_currentFileFullText.empty()) return false;
+
+        std::string activeFile = LivePT::NormalizePath(location.file_name());
+        if (activeFile != g_currentActiveFile) return false;
+
+        long staticLine = static_cast<long>(location.line());
+        long staticColumn = static_cast<long>(location.column());
+
+        // СТРОГИЙ ЛУКАП ПО БАЗЕ: Ищем точное совпадение скомпилированной Live-функции
+        auto& fileCompileTree = GetFileCompileTree();
+        auto itFile = fileCompileTree.find(activeFile);
+        if (itFile == fileCompileTree.end()) return false; // Незарегана — игнорируем хайлайт
+
+        StaticOrderKey staticKey{ static_cast<int>(staticLine), static_cast<int>(staticColumn) };
+        auto itParam = itFile->second.find(staticKey);
+        if (itParam == itFile->second.end()) return false; // Незарегана — игнорируем хайлайт
+
+        int baseParamId = itParam->second;
+        auto& params = LivePT::getParamDesc();
+        if (baseParamId < 0 || baseParamId >= static_cast<int>(params.size())) return false;
+
+        // ВТОРОЙ ЛУКАП: Находим динамический живой ID из рантайм-реестра VS
+        unsigned int counterID = params[baseParamId].counterID;
+        std::string vsLookupKey = activeFile + ":" + std::to_string(counterID);
+
+        int realParamId = LivePT::getID(vsLookupKey);
+        if (realParamId < 0 || realParamId >= static_cast<int>(params.size())) {
+            realParamId = baseParamId;
+        }
+
+        // Берем идеально выровненную стартовую строку и имя зарегистрированного токена
+        long startLiveLine = static_cast<long>(params[realParamId].line);
+        std::string rawMacroName = params[realParamId].macroName;
+        std::wstring wMacroName(rawMacroName.begin(), rawMacroName.end());
+
+        // Кэширование кадра для исключения фризов UI-потока при отрисовке
         static std::string cachedActiveFile = "";
         static long cachedVSLine = -1;
-        static long validStartLine = -1;
-        static long validEndLine = -1;
+        static long cachedRealParamId = -1;
+        static bool cachedResult = false;
 
-        if (cachedActiveFile == g_currentActiveFile && cachedVSLine == g_lastLine) {
-            return (validStartLine != -1 && static_cast<long>(location.line()) == validStartLine);
+        if (cachedActiveFile == g_currentActiveFile && cachedVSLine == g_lastLine && cachedRealParamId == realParamId) {
+            return cachedResult;
         }
 
         cachedActiveFile = g_currentActiveFile;
         cachedVSLine = g_lastLine;
-        validStartLine = -1;
-        validEndLine = -1;
+        cachedRealParamId = realParamId;
+        cachedResult = false;
 
-        if (activeFile != g_currentActiveFile || g_currentFileFullText.empty()) {
-            return false;
-        }
-
-        // Находим смещение текущей строки курсора
-        size_t cursorLineOffset = 0;
+        // Переводим startLiveLine в физическое смещение wchar_t в буфере файла
+        size_t lineStartOffset = 0;
         long currentLineIdx = 1;
-        while (currentLineIdx < g_lastLine && cursorLineOffset < g_currentFileFullText.length()) {
-            size_t nextNL = g_currentFileFullText.find(L'\n', cursorLineOffset);
+        while (currentLineIdx < startLiveLine && lineStartOffset < g_currentFileFullText.length()) {
+            size_t nextNL = g_currentFileFullText.find(L'\n', lineStartOffset);
             if (nextNL != std::wstring::npos) {
-                cursorLineOffset = nextNL + 1;
+                lineStartOffset = nextNL + 1;
                 currentLineIdx++;
             }
             else break;
         }
 
-        size_t nextLineNL = g_currentFileFullText.find(L'\n', cursorLineOffset);
-        size_t scanOffset = (nextLineNL != std::wstring::npos) ? nextLineNL : g_currentFileFullText.length();
+        if (lineStartOffset >= g_currentFileFullText.length()) return false;
 
-        // Ищем начало вызова Draw назад от курсора
-        auto& params = LivePT::getParamDesc();
-        // Нам нужно вытащить имя макроса (функции) для текущей точки
-        std::string targetFuncName = ""; // дефолт для обратной совместимости
-        for (const auto& p : params) {
-            if (static_cast<long>(location.line()) == p.line && p.fileName == activeFile) {
-                targetFuncName = p.macroName;
-                break;
-            }
+        // Ищем токен прямо на выровненной строке
+        size_t nextLineNL = g_currentFileFullText.find(L'\n', lineStartOffset);
+        size_t scanLimit = (nextLineNL != std::wstring::npos) ? nextLineNL : g_currentFileFullText.length();
+
+        size_t macroOffset = g_currentFileFullText.find(wMacroName, lineStartOffset);
+        if (macroOffset == std::wstring::npos || macroOffset > scanLimit) {
+            macroOffset = g_currentFileFullText.rfind(wMacroName, scanLimit);
         }
-        std::wstring wFuncName(targetFuncName.begin(), targetFuncName.end());
-        size_t drawOffset = g_currentFileFullText.rfind(wFuncName, scanOffset);
-        ;
-        if (drawOffset != std::wstring::npos) {
 
-            long foundStartLine = 1;
-            size_t lineCheckOffset = 0;
-            while (lineCheckOffset < drawOffset && lineCheckOffset < g_currentFileFullText.length()) {
-                size_t nextNL = g_currentFileFullText.find(L'\n', lineCheckOffset);
-                if (nextNL != std::wstring::npos && nextNL < drawOffset) {
-                    foundStartLine++;
-                    lineCheckOffset = nextNL + 1;
+        if (macroOffset != std::wstring::npos) {
+            long foundStartLine = startLiveLine;
+            size_t endOffset = std::wstring::npos;
+
+            // Разделение логики: если это старый eval (когда вызван напрямую), считаем его скобки.
+            // Для Live-функций — честно ведем подсчет диапазона до закрывающей точки с запятой ';'
+            if (rawMacroName == "eval") {
+                size_t openBracket = g_currentFileFullText.find(L'(', macroOffset);
+                if (openBracket != std::wstring::npos) {
+                    endOffset = FindMacroCloseBracket(g_currentFileFullText, openBracket);
                 }
-                else break;
+            }
+            else {
+                endOffset = g_currentFileFullText.find(L';', macroOffset);
             }
 
-            if (foundStartLine <= g_lastLine) {
-                // Ищем закрывающую точку с запятой вперед после начала Draw
-                size_t callEndOffset = g_currentFileFullText.find(L';', drawOffset);
-                if (callEndOffset != std::wstring::npos) {
-
-                    long foundEndLine = foundStartLine;
-                    size_t lineEndCheckOffset = drawOffset;
-                    while (lineEndCheckOffset < callEndOffset && lineEndCheckOffset < g_currentFileFullText.length()) {
-                        size_t nextNL = g_currentFileFullText.find(L'\n', lineEndCheckOffset);
-                        if (nextNL != std::wstring::npos && nextNL < callEndOffset) {
-                            foundEndLine++;
-                            lineEndCheckOffset = nextNL + 1;
-                        }
-                        else break;
+            if (endOffset != std::wstring::npos && endOffset >= macroOffset) {
+                long foundEndLine = foundStartLine;
+                size_t scanOffset = macroOffset;
+                while (scanOffset < endOffset && scanOffset < g_currentFileFullText.length()) {
+                    size_t nextNL = g_currentFileFullText.find(L'\n', scanOffset);
+                    if (nextNL != std::wstring::npos && nextNL < endOffset) {
+                        foundEndLine++;
+                        scanOffset = nextNL + 1;
                     }
+                    else break;
+                }
 
-                    if (g_lastLine >= foundStartLine && g_lastLine <= foundEndLine) {
-                        validStartLine = foundStartLine;
-                        validEndLine = foundEndLine;
-                    }
+                // Проверяем, находится ли курсор Visual Studio (g_lastLine) внутри всего многострочного вызова
+                if (g_lastLine >= startLiveLine && g_lastLine <= foundEndLine) {
+                    cachedResult = true;
                 }
             }
         }
 
-        return (validStartLine != -1 && static_cast<long>(location.line()) == validStartLine);
+        return cachedResult;
     }
 
 
