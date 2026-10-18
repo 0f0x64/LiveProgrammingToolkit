@@ -1,244 +1,234 @@
-<div align="center">
+# 🚀 Live Programming Toolkit (LivePT) — v0.5
 
-# 🚀 Live Programming Toolkit (LivePT) — v0.4
-
-Легковесный интерактивный инструмент разработки для C++20 и Visual Studio с нулевыми затратами ресурсов в runtime.
-
-</div>
+[🇷🇺 Читать на русском языке](#-live-programming-toolkit-livept--v05-ru) | [🇬🇧 Read in English](#-live-programming-toolkit-livept--v05-en)
 
 ---
 
-## 📋 Требования к компилятору и IDE
-Перед началом работы убедитесь, что ваш проект и среда Visual Studio настроены должным образом:
+## 🇷🇺 Live Programming Toolkit (LivePT) — v0.5 [RU]
 
-1. **Стандарт языка C++:** `Свойства проекта` ➔ `C/C++` ➔ `Язык C++` ➔ Установите **`ISO C++20 Standard (/std:c++20)`** (или выше).
-2. **Новый препроцессор:** `Свойства проекта` ➔ `C/C++` ➔ `Препроцессор` ➔ `Использовать конформный препроцессор` ➔ Установите **`Да (/Zc:preprocessor)`**.
-3. **Отладочные символы (PDB):** Убедитесь, что включена генерация PDB-файлов (требуется для автоматического анализа метаданных `enum` и структур через системные вызовы `DbgHelp`).
-4. **Отключение автоскролла в VS:** Если вы используете среднюю кнопку мыши (`VK_MBUTTON`), в верхнем меню VS зайдите в `Сервис` ➔ `Параметры` ➔ `Текстовый редактор` ➔ `Общие` ➔ **Снимите галочку** с пункта **«Middle click to scroll»**.
+Легковесный интерактивный инструмент разработки для **C++20 и Visual Studio** с нулевыми затратами ресурсов в релизной сборке. Позволяет изменять константы, перечисления и структуры в коде прямо во время работы приложения без перезапуска.
 
----
+### 📋 Требования к среде и компилятору
+Перед интеграцией библиотеки убедитесь, что ваш проект настроен согласно следующим требованиям:
 
-## 🚀 Быстрый старт (Инструкция по установке)
+1. **Стандарт языка C++:** `Свойства проекта` ➔ `C/C++` ➔ `Язык C++` ➔ **`ISO C++20 Standard (/std:c++20)`** (или выше).
+2. **Конформный препроцессор:** `Свойства проекта` ➔ `C/C++` ➔ `Препроцессор` ➔ `Использовать конформный препроцессор` ➔ **`Да (/Zc:preprocessor)`**.
+3. **Генерация отладочных символов:** В настройках компоновщика должна быть включена генерация **PDB-файлов** (критически важно для работы подсистемы `DbgHelp`).
+4. **Настройка мыши в Visual Studio:** Если в качестве триггера используется средняя кнопка мыши (`VK_MBUTTON`), в настройках VS (`Сервис` ➔ `Параметры` ➔ `Текстовый редактор` ➔ `Общие`) **снимите галочку** с пункта **«Middle click to scroll»**, чтобы избежать конфликтов со считыванием координат.
 
-1. **Скачайте папку `LivePT`** и положите её в директорию вашего проекта.
-2. **Вставьте главный дефайн активации** строго **перед** инклудом библиотеки в вашем основном файле:
+### 🚀 Инструкция по быстрой установке
+
+1. Перенесите папку `LivePT` в директорию вашего C++ проекта.
+2. В самом начале вашего основного файла (`main.cpp` / `WinMain`) подключите заголовочный файл, строго предварив его флагом активации:
+   ```cpp
+   #define LivePT_EditMode true // true — активирует систему. false — полностью вырезает LivePT из бинарника на этапе компиляции
+   #include "LivePT/LivePT.h"
+   ```
+3. Добавьте вызов диспетчера обновлений в ваш главный игровой или рендер-цикл приложения:
+   ```cpp
+   while (true) {
+       if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
+           if (msg.message == WM_QUIT) break;
+           TranslateMessage(&msg);
+           DispatchMessage(&msg);
+       } else {
+           LivePT::ProcessEdit(); // Главный триггер покадрового анализа кода
+       }
+   }
+   ```
+
+### ⚙️ Глобальная конфигурация (`LivePT.h`)
+Основные пользовательские настройки задаются дефайнами в блоке конфигурации заголовочного файла:
+
+* `#define LivePT_Mouse true` — Разрешает интерактивное взаимодействие с кодом (драг мышью, вызов контекстных меню энумов, отображение UI-плашек).
+* `#define LivePT_WindowManagement true` — Модуль `LptWindowManager`. При запуске на одном мониторе автоматически делит рабочую область экрана ровно **50/50** между окном вашего приложения и Visual Studio, а при закрытии — возвращает окно IDE в исходное состояние.
+* `#define LivePT_AppToSecondaryDisplay false` — Автоматически переносит и разворачивает окно вашего приложения на весь экран второго дисплея.
+* `#define LivePT_TriggerButton VK_LBUTTON` — Физическая клавиша мыши для захвата констант в коде (`VK_LBUTTON` — левая кнопка, `VK_MBUTTON` — колесико мыши).
+
+### 🎮 Интерактивное управление (Мышь и Клавиатура)
+
+#### 🖱 Взаимодействие с помощью мыши
+* **Плавное изменение чисел (Numeric Drag):** Наведите курсор на числовой литерал внутри `eval()`, зажмите клавишу-триггер и перемещайте мышь вверх или вниз. Значение в коде Visual Studio и в памяти приложения начнет синхронно меняться.
+* **Модификаторы скорости:** Удерживайте `Shift` во время драга для ускорения шага изменения в 10 раз, или `Ctrl` — для ускорения в 100 раз.
+* **Мгновенная инверсия флагов по двойному клику:** Сделайте **двойной клик** кнопкой-триггером мыши по литералу `eval(true)` или `eval(false)`. Состояние логического флага мгновенно инвертируется в текстовом документе.
+* **Интерактивное меню `enum`:** Сделайте двойной клик по элементу перечисления (например, `eval(ptype::box)`). Библиотека считает префикс типа, запросит у `DbgHelp` все доступные варианты этого `enum` и отобразит темное нативное контекстное меню Win32 для быстрого выбора.
+* **Пропорциональный драг структур (Struct Drag):** Если вы зажмете мышь на имени типа или открывающей скобке выражения `eval(pos2{...})`, перемещение мыши будет пропорционально масштабировать (умножать) все внутренние поля структуры одновременно.
+
+### 📦 Поддерживаемый синтаксис и ограничения макроса `eval(...)`
+
+#### ✅ Что МОЖНО оборачивать в `eval()`:
+
+1. **Примитивные константные литералы:** Любые целые числа и числа с плавающей точкой, включая отрицательные значения и специфические суффиксы.
+2. **Элементы перечислений (как стандартных, так и `enum class`).**
+3. **Именованные агрегатные структуры (Явный тип):** При передаче структуры с указанием ее имени, ядро LivePT побайтово переносит измененные поля констант в рантайм.
+4. **Сложная вложенность структур:** Побайтовый движок `WriteStructBytes` рекурсивно раскладывает аргументы любой глубины вложенности, если их типы известны PDB.
+5. **Динамические векторы констант (`std::vector<T>`) с возможностью изменения размера:**
+   LivePT v0.5 поддерживает глубокое отслеживание динамических массивов. Вы можете оборачивать векторы структур в `eval(...)` целиком:
+   ```cpp
+   auto points = eval(std::vector<HeavyPoint>{
+       { true, pos2{-52.0f, 24.0f}, 5, 94, color3{239, 61, 125} },
+       { true, pos2{-24.0f, 31.0f}, 2, 95, color3{95, 35, 59} }
+   });
+   ```
+   * **Добавление и удаление элементов:** Прокси-парсер `MsvcVectorProxy` автоматически сравнивает количество элементов в исходном коде Visual Studio с количеством элементов в runtime-памяти. Если вы вручную допишете новый элемент структуры через запятую в коде Visual Studio или удалите существующий, ядро LivePT автоматически выполнит операцию `resize()` для вектора в памяти запущенного приложения, пересчитает сквозную битовую маску валидности полей `validFieldsMask` и мгновенно перераспределит кучу без утечек памяти и падений.
+6. **Смешивание констант и переменных внутри структур:** Вы можете передавать динамические runtime-переменные внутрь инициализации структуры в `eval()`. Лексический анализатор ядра автоматически распознает имена переменных и пропустит их, позволяя интерактивно крутить только находящиеся рядом константные литералы.
+
+#### ❌ Ограничения макроса (Чего делать НЕЛЬЗЯ):
+1. **Динамические вычисления вне структур:** Нельзя писать формулы или вызовы функций в качестве изолированных аргументов, например: `eval(a + b)`.
+2. **Безымянная инициализация (Raw Initializers):** Конструкции вида `eval({10.0f, 20.0f})` без указания имени структуры (`pos2{10.0f, 20.0f}`) не поддерживаются.
+3. **Использование сложных динамических контейнеров внутри структур:** Поля структур, оборачиваемых в `eval`, должны состоять из тривиальных типов (`int`, `float`, `bool`, `char`, `double`) или вложенных агрегатов. Использование `std::string` или `std::vector` *внутри* редактируемой структуры запрещено.
+
+### 🛠️ Расширение возможностями ядра: Графические виджеты и Обратные вызовы перетаскивания (Drag Callbacks)
+
+⚠️ **ВАЖНОЕ ПОЯСНЕНИЕ:** Графические контроллеры (такие как **ColorPicker**, **PosPicker** или **AnglePicker**) **НЕ являются частью неизменяемого ядра LivePT**. Это демонстрационные примеры из области **User Space** (пользовательского кода).
+
+Ядро LivePT предоставляет две изолированные подсистемы расширения возможностей: **коллбэки на двойной клик** (для открытия тяжелых графических окон) и **коллбэки покадрового перетаскивания мыши (Drag Callbacks)**.
+
+#### 1. Регистрация контроллеров двойного клика (Type Callbacks)
+Связывает текстовое имя типа со сторонним интерфейсом (ImGui, Win32, Qt) для вызова окна по двойному клику в редакторе кода:
 ```cpp
-#define LivePT_EditMode true // Единственный дефайн для включения системы (false полностью вырежет LivePT из релиза)
-#include "LivePT/LivePT.h"
+void MyCustomColorWindow(const std::any& anyValue, std::function<void(std::string)> vsUpdater);
+
+// Регистрация в ядре:
+LPT_REGISTER_TYPE("color3", Widgets::color3Callback);
 ```
-3. **Добавьте вызов функции обновления** библиотеки в ваш главный игровой или рендер-цикл (рекомендуется вызывать с частотой ~60 FPS / каждые 16 мс):
-```cpp
-// Внутри вашего главного цикла приложения (например, WinMain / message loop):
-LivePT::ProcessEdit();
-```
 
----
-
-## ⚙️ Конфигурация внутри библиотеки (`LivePT.h`)
-Все остальные внутренние настройки системы задаются непосредственно в заголовочном файле `LivePT.h` в блоке пользователя:
-* `#define LivePT_WheelEditMode true` — Включает отслеживание мыши, изменение значений и вызов меню.
-* `#define LivePT_WindowManagement true` — Автоматически делит экран primary-монитора 50/50 между окном приложения и Visual Studio.
-* `#define LivePT_AppToSecondaryDisplay false` — Автоматически разворачивает окно приложения на весь экран второго монитора.
-* `#define LivePT_TriggerButton VK_LBUTTON` — Клавиша-триггер для взаимодействия с кодом (`VK_LBUTTON` для левой кнопки мыши или `VK_MBUTTON` для колесика).
-
----
-
-## 🎮 Интерактивное управление (Мышь и Клавиатура)
-После запуска приложения вы можете настраивать параметры прямо внутри исходного кода в Visual Studio двумя способами:
-
-### 🖱 Управление мышью
-* **Изменение чисел (Drag):** Наведите курсор на число внутри `eval()`, **зажмите кнопку-триггер** и тяните мышь вверх или вниз. Значение в коде и на экране начнет плавно меняться в реальном времени.
-* **Модификаторы скорости:** Удерживайте `Shift` во время драга для изменения значений в 10 раз быстрее, или `Ctrl` — для ускорения в 100 раз.
-* **Переключение `bool` по клику:** Кликните кнопкой-триггером по `eval(true)` или `eval(false)` для мгновенной инверсии флага.
-* **Контекстное меню `enum`:** Сделайте двойной клик кнопкой-триггером по `eval(MyEnum::Value)`. Система вытащит элементы перечисления из PDB-файла и откроет нативное контекстное меню прямо под курсором.
-* **Пропорциональное изменение структур (Struct Drag):** Зажмите кнопку-триггер на *имени типа или открывающей скобке* внутри `eval(MyStruct{...})`. Перемещение мыши будет пропорционально масштабировать (умножать) все числовые поля структуры одновременно. Если поле равно нулю, оно начнет увеличиваться линейно.
-
-### ⌨️ Редактирование с клавиатуры
-* **Прямой ввод:** Вы можете в любой момент сфокусироваться на коде в IDE и **вручную переписать число, изменить текст или имя элемента перечисления** прямо внутри скобок `eval(...)`.
-* **Автоматическое чтение текста:** При перемещении курсора клавиатурой или вводе новых символов LivePT мгновенно перехватывает изменения строки через COM-интерфейсы `EnvDTE`, автоматически парсит новое строковое значение и сразу же применяет его к переменной в памяти запущенного приложения без перезапуска.
-
----
-
-## 🛠️ Расширение возможностями ядра: Кастомные графические контроллеры (User Space)
-
-⚠️ **ВАЖНОЕ ЗАМЕЧАНИЕ:** Идущие в комплекте поставки графические контроллеры (такие как **ColorPicker**, **PosController/Trackpad** или **AngleRadar**) **НЕ ЯВЛЯЮТСЯ частью неизменяемого ядра библиотеки LivePT**. Это демонстрационные примеры из области **User Space**. Они созданы исключительно для демонстрации того, как легко связать внешние интерфейсы с движком LivePT.
-
-Ядро LivePT предоставляет универсальный механизм обратного вызова для двойного клика (`Double-Click Callback`). Вы можете зарегистрировать абсолютно любое своё UI-окно (на базе ImGui, Win32 API, Qt), используя макрос авторегистрации типов:
+#### 2. Регистрация покадровых обработчиков мыши (Drag Callbacks)
+Позволяет перехватить удержание клавиши-триггера мыши на имени типа структуры или её открывающей скобке в Visual Studio. Каждая покадровая дельта перемещения физической мыши передается в ваш кастомный математический обработчик:
 
 ```cpp
-// Пример связывания вашей структуры с кастомным интерфейсом в User Space:
-struct my_color { unsigned char r, g, b; };
-
-// Функция-обработчик, которая откроет ваше окно при двойном клике в VS:
-void MyCustomColorWindow(const my_color& initialValue, std::function<void(std::string)> vsUpdater) {
-    // 1. Отображаете ваше UI окно
-    // 2. При изменении ползунков в UI вызываете: vsUpdater("my_color{255, 0, 0}");
-    // 3. Библиотека сама запишет этот текст прямо в активный файл Visual Studio!
+// Сигнатура обработчика принимает текущую строку аргументов из VS и структуру смещения мыши
+std::string MyCustomDragLogic(const std::string& currentArgsStr, const LivePT::DragMathInput& input) {
+    // input.mouseFrameDeltaX — дельта смещения мыши по X за один кадр
+    // input.mouseFrameDeltaY — инвертированная дельта смещения мыши по Y
+    // input.ctrl, input.shift — флаги модификаторов скорости
+    
+    // Пример: парсим текущие аргументы, применяем дельту и возвращаем модифицированную строку кода:
+    return "15.0f, 25.5f"; 
 }
 
-// Регистрируем обработчик в системе:
-LPT_REGISTER_TYPE(my_color, MyCustomColorWindow);
+// Регистрация покадрового драга для конкретного типа:
+LPT_REGISTER_DRAG("color3", DrugLogic::color3Drag);
+LPT_REGISTER_DRAG("pos2", DrugLogic::pos2Drag);
 ```
+При активации покадрового драга структуры ядро автоматически скрывает физический курсор ОС, фиксирует его в геометрическом центре окна манипуляции, разворачивает невидимый модальный щит Win32 для предотвращения потери фокуса ввода и выводит полупрозрачные текстовые подсказки (`g_OverlayText`) поверх экрана.
+
+### 🛡️ Безопасность кода и транзакции изменений
+* **Защитный барьер валидации (Shift Validation):** Перед смещением координат элементов в процессе редактирования, ядро производит предпроверку целевой строки. Если в силу ручной правки код деформировался и ожидаемый токен макроса не обнаружен по расчетным координаты, операция сдвига для этого элемента изолируется и мягко пропускается с выводом предупреждения в лог (`[LivePT Integrity Error]`), предотвращая порчу соседних участков кода.
+* **Транзакционность (Undo/Redo):** Все изменения, вносимые мышиным драгом или графическими виджетами, оборачиваются в транзакции `UndoContext` среды Visual Studio. Каждая сессия изменения воспринимается IDE как единое атомарное действие — вы можете мгновенно отменить всю сессию правок стандартным сочетанием клавиш `Ctrl + Z`.
 
 ---
 
-## 📦 Поддерживаемый синтаксис и ограничения макроса `eval(...)`
+## 🇬🇧 Live Programming Toolkit (LivePT) — v0.5 [EN]
 
-### ✅ Что МОЖНО оборачивать в `eval()`:
-1. **Базовые типы констант:** Любые числовые литералы (`int`, `float`), включая значения с суффиксами (например, `eval(35.6f)`, `eval(-47.01)`).
-2. **Перечисления:** Строго типизированные и классические перечисления (например, `eval(ptype::box)`).
-3. **Именованные агрегаты (Явное указание имени типа):** Передача структуры с явным вызовом конструктора или типа. Система через `DbgHelp` найдет тип и сопоставит его внутреннюю анатомию:
+A lightweight, zero-runtime-overhead interactive development toolkit for **C++20 and Visual Studio**. It allows modifying constants, enumerations, and structural types directly in your source code at runtime without restarting the application.
+
+### 📋 Compiler & IDE Requirements
+Before integrating the library, ensure your project configurations meet the following prerequisites:
+
+1. **C++ Language Standard:** `Project Properties` ➔ `C/C++` ➔ `C++ Language Standard` ➔ **`ISO C++20 Standard (/std:c++20)`** (or higher).
+2. **Conforming Preprocessor:** `Project Properties` ➔ `C/C++` ➔ `Preprocessor` ➔ `Use Standard Conforming Preprocessor` ➔ **`Yes (/Zc:preprocessor)`**.
+3. **Debug Symbols Generation:** Generation of **PDB files** must be explicitly enabled in your linker settings (crucial for the `DbgHelp` reflection subsystem).
+4. **Mouse Automation Layout:** If using the middle mouse button (`VK_MBUTTON`) as your physical interface interaction button, open VS settings via `Tools` ➔ `Options` ➔ `Text Editor` ➔ `General` and **uncheck** the **"Middle click to scroll"** option to prevent document coordinate tracking collisions.
+
+### 🚀 Quick Start Guide
+
+1. Move the `LivePT` folder into your current C++ project directory.
+2. At the absolute beginning of your primary source file (`main.cpp` / `WinMain`), include the toolkit's header prefixed with the compilation gate macro:
    ```cpp
-   primitive.Set(eval(Primitive{ -47.01f, -299, ptype::box, show_t::on, {120, 0, 0} }));
+   #define LivePT_EditMode true // true — activates the toolkit. false — completely strips out LivePT during compilation for release builds
+   #include "LivePT/LivePT.h"
    ```
-4. **Именованные агрегаты с C++20 Designated Initializers:** Инициализация структур с явным указанием полей. LivePT автоматически сопоставит смещения полей через PDB и обновит нужные байты в памяти с высокой производительностью за счет `std::from_chars`:
+3. Insert the toolkit's background update pipeline dispatch method inside your main application or render loop:
    ```cpp
-   primitive.Set(Primitive{
-       .x = eval(-47.01),
-       .y = eval(-299),
-       .type = eval(ptype::box),
-       .color = eval(color3{ .r = 150, .g = 109, .b = 85 })
+   while (true) {
+       if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
+           if (msg.message == WM_QUIT) break;
+           TranslateMessage(&msg);
+           DispatchMessage(&msg);
+       } else {
+           LivePT::ProcessEdit(); // Main trigger for on-the-fly text and frame evaluation
+       }
+   }
+   ```
+
+### ⚙️ Engine Inner Configuration (`LivePT.h`)
+Primary user flags are configured via macro definitions directly inside the `LivePT.h` header file:
+
+* `#define LivePT_Mouse true` — Enables interactive code editing mechanics (mouse dragging, enumeration context windows, floating help overlay drawing).
+* `#define LivePT_WindowManagement true` — Toggles the `LptWindowManager` tracking. When running on a single monitor layout, it dynamically snaps your primary window and Visual Studio **50/50** across the screen workspace, restoring the IDE bounds flawlessly upon exit.
+* `#define LivePT_AppToSecondaryDisplay false` — Automatically migrates and maximizes your execution window onto the secondary active monitor workspace.
+* `#define LivePT_TriggerButton App VK_LBUTTON` — Specifies the virtual key bound to text interaction (`VK_LBUTTON` for standard left click, or `VK_MBUTTON` for middle click).
+
+### 🎮 Interactive Infrastructure (Mouse & Keyboard)
+
+#### 🖱 Mouse Controls
+* **Smooth Value Dragging (Numeric Drag):** Hover the pointer over any numerical constant literal mapped inside an `eval()` macro, hold down your trigger button, and slide the mouse up or down. The text representation in the IDE and your runtime heap variable values scale instantly.
+* **Tweak Speed Modifiers:** Hold down `Shift` while dragging to scale values 10x faster, or hold `Ctrl` to ramp values up or down 100x faster.
+* **Instant Double-Click Boolean Toggle:** Perform a **double-click** action with your trigger button directly over a boolean literal like `eval(true)` or `eval(false)`. The token will instantly flip its state inside the active text document.
+* **Dynamic Context Menus for Enums:** Double-click over any enumeration field token (e.g., `eval(ptype::box)`). The engine resolves the type namespace path, fetches all valid enum variants from the active PDB symbols database via `DbgHelp`, and displays a clean Win32 dark pop-up context menu at your cursor position.
+* **Proportional Structural Transformation (Struct Drag):** Holding down your trigger button directly over a type name token or the opening brace of an expression like `eval(pos2{...})` locks the mouse into a proportional multiplier state. Dragging the mouse applies a matrix multiplier scaling all structural numeric properties simultaneously.
+
+### 📦 Mapped Syntax Layout & `eval(...)` Constraints
+
+#### ✅ Allowed Syntactic Formats inside `eval()`:
+
+1. **Primitive Numerical Constant Literals:** Any integer or float representations, including standard negative integers and floating point precision suffixes.
+2. **Enumeration Field Identifiers (both standard enums and scoped `enum class`).**
+3. **Explicitly Named Structural Aggregates:** Passing structural definitions prefixed by their specific type name token pipes physical field offset states directly into runtime memory layouts.
+4. **Deep Structural Nesting Multi-Tiers:** The `WriteStructBytes` subsystem recursively untangles complex aggregate layers automatically as long as the types are properly reflected in the symbols workspace.
+5. **Dynamic Array Struct Containers (`std::vector<T>`) with Runtime Allocation Mapping:**
+   LivePT v0.5 supports deep runtime analysis of dynamic list blocks. You can wrap standard vectors of structures into `eval(...)` arrays seamlessly:
+   ```cpp
+   auto points = eval(std::vector<HeavyPoint>{
+       { true, pos2{-52.0f, 24.0f}, 5, 94, color3{239, 61, 125} },
+       { true, pos2{-24.0f, 31.0f}, 2, 95, color3{95, 35, 59} }
    });
    ```
-5. **Смешивание литералов и runtime-переменных внутри агрегата:** При инициализации именованного агрегата вы можете свободно передавать внутрь `eval(...)` как фиксированные константы, так и динамические переменные (например, `x` и `y`). Парсер библиотеки автоматически определит текстовые токены переменных и пропустит их при интерактивном обновлении, изменяя исключительно литералы:
-   ```cpp
-   primitive.Set(Primitive{
-       .x = eval(26.40),
-       .y = eval(-276),
-       .type = eval(ptype::roundbox),
-       .show = eval(show_t::on),
-       .color = eval(color3{
-           .r = x,
-           .g = 62, // Поле .g (литерал 62) можно интерактивно крутить мышкой/клавиатурой!
-           .b = y
-       })
-   });
-   ```
+   * **On-the-fly In-Place Element Allocation/Removal:** The dedicated `MsvcVectorProxy` container engine monitors structural vector tokens inside the active document and maps them against runtime allocations. Typing a brand new array block inline or stripping a field out instantly prompts a `resize()` operation on the active application heap, adjusts the underlying `validFieldsMask` boundary arrays, and reallocates memory seamlessly without crashes or resource leaks.
+6. **Hybrid Interlocking of Literals and Dynamic Runtime Variables:** You can mix raw local runtime tracking variables alongside fixed literals inside a structural `eval` declaration. The engine tokenizes and isolates dynamic layout signatures, bypassing them during layout changes while keeping your constants open to real-time mouse or keyboard tweaking.
 
-### ❌ Чего ДЕЛАТЬ НЕЛЬЗЯ:
-1. **Динамические выражения вне структуры:** Нельзя писать изолированные вычисления или вызовы функций, например `eval(a + b)` или `eval(GetX())`. Макрос ожидает константный литерал или агрегатную структуру.
-2. **Агрегаты без указания имени типа (Безымянные):** Прямая инициализация структур списком значений вида `{ val1, val2 }` без явного имени типа **не поддерживается**, так как парсер не сможет извлечь анатомию структуры из PDB без текстового идентификатора типа.
-3. **Символы не-ASCII:** Текстовый парсер не поддерживает кодировки отличные от ASCII. Наличие кириллицы или спецсимволов внутри `eval()` вызовет ошибку парсинга.
-4. **Сложные динамические типы внутри структур:** Поля структур, обернутых в `eval()`, должны состоять из примитивных типов (`char`, `int`, `float`, `double`, `bool`). Использование `std::string` или `std::vector` внутри таких структур не поддерживается во избежание повреждения памяти.
-<div align="center">
+#### ❌ Syntactic Violations & Constraints (What CANNOT be wrapped):
+1. **Dynamic Equations Outside Structures:** Evaluating external formulas or complex run-time calculations inside the parent macro is invalid (e.g., `eval(a + b)`).
+2. **Anonymous Unnamed List Aggregates:** Code structures initialized anonymously like `eval({10.0f, 20.0f})` missing an explicit type identifier token are **unsupported** (the layout parser cannot fetch offset constraints from your PDB without a valid text type mapping string).
+3. **Complex Non-Trivial Containers Inside Struct Properties:** Fields inside structures evaluated by the macro block must consist of trivial types (`int`, `float`, `bool`, `char`, `double`). Packing dynamic standard containers like `std::string` or `std::vector` *inside* an `eval` structural layout block is strictly blocked to avoid выравнивание faults.
+4. **Non-ASCII Text Formats:** The inner string parsing machine operates strictly inside the ASCII charset. Any Cyrillic character layout data or standard localization tags packed *inside* the active parsing boundaries of an `eval(...)` layout statement will cause a coordinate shift tracking failure.
 
-# 🚀 Live Programming Toolkit (LivePT) — v0.4
+### 🛠️ Extending Core Capabilities: Graphical Widgets & Frame Drag Callbacks
 
-A lightweight, zero-runtime-overhead interactive development tool for C++20 and Visual Studio.
+⚠️ **ARCHITECTURAL NOTE:** Embedded UI widgets (**ColorPicker**, **PosPicker**, and **AnglePicker**) **ARE NOT structural core dependencies hardcoded into LivePT**. They represent isolated **User Space** utility layers designed to demonstrate how cleanly your graphical layouts can interface with the core text pipeline.
 
-</div>
+The toolkit provides two distinct User Space callback pipelines: **Double-Click Type Callbacks** (for spawning separate overlay windows) and ** покадровые Drag Callbacks** (for deep mouse transformation hooks).
 
----
-
-## 📋 Compiler & IDE Requirements
-Before you begin, ensure your project and Visual Studio environment are properly configured:
-
-1. **C++ Language Standard:** `Project Properties` ➔ `C/C++` ➔ `C++ Language Standard` ➔ Set to **`ISO C++20 Standard (/std:c++20)`** (or higher).
-2. **Conforming Preprocessor:** `Project Properties` ➔ `C/C++` ➔ `Preprocessor` ➔ `Use Standard Conforming Preprocessor` ➔ Set to **`Yes (/Zc:preprocessor)`**.
-3. **Debug Symbols (PDB):** Make sure PDB generation is enabled (required for runtime `enum` and `struct` metadata parsing via `DbgHelp` API).
-4. **Disable Auto-Scroll in VS:** If you plan to use the middle mouse button (`VK_MBUTTON`), navigate to `Tools` ➔ `Options` ➔ `Text Editor` ➔ `General` ➔ **Uncheck** the **"Middle click to scroll"** option.
-
----
-
-## 🚀 Quick Start (Installation Guide)
-
-1. **Download the `LivePT` folder** and place it into your project directory.
-2. **Define the main activation macro** strictly **before** including the library header in your main source file:
+#### 1. Registering Double-Click Windows (Type Callbacks)
+Maps an explicit text type identifier to external window tools (ImGui, Win32, Qt) when a double-click event is tracked inside your IDE workspace:
 ```cpp
-#define LivePT_EditMode true // The single macro to enable the system (false completely compiles LivePT out for release)
-#include "LivePT/LivePT.h"
-```
-3. **Call the update function** inside your main application or render loop (ideally throttled, e.g., every 16ms to target ~60 FPS):
-```cpp
-// Inside your main application update/message loop:
-LivePT::ProcessEdit();
+void MyCustomColorWindow(const std::any& anyValue, std::function<void(std::string)> vsUpdater);
+
+// Registering inside the engine's map:
+LPT_REGISTER_TYPE("color3", Widgets::color3Callback);
 ```
 
----
-
-## ⚙️ Inner Configuration (`LivePT.h`)
-All other internal settings are configured directly inside the `LivePT.h` header file within the user settings block:
-* `#define LivePT_WheelEditMode true` — Enables mouse tracking, real-time value tweaking, and context menus.
-* `#define LivePT_WindowManagement true` — Automatically splits your primary monitor screen 50/50 between your application window and Visual Studio.
-* `#define LivePT_AppToSecondaryDisplay false` — Automatically moves your application window to the secondary monitor in fullscreen mode.
-* `#define LivePT_TriggerButton VK_LBUTTON` — The physical mouse key used to interact with code (`VK_LBUTTON` for left click or `VK_MBUTTON` for middle click).
-
----
-
-## 🎮 Interactive Controls (Mouse & Keyboard)
-Once your application is running, you can adjust parameters directly within your source code in Visual Studio in two ways:
-
-### 🖱 Mouse Controls
-* **Smooth Value Dragging:** Hover your cursor over a number inside `eval()`, **hold your trigger button**, and drag your mouse up or down. The value in the IDE and your application will update simultaneously.
-* **Speed Modifiers:** Hold `Shift` while dragging to change values 10x faster, or `Ctrl` to speed up by 100x.
-* **Click to Toggle `bool`:** Click your trigger button over `eval(true)` or `eval(false)` to instantly invert the boolean flag.
-* **Context Menus for `enums`:** Double-click your trigger button over any `eval(MyEnum::Value)`. The toolkit dynamically extracts enumeration variants from the PDB file and displays a native context menu right under your cursor.
-* **Proportional Struct Dragging:** Hold your trigger button over the *type name or opening brace* inside `eval(MyStruct{...})`. Dragging the mouse will proportionally scale (multiply) all numerical fields of the structure at once. If a field is zero, it scales up linearly.
-
-### ⌨️ Real-Time Keyboard Editing
-* **Direct Text Modification:** You can focus on the code editor at any time and **manually type a new number, modify text, or overwrite an enum member name** directly within the `eval(...)` parenthesis.
-* **Automatic Text Reader:** As you move the text cursor or type new characters, LivePT intercepts document changes on the fly via `EnvDTE` COM automation, automatically parses the new inner string value, and applies it to the active variable in your running application immediately without restarting.
-
----
-
-## 🛠️ Extending Core Capabilities: Custom Graphical Controllers (User Space)
-
-⚠️ **CRITICAL NOTE:** The bundled visual controllers (such as **ColorPicker**, **PosController/Trackpad**, or **AngleRadar**) **ARE NOT a hardcoded part of the core LivePT library backend**. They represent **User Space** reference examples provided exclusively to demonstrate how cleanly you can bridge your own custom visual widgets with the underlying text manipulation engine.
-
-The LivePT core engine exposes a flexible `Double-Click Callback` architecture. You can register any custom graphical interface (built with ImGui, Win32 API, Qt, etc.) using a straightforward type registration macro:
+#### 2. Mapped Per-Frame Mouse Drag Callbacks (Drag Callbacks)
+Intercepts mouse tracking inputs whenever a trigger button session is held down over a structural type identifier token or its opening brace signature in Visual Studio. Every frame's physical displacement deltas are forwarded straight to your custom mathematical parser:
 
 ```cpp
-// Example of binding your own custom type to a User Space interface:
-struct my_color { unsigned char r, g, b; };
-
-// The callback function that triggers your UI upon double-clicking inside VS:
-void MyCustomColorWindow(const my_color& initialValue, std::function<void(std::string)> vsUpdater) {
-    // 1. Draw your custom UI window here
-    // 2. When UI sliders move, simply execute: vsUpdater("my_color{255, 0, 0}");
-    // 3. The LivePT core will instantly commit that string to the active Visual Studio document!
+// Callback receives the exact inner arguments string and a structural container holding mouse frame metrics
+std::string MyCustomDragLogic(const std::string& currentArgsStr, const LivePT::DragMathInput& input) {
+    // input.mouseFrameDeltaX — mouse X delta for the current frame loop
+    // input.mouseFrameDeltaY — inverted mouse Y delta for the current frame loop
+    // input.ctrl, input.shift — speed modifier toggles
+    
+    // Process input metrics and return a formatted, rewritten string block for your IDE:
+    return "15.0f, 25.5f"; 
 }
 
-// Register your type-to-UI bridge globally:
-LPT_REGISTER_TYPE(my_color, MyCustomColorWindow);
+// Binding a custom frame drag handler to an explicit type key:
+LPT_REGISTER_DRAG("color3", DrugLogic::color3Drag);
+LPT_REGISTER_DRAG("pos2", DrugLogic::pos2Drag);
 ```
+When a structural drag callback is fired, the engine smoothly suppresses the hardware OS cursor visibility, constraints mouse tracking coordinates to the center of your active layout space, deploys an invisible Win32 shield wrapper to block window defocus errors, and renders alpha-blended custom tooltip strings (`g_OverlayText`) directly on the screen space.
 
----
-
-## 📦 Supported Syntax & `eval(...)` Macro Constraints
-
-### ✅ What CAN be wrapped inside `eval()`:
-1. **Basic Constant Literals:** Any primitive numerical constants (`int`, `float`), including values with type suffixes (e.g., `eval(35.6f)`, `eval(-47.01)`).
-2. **Enumerations:** Both scoped (`enum class`) and unscoped enums (e.g., `eval(ptype::box)`).
-3. **Named Aggregates (Explicit Type Names):** Passing a struct with an explicit constructor or type initialization. The core lookups the type structure layout via `DbgHelp` and maps its internal layout:
-   ```cpp
-   blueprint.Set(eval(Primitive{ -47.01f, -299, ptype::box, show_t::on, {120, 0, 0} }));
-   ```
-4. **Named Aggregates with C++20 Designated Initializers:** Struct initialization with explicit member naming. LivePT uses `DbgHelp` to map field offsets and highly efficiently parses values using non-throwing `std::from_chars`:
-   ```cpp
-   primitive.Set(Primitive{
-       .x = eval(-47.01),
-       .y = eval(-299),
-       .type = eval(ptype::box),
-       .color = eval(color3{ .r = 150, .g = 109, .b = 85 })
-   });
-   ```
-5. **Mixing Literals and Runtime Variables inside Aggregates:** When initializing a named aggregate, you can pass both fixed constants and dynamic variables (e.g., `x` and `y`) inside the `eval(...)` macro block. The toolkit's parser automatically identifies variable text tokens and skips them during update cycles, modifying only literal constants:
-   ```cpp
-   primitive.Set(Primitive{
-       .x = eval(26.40),
-       .y = eval(-276),
-       .type = eval(ptype::roundbox),
-       .show = eval(show_t::on),
-       .color = eval(color3{
-           .r = x,
-           .g = 62, // The .g field (literal 62) remains interactively tweakable via mouse/keyboard!
-           .b = y
-       })
-   });
-   ```
-
-### ❌ What CANNOT be wrapped inside `eval()`:
-1. **Dynamic Expressions Outside Structs:** You cannot pass independent calculations or function calls like `eval(a + b)` or `eval(GetX())`. The macro expects a fixed literal or a structural aggregate block.
-2. **Unnamed Aggregates (Raw List Initializations):** Initializing structures anonymously using `{ val1, val2 }` lists without an explicit type name **is not supported**, as the parser cannot fetch the structure layout from the PDB without a text type identifier.
-3. **Non-ASCII Characters:** The internal text engine does not support non-ASCII encodings. Cyrillic characters or non-standard symbols inside `eval()` will cause parsing failures.
-4. **Complex Non-Trivial Types in Structs:** Members of structs wrapped inside `eval()` must be primitive types (`char`, `int`, `float`, `double`, `bool`). Dynamic containers like `std::string` or `std::vector` are explicitly ignored to prevent memory corruption.
+### 🛡️ Code Security & Transaction Isolation
+* **Shift Validation Barrier:** Before shifting document tracking markers, the engine verifies the context data around the target row. If an accidental layout mutation deforms the text code blocks such that the target macro token shifts away from its expected location, the coordinate recalculation is cleanly isolated and skipped with an internal log warning (`[LivePT Integrity Error]`), protecting your codebase from layout corruptions.
+* **Atomic Workspace Transactions (Undo/Redo):** Text modification streams pushed by mouse tracks or floating widgets are automatically grouped inside active Visual Studio `UndoContext` transaction boundaries. The entire layout stream session behaves as a single atomic operation—releasing the mouse slider lets you instantly revert all sequential file text updates using the standard IDE `Ctrl + Z` shortcut.
