@@ -329,20 +329,15 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         float x = eval(292.0f);
         float y = eval(-1.0f);
 
-        
-
-
-
         float rr = rand() % 20 + eval(189);
-        pos2 p = eval(pos2{ 1,2 });
 
         Draw(eval(Primitive{
             .pos = pos2{
-				.x = 171.31f,
-				.y = -532.24f
+				.x = 252.31f,
+				.y = -618.24f
 				},
             .size = size2{236.06f, rr},
-            .Angle = angle(-39.5f),
+            .Angle = angle(-10.5f),
             .type = ptype::circle,
             .show = true,
             .color = color3{0, 172, 50}
@@ -352,21 +347,21 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         DrawLine({
             .points = eval(std::vector<HeavyPoint>{
-                    { true, pos2{-546.70f, 253.70f}, 58, 944, color3{239, 61, 125} },
+                    { true, pos2{-522.70f, 248.70f}, 58, 944, color3{239, 61, 125} },
                     { true, pos2{-246.80f, 317.80f}, 20, 956, color3{95, 35, 59} },
                     { true, pos2{-9.40f, 142.80f}, 21, 956, color3{75, 34, 99} },
                     { true, pos2{154.40f, 262.20f}, 19, 956, color3{73, 56, 158} },
                     { true, pos2{373.40f, 616.20f}, 15, 956, color3{103, 82, 183} },
-                    { true, pos2{585.40f, 481.20f}, 15, 956, color3{103, 82, 183} },
+                    { true, pos2{571.40f, 498.20f}, 15, 956, color3{103, 82, 183} },
                 })
             });
 
         DrawTestRect({
                 .pos = pos2{
-				.x = 529.00f,
-				.y = -60.13f
+				.x = 484.00f,
+				.y = -62.13f
 				},
-                .size = size2{144.89f, 191.14f},
+                .size = size2{148.74f, 196.20f},
                 .Angle = angle(47.0f),
                 .color = color3{106, 19, 29},
                 .fill = true

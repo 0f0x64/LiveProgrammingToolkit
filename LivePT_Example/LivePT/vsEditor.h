@@ -972,6 +972,50 @@ namespace LivePT {
 
     inline std::atomic<bool> g_IsLptPdbWarmupCompleted{ false };
 
+    // Вспомогательная фоновая функция для рекурсивного парсинга вложенных типов из PDB
+    inline void DeepWarmupTypeFromPdb(const std::wstring& wTypeName, std::unordered_map<std::wstring, std::vector<StructMemberDesc>>& cache) {
+        // Защита от бесконечной рекурсии (если тип уже обработан)
+        if (cache.find(wTypeName) != cache.end()) return;
+
+        std::vector<std::string> fNames;
+        std::vector<DWORD> fOffsets;
+        std::vector<DWORD> fSizes;
+        std::vector<std::string> fTypes;
+
+        // Прямой фоновый запрос к DbgHelp — абсолютно безопасен и не фризит UI-поток
+        if (LoadStructMetadataDirect(wTypeName.c_str(), fNames, fOffsets, fSizes, fTypes)) {
+            std::vector<StructMemberDesc> loadedMembers;
+            loadedMembers.reserve(fOffsets.size());
+
+            for (size_t k = 0; k < fOffsets.size(); ++k) {
+                loadedMembers.push_back({ fNames[k], fOffsets[k], fSizes[k], fTypes[k] });
+            }
+
+            // Записываем структуру в локальный кэш потока
+            cache[wTypeName] = loadedMembers;
+
+            // РЕКУРСИВНЫЙ АНАЛИЗ ПОЛЕЙ: Ищем скрытые подструктуры
+            for (const auto& member : loadedMembers) {
+                // Если тип поля не является базовым примитивом C++ — уходим вглубь
+                if (member.typeName != "float" && member.typeName != "int" &&
+                    member.typeName != "bool" && member.typeName != "double" &&
+                    member.typeName != "char" && member.typeName != "unsigned char")
+                {
+                    std::string cleanNestedName = member.typeName;
+                    if (cleanNestedName.rfind("struct ", 0) == 0) cleanNestedName.erase(0, 7);
+                    if (cleanNestedName.rfind("class ", 0) == 0) cleanNestedName.erase(0, 6);
+
+                    size_t len = cleanNestedName.length();
+                    std::wstring wNestedName(len, L'\0');
+                    MultiByteToWideChar(CP_ACP, 0, cleanNestedName.c_str(), static_cast<int>(len), wNestedName.data(), static_cast<int>(len));
+
+                    // Рекурсивно выкачиваем внутренности (например, pos2, size2, color3)
+                    DeepWarmupTypeFromPdb(wNestedName, cache);
+                }
+            }
+        }
+    }
+
     inline void WarmupAllDatabaseParams() {
         static bool isWarmedUp = false;
         if (isWarmedUp) return;
@@ -982,46 +1026,20 @@ namespace LivePT {
 
         isWarmedUp = true;
 
-        // Запускаем тяжелый разбор PDB в фоновом потоке
+        // Запускаем асинхронный разбор PDB в фоновом потоке
         std::thread warmupThread([totalParams]() {
             auto& localParams = LivePT::getParamDesc();
 
-            std::unordered_map<std::type_index, decltype(localParams[0].structInfo.members)> structMetadataCache;
-            structMetadataCache.reserve(8);
+            // Временный кэш потока для предотвращения гонок данных
+            std::unordered_map<std::wstring, std::vector<StructMemberDesc>> localMetadataCache;
+            localMetadataCache.reserve(16);
 
-            static const std::type_index typeFloat = typeid(float);
-            static const std::type_index typeInt = typeid(int);
-            static const std::type_index typeBool = typeid(bool);
-            static const std::type_index typeDouble = typeid(double);
-            static const std::type_index typeChar = typeid(char);
-            static const std::type_index typeUChar = typeid(unsigned char);
-
+            // Шаг 1: Глубокий рекурсивный обход PDB для всех корневых типов
             for (size_t i = 0; i < totalParams; ++i) {
                 auto& p = localParams[i];
+                if (p.enumInfo.isEnum || !p.value.has_value()) continue;
 
-                // Пропускаем то, что уже загружено или не инициализировано
-                if (p.enumInfo.isEnum || p.structInfo.isStruct || !p.value.has_value()) {
-                    continue;
-                }
-
-                std::type_index currentTypeInfo = p.value.type();
-
-                // Примитивы не требуют разбора структуры
-                if (currentTypeInfo == typeFloat || currentTypeInfo == typeInt ||
-                    currentTypeInfo == typeBool || currentTypeInfo == typeDouble ||
-                    currentTypeInfo == typeChar || currentTypeInfo == typeUChar) {
-                    continue;
-                }
-
-                // Быстрый кэш, если структура такого типа уже разбиралась
-                auto it = structMetadataCache.find(currentTypeInfo);
-                if (it != structMetadataCache.end()) {
-                    p.structInfo.members = it->second;
-                    p.structInfo.isStruct = true;
-                    continue;
-                }
-
-                std::string typeNameAnsi = currentTypeInfo.name();
+                std::string typeNameAnsi = p.value.type().name();
                 if (typeNameAnsi.empty()) continue;
 
                 const char* typePtr = typeNameAnsi.c_str();
@@ -1032,34 +1050,47 @@ namespace LivePT {
                 std::wstring wTypeName(len, L'\0');
                 MultiByteToWideChar(CP_ACP, 0, typePtr, static_cast<int>(len), wTypeName.data(), static_cast<int>(len));
 
-                std::vector<std::string> fNames;
-                std::vector<DWORD> fOffsets;
-                std::vector<DWORD> fSizes;
-                std::vector<std::string> fTypes;
+                // Поток лезет в PDB, вытаскивает метаданные типа и всех вложенных структур
+                DeepWarmupTypeFromPdb(wTypeName, localMetadataCache);
+            }
 
-                // Этот вызов DbgHelp теперь не фризит UI-поток отрисовки кадра!
-                if (LoadStructMetadataDirect(wTypeName.c_str(), fNames, fOffsets, fSizes, fTypes)) {
-                    decltype(p.structInfo.members) loadedMembers;
-                    const size_t fieldsCount = fOffsets.size();
-                    loadedMembers.reserve(fieldsCount);
+            // Шаг 2: Применяем схемы к корневым элементам вектора параметров
+            for (size_t i = 0; i < totalParams; ++i) {
+                auto& p = localParams[i];
+                if (p.enumInfo.isEnum || !p.value.has_value()) continue;
 
-                    for (size_t k = 0; k < fieldsCount; ++k) {
-                        loadedMembers.push_back({ std::move(fNames[k]), fOffsets[k], fSizes[k], std::move(fTypes[k]) });
-                    }
+                std::string typeNameAnsi = p.value.type().name();
+                const char* typePtr = typeNameAnsi.c_str();
+                if (strncmp(typePtr, "struct ", 7) == 0) typePtr += 7;
+                else if (strncmp(typePtr, "class ", 6) == 0) typePtr += 6;
 
-                    p.structInfo.members = loadedMembers;
+                size_t len = strlen(typePtr);
+                std::wstring wTypeName(len, L'\0');
+                MultiByteToWideChar(CP_ACP, 0, typePtr, static_cast<int>(len), wTypeName.data(), static_cast<int>(len));
+
+                auto it = localMetadataCache.find(wTypeName);
+                if (it != localMetadataCache.end()) {
+                    p.structInfo.members = it->second;
                     p.structInfo.isStruct = true;
-
-                    structMetadataCache.emplace(currentTypeInfo, std::move(loadedMembers));
                 }
             }
+
+            // Шаг 3: Сохраняем абсолютно ВСЕ выкачанные типы (включая скрытые подструктуры)
+            // в наш изолированный глобальный реестр схем. Вектор localParams при этом НЕ РАСШИРЯЕТСЯ!
+            auto& globalSchemaRegistry = GetGlobalTypeSchemaRegistry();
+            for (const auto& [wName, members] : localMetadataCache) {
+                std::string ansiName(wName.begin(), wName.end());
+                globalSchemaRegistry[ansiName] = members;
+            }
+
+            // Сигнализируем основному циклу, что вся база данных типов готова к работе
             g_IsLptPdbWarmupCompleted = true;
-            Log("[LivePT Async Warmup] Background PDB parsing completed. Library is fully ready.");
+            Log("[LivePT Deep Warmup] Background recursive PDB parsing completed. All nested types are stored safely.");
             });
 
-        // Отвязываем поток, чтобы он работал асинхронно
         warmupThread.detach();
     }
+
 
     inline void Warmup() {
         static bool isFirstFrame = true;

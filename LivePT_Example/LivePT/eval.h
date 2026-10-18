@@ -136,6 +136,11 @@ namespace LivePT {
         return fileCompileTree;
     }
 
+    inline std::unordered_map<std::string, std::vector<StructMemberDesc>>& GetGlobalTypeSchemaRegistry() {
+        static std::unordered_map<std::string, std::vector<StructMemberDesc>> instance;
+        return instance;
+    }
+
     inline int RegisterEvalPreMain(const char* file, const char* macroName, std::any value, int line, int column, EnumTypeDesc enumDesc) {
         std::string absolutePath = NormalizePath(file);
         auto& fileCompileTree = GetFileCompileTree();
@@ -213,6 +218,14 @@ namespace LivePT {
         if (cleanName.rfind("struct ", 0) == 0) cleanName.erase(0, 7);
         if (cleanName.rfind("class ", 0) == 0) cleanName.erase(0, 6);
 
+        // 1. СНАЧАЛА ПРОВЕРЯЕМ ГЛОБАЛЬНЫЙ РЕЕСТР СХЕМ (прогретый заранее в фоне)
+        auto& schemaRegistry = GetGlobalTypeSchemaRegistry();
+        auto itSchema = schemaRegistry.find(cleanName);
+        if (itSchema != schemaRegistry.end()) {
+            return itSchema->second;
+        }
+
+        // 2. ФОЛБЭК: Если типа нет в реестре, ищем по старинке в векторе параметров
         for (const auto& p : paramDesc) {
             if (p.structInfo.isStruct) {
                 std::string pTypeName = p.value.type().name();
