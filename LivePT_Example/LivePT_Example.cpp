@@ -390,12 +390,12 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         DrawTestRect({
                 .pos = pos2{
-				    .x = 446.00f,
-				    .y = 32.87f
+				    .x = 500.00f,
+				    .y = 76.87f
 				    },
-                .size = size2{86.33f, 113.94f},
+                .size = size2{123.66f, 163.18f},
                 .Angle = angle(45.0f),
-                .color = color3{220, 76, 153},
+                .color = color3{120, 174, 198},
                 .fill = true
             });
 
