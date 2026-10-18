@@ -424,13 +424,22 @@ namespace LivePT {
 
                         int finalEnumInt = 0;
                         bool enumFound = false;
+
+                        // 1. ЧЕСТНЫЙ ПОИСК: Сканируем базу данных в поисках метаданных PDB
                         for (const auto& p : paramDesc) {
                             if (p.enumInfo.isEnum && !p.enumInfo.elements.empty()) {
                                 for (const auto& elem : p.enumInfo.elements) {
+                                    // Очищаем имя элемента из PDB от возможных системных префиксов
                                     std::string cleanElemName = elem.name;
-                                    size_t subC = cleanElemName.rfind("::");
-                                    if (subC != std::string::npos) cleanElemName = cleanElemName.substr(subC + 2);
+                                    if (cleanElemName.rfind("enum ", 0) == 0)  cleanElemName.erase(0, 5);
+                                    if (cleanElemName.rfind("class ", 0) == 0) cleanElemName.erase(0, 6);
 
+                                    size_t subC = cleanElemName.rfind("::");
+                                    if (subC != std::string::npos) {
+                                        cleanElemName = cleanElemName.substr(subC + 2);
+                                    }
+
+                                    // Сравниваем чистые токены (например, "roundbox" == "roundbox")
                                     if (cleanElemName == enumValueToken || elem.name == enumValueToken) {
                                         finalEnumInt = elem.value;
                                         enumFound = true;
@@ -441,14 +450,16 @@ namespace LivePT {
                             if (enumFound) break;
                         }
 
+                        // 2. ЗАЩИТНЫЙ БАРЬЕР: Если энум не найден в PDB, пишем ошибку в лог и выходим без порчи памяти
                         if (!enumFound) {
-                            if (enumValueToken == "circle") finalEnumInt = 0;
-                            else if (enumValueToken == "box") finalEnumInt = 1;
-                            else if (enumValueToken == "roundbox") finalEnumInt = 2;
+                            Log("[LivePT Integrity Error] Unknown enum token inside structure: '" + enumValueToken + "'. Parsing skipped.");
+                            continue;
                         }
 
+                        // 3. ПОБАЙТОВАЯ ЗАПИСЬ: Переносим вычисленный int по адресу поля структуры
                         *reinterpret_cast<int*>(fieldAddress) = finalEnumInt;
 
+                        // 4. МАСКА ВАЛИДНОСТИ: Размечаем байты структуры для покадрового копировщика в eval.h
                         for (DWORD b = 0; b < member->size; ++b) {
                             if (currentAbsoluteFieldOffset + b < structTotalSize) {
                                 paramDesc[targetId].validFieldsMask[currentAbsoluteFieldOffset + b] = true;
@@ -456,6 +467,7 @@ namespace LivePT {
                         }
                         continue;
                     }
+
 
                     const char* strStart = cleanPrimitiveStr.data();
                     const char* strEnd = cleanPrimitiveStr.data() + cleanPrimitiveStr.size();

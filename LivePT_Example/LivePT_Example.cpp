@@ -331,12 +331,24 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         float rr = rand() % 20 + eval(189);
 
-        
+        Draw((Primitive{
+                .pos = pos2{
+                    .x = 277.31f,
+                    .y = -603.24f
+                    },
+                .size = size2{236.06f, rr},
+                .Angle = angle(-10.5f),
+                .type = eval(ptype::box),
+                .show = true,
+                .color = color3{0, 172, 50}
+            }));
+
+
 
         Draw(eval(Primitive{
             .pos = pos2{
-				.x = 252.31f,
-				.y = -618.24f
+				.x = -123.69f,
+				.y = 140.76f
 				},
             .size = size2{236.06f, rr},
             .Angle = angle(-10.5f),
@@ -360,8 +372,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         DrawTestRect({
                 .pos = pos2{
-				.x = 484.00f,
-				.y = -62.13f
+				.x = 468.00f,
+				.y = -34.13f
 				},
                 .size = size2{148.74f, 196.20f},
                 .Angle = angle(47.0f),
