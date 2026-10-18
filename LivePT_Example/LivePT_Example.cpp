@@ -331,6 +331,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         float rr = rand() % 20 + eval(189);
 
+        
+
         Draw(eval(Primitive{
             .pos = pos2{
 				.x = 252.31f,
@@ -347,12 +349,12 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         DrawLine({
             .points = eval(std::vector<HeavyPoint>{
-                    { true, pos2{-522.70f, 248.70f}, 58, 944, color3{239, 61, 125} },
+                    { true, pos2{-515.70f, 222.70f}, 58, 944, color3{239, 61, 125} },
                     { true, pos2{-246.80f, 317.80f}, 20, 956, color3{95, 35, 59} },
                     { true, pos2{-9.40f, 142.80f}, 21, 956, color3{75, 34, 99} },
                     { true, pos2{154.40f, 262.20f}, 19, 956, color3{73, 56, 158} },
                     { true, pos2{373.40f, 616.20f}, 15, 956, color3{103, 82, 183} },
-                    { true, pos2{571.40f, 498.20f}, 15, 956, color3{103, 82, 183} },
+                    { true, pos2{615.40f, 496.20f}, 15, 956, color3{103, 82, 183} },
                 })
             });
 
