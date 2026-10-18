@@ -1,4 +1,8 @@
 #include <windows.h>
+#include <vector>
+#include <source_location>
+#include <string>
+#include <cmath>
 #include <initializer_list>
 
 // ---------------- LivePT integration section ----------------
@@ -156,63 +160,6 @@ void DrawLine(LinePrimitive lp, std::source_location location = std::source_loca
     }
 }
 
-#define LPT_LIVE_FUNCTION(ReturnType, FuncName, StructType, VarName) \
-    ReturnType FuncName##_Live(StructType VarName, int runtimeId, std::source_location location); \
-    \
-    template <typename T = StructType> \
-    inline ReturnType FuncName(T&& raw_r, const char* file = __builtin_FILE(), int line = __builtin_LINE(), int col = __builtin_COLUMN(), std::source_location loc = std::source_location::current()) { \
-        std::string absPath = LivePT::NormalizePath(file); \
-        int rId = LivePT::RegisterEvalPreMain(absPath.c_str(), #FuncName, std::any{ raw_r }, line, col, LivePT::EnumTypeDesc{ false }); \
-        \
-        /* »нициализируем парсер строк при первом вызове */ \
-        if (rId >= 0 && rId < static_cast<int>(LivePT::paramDesc.size()) && !LivePT::paramDesc[rId].loaded) { \
-            LivePT::paramDesc[rId].value = std::any{ static_cast<StructType>(raw_r) }; \
-            LivePT::paramDesc[rId].stringUpdater = [rId](std::any& targetAny, const std::string& textValue) { \
-                std::string innerArgs; \
-                size_t openBrace = textValue.find('{'); \
-                size_t closeBrace = textValue.rfind('}'); \
-                if (openBrace != std::string::npos && closeBrace != std::string::npos && closeBrace > openBrace) { \
-                    std::string rawInner = textValue.substr(openBrace + 1, closeBrace - openBrace - 1); \
-                    innerArgs.reserve(rawInner.length()); \
-                    bool inComment = false; \
-                    for (size_t i = 0; i < rawInner.length(); ++i) { \
-                        char c = rawInner[i]; char nextC = (i + 1 < rawInner.length()) ? rawInner[i + 1] : '\0'; \
-                        if (inComment) { if (c == '\n' || c == '\r') inComment = false; continue; } \
-                        if ((c == '/' && nextC == '/') || c == '#') { inComment = true; if (c == '/') i++; continue; } \
-                        innerArgs += c; \
-                    } \
-                } else { \
-                    if (!LivePT::ExtractAndStripComments(textValue, innerArgs)) return; \
-                } \
-                StructType* pStructInstance = std::any_cast<StructType>(&targetAny); \
-                if (!pStructInstance) return; \
-                LivePT::WriteStructBytes(reinterpret_cast<char*>(pStructInstance), typeid(StructType).name(), innerArgs, 0, rId, sizeof(StructType)); \
-            }; \
-            LivePT::paramDesc[rId].loaded = true; \
-        } \
-        \
-        /* ѕробрасываем измененные данные из базы LivePT в локальную переменную */ \
-        StructType live_r = std::forward<T>(raw_r); \
-        if (rId >= 0 && rId < static_cast<int>(LivePT::paramDesc.size())) { \
-            std::string actualKey = absPath + ":" + std::to_string(LivePT::paramDesc[rId].counterID); \
-            int real_id = LivePT::getID(actualKey); \
-            if (real_id >= 0 && real_id < static_cast<int>(LivePT::paramDesc.size()) && LivePT::paramDesc[real_id].loaded) { \
-                if (auto pCachedVal = std::any_cast<StructType>(&LivePT::paramDesc[real_id].value)) { \
-                    char* targetBase = reinterpret_cast<char*>(&live_r); \
-                    const char* cacheBase = reinterpret_cast<const char*>(pCachedVal); \
-                    size_t totalSz = sizeof(StructType); \
-                    const auto& mask = LivePT::paramDesc[real_id].validFieldsMask; \
-                    if (mask.size() == totalSz) { \
-                        for (size_t b = 0; b < totalSz; ++b) { \
-                            if (mask[b]) targetBase[b] = cacheBase[b]; \
-                        } \
-                    } \
-                } \
-            } \
-        } \
-        return FuncName##_Live(std::move(live_r), rId, loc); \
-    } \
-    ReturnType FuncName##_Live(StructType VarName, int runtimeId, std::source_location location)
 
 
 struct TestRect {
@@ -317,16 +264,20 @@ void Draw(Primitive p, std::source_location location = std::source_location::cur
     SelectObject(gc.memDC, hOldBrush);
     DeleteObject(hBrush);
 
-    //if (curSel == drawCounter || highlight)
+    static HBRUSH hBrushHighlight = CreateSolidBrush(RGB(255, 255, 255)); // Ѕела€
+    static HBRUSH hBrushNormal = CreateSolidBrush(RGB(122, 122, 122)); // —ера€
+
+    // ѕросто выбираем нужную готовую кисть в зависимости от подсветки.
+    // ѕеременную hOldBrush перезаписывать нельз€ Ч она должна хранить самую первую системную кисть!
     if (highlight)
     {
-        hBrush = CreateSolidBrush(RGB(255, 255, 255));
+        SelectObject(gc.memDC, hBrushHighlight);
     }
     else
     {
-        hBrush = CreateSolidBrush(RGB(122, 122, 122));
+        SelectObject(gc.memDC, hBrushNormal);
     }
-    hOldBrush = (HBRUSH)SelectObject(gc.memDC, hBrush);
+
     Ellipse(gc.memDC, -12, -12, 12, 12);
     SelectObject(gc.memDC, hOldBrush);
     DeleteObject(hBrush);
@@ -397,13 +348,13 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         Draw({
             .pos = eval(pos2{
-				.x = -373.10f,
-				.y = -329.99f
+				.x = -168.10f,
+				.y = -572.99f
 				}
             ),
             .size = eval(size2{221.59f, 128.58f}),
             .Angle = eval(angle(110.6f)),
-            .type = eval(ptype::box),
+            .type = eval(ptype::circle),
             .show = eval(true),
             .color = eval(color3{
 				.r=53, 
@@ -412,14 +363,14 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 				})
             });
 
-        float rr = rand() % 20 + 66;
+        float rr = rand() % 20 + eval(189);
 
         Draw(eval(Primitive{
             .pos = pos2{
 				.x = 353.31f,
 				.y = -461.24f
 				},
-            .size = size2{156.06f, rr},
+            .size = size2{255.06f, rr},
             .Angle = angle(-39.5f),
             .type = ptype::circle,
             .show = true,
@@ -428,21 +379,19 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         DrawLine({
             .points = eval(std::vector<HeavyPoint>{
-                    { true, pos2{-460.70f, 236.70f}, 58, 944, color3{239, 61, 125} },
-                    { true, pos2{-261.80f, 319.80f}, 20, 956, color3{95, 35, 59} },
+                    { true, pos2{-545.70f, 135.70f}, 58, 944, color3{239, 61, 125} },
+                    { true, pos2{-246.80f, 317.80f}, 20, 956, color3{95, 35, 59} },
                     { true, pos2{-9.40f, 142.80f}, 21, 956, color3{75, 34, 99} },
                     { true, pos2{154.40f, 262.20f}, 19, 956, color3{73, 56, 158} },
-                    { true, pos2{257.40f, 71.20f}, 19, 956, color3{72, 60, 125} },
-                    { true, pos2{406.40f, 176.20f}, 30, 956, color3{60, 50, 120} },
-                    { true, pos2{497.40f, 356.20f}, 15, 956, color3{103, 82, 183} },
-                    { true, pos2{270.40f, 539.20f}, 15, 956, color3{103, 82, 183} },
+                    { true, pos2{373.40f, 616.20f}, 15, 956, color3{103, 82, 183} },
+                    { true, pos2{519.40f, 413.20f}, 15, 956, color3{103, 82, 183} },
                 })
             });
 
         DrawTestRect({
                 .pos = pos2{
-				    .x = 333.00f,
-				    .y = -33.13f
+				    .x = 446.00f,
+				    .y = 32.87f
 				    },
                 .size = size2{86.33f, 113.94f},
                 .Angle = angle(45.0f),
@@ -452,12 +401,12 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         DrawTestRect({
                 .pos = pos2{
-                    .x = -341.00f,
-                    .y = 64.87f
+                    .x = -536.00f,
+                    .y = -261.13f
                     },
-                .size = size2{80.81f, 50.47f},
-                .Angle = angle(45.0f),
-                .color = color3{20, 118, 220},
+                .size = size2{134.95f, 145.87f},
+                .Angle = angle(228.0f),
+                .color = color3{66, 80, 220},
                 .fill = true
             });
 

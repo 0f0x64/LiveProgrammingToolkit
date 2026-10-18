@@ -1,4 +1,7 @@
 #pragma once
+
+#if LivePT_EditMode
+
 #include <windows.h>
 #include <windowsx.h>
 #include <cmath>
@@ -264,3 +267,5 @@ namespace Widgets {
         SetFocus(g_angleCtx.hWindow);
     }
 }
+
+#endif

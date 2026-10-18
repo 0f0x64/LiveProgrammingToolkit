@@ -1,3 +1,5 @@
+#if LivePT_EditMode
+
 #pragma once
 #include <windows.h>
 #include <windowsx.h> // Обязательно для корректной знаковой арифметики GET_X_LPARAM
@@ -269,3 +271,5 @@ namespace Widgets {
         SetForegroundWindow(g_posCtx.hWindow); SetFocus(g_posCtx.hWindow);
     }
 }
+
+#endif

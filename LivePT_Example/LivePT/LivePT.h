@@ -140,13 +140,80 @@ namespace LivePT {
         static_cast<int>(__builtin_COLUMN()) \
     >(__VA_ARGS__)
 
+#define LPT_LIVE_FUNCTION(ReturnType, FuncName, StructType, VarName) \
+    ReturnType FuncName##_Live(StructType VarName, int runtimeId, std::source_location location); \
+    \
+    template <typename T = StructType> \
+    inline ReturnType FuncName(T&& raw_r, const char* file = __builtin_FILE(), int line = __builtin_LINE(), int col = __builtin_COLUMN(), std::source_location loc = std::source_location::current()) { \
+        std::string absPath = LivePT::NormalizePath(file); \
+        int rId = LivePT::RegisterEvalPreMain(absPath.c_str(), #FuncName, std::any{ raw_r }, line, col, LivePT::EnumTypeDesc{ false }); \
+        \
+        /* Инициализируем парсер строк при первом вызове */ \
+        if (rId >= 0 && rId < static_cast<int>(LivePT::paramDesc.size()) && !LivePT::paramDesc[rId].loaded) { \
+            LivePT::paramDesc[rId].value = std::any{ static_cast<StructType>(raw_r) }; \
+            LivePT::paramDesc[rId].stringUpdater = [rId](std::any& targetAny, const std::string& textValue) { \
+                std::string innerArgs; \
+                size_t openBrace = textValue.find('{'); \
+                size_t closeBrace = textValue.rfind('}'); \
+                if (openBrace != std::string::npos && closeBrace != std::string::npos && closeBrace > openBrace) { \
+                    std::string rawInner = textValue.substr(openBrace + 1, closeBrace - openBrace - 1); \
+                    innerArgs.reserve(rawInner.length()); \
+                    bool inComment = false; \
+                    for (size_t i = 0; i < rawInner.length(); ++i) { \
+                        char c = rawInner[i]; char nextC = (i + 1 < rawInner.length()) ? rawInner[i + 1] : '\0'; \
+                        if (inComment) { if (c == '\n' || c == '\r') inComment = false; continue; } \
+                        if ((c == '/' && nextC == '/') || c == '#') { inComment = true; if (c == '/') i++; continue; } \
+                        innerArgs += c; \
+                    } \
+                } else { \
+                    if (!LivePT::ExtractAndStripComments(textValue, innerArgs)) return; \
+                } \
+                StructType* pStructInstance = std::any_cast<StructType>(&targetAny); \
+                if (!pStructInstance) return; \
+                LivePT::WriteStructBytes(reinterpret_cast<char*>(pStructInstance), typeid(StructType).name(), innerArgs, 0, rId, sizeof(StructType)); \
+            }; \
+            LivePT::paramDesc[rId].loaded = true; \
+        } \
+        \
+        /* Пробрасываем измененные данные из базы LivePT в локальную переменную */ \
+        StructType live_r = std::forward<T>(raw_r); \
+        if (rId >= 0 && rId < static_cast<int>(LivePT::paramDesc.size())) { \
+            std::string actualKey = absPath + ":" + std::to_string(LivePT::paramDesc[rId].counterID); \
+            int real_id = LivePT::getID(actualKey); \
+            if (real_id >= 0 && real_id < static_cast<int>(LivePT::paramDesc.size()) && LivePT::paramDesc[real_id].loaded) { \
+                if (auto pCachedVal = std::any_cast<StructType>(&LivePT::paramDesc[real_id].value)) { \
+                    char* targetBase = reinterpret_cast<char*>(&live_r); \
+                    const char* cacheBase = reinterpret_cast<const char*>(pCachedVal); \
+                    size_t totalSz = sizeof(StructType); \
+                    const auto& mask = LivePT::paramDesc[real_id].validFieldsMask; \
+                    if (mask.size() == totalSz) { \
+                        for (size_t b = 0; b < totalSz; ++b) { \
+                            if (mask[b]) targetBase[b] = cacheBase[b]; \
+                        } \
+                    } \
+                } \
+            } \
+        } \
+        return FuncName##_Live(std::move(live_r), rId, loc); \
+    } \
+    ReturnType FuncName##_Live(StructType VarName, int runtimeId, std::source_location location)
+
 
 #else
 
 #define eval(...) __VA_ARGS__
 
+#define LPT_LIVE_FUNCTION(ReturnType, FuncName, StructType, VarName) \
+        inline ReturnType FuncName(StructType VarName, int runtimeId = 0, std::source_location location = std::source_location::current())
+
+#define LPT_REGISTER_TYPE(TypeNameString, CallbackFunction)
+#define LPT_REGISTER_DRAG(TypeNameString, CallbackFunction)
+
 namespace LivePT {
-    void ProcessEdit() {}
+    inline void ProcessEdit() {}
+    inline bool IsCursorInsideFunctionCall(const std::source_location& location) { return false; };
+    inline void OpenFileAndMoveCursorToLocation(const std::source_location& location) {};
 }
+
 
 #endif

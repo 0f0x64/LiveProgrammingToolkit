@@ -1,3 +1,5 @@
+#if LivePT_EditMode
+
 #pragma once
 #include <windows.h>
 #include <windowsx.h>
@@ -402,3 +404,5 @@ namespace Widgets {
         SetFocus(g_pickerCtx.hWindow);
     }
 }
+
+#endif
