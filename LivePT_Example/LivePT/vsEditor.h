@@ -673,7 +673,9 @@ namespace LivePT {
         std::wstring wMacroName(p.macroName.begin(), p.macroName.end());
 
         // Поиск символа '(' начинается сразу за концом имени токена (p.column + длина имени)
-        size_t openBracketPos = g_currentFileFullText.find(L'(', macroLineOffset + (p.column > 0 ? p.column - 1 : 0));
+                // ИСПРАВЛЕНИЕ ДИФФА: Ищем открывающую скобку строго от начала строки макроса,
+        // а не от p.column вложенного энума, чтобы не проскочить мимо eval(
+        size_t openBracketPos = g_currentFileFullText.find(L'(', macroLineOffset);
         if (openBracketPos == std::wstring::npos || openBracketPos >= g_currentFileFullText.length()) {
             return -1;
         }
@@ -683,10 +685,11 @@ namespace LivePT {
             return -1;
         }
 
-        // Контроль попадания курсора внутрь скобок
+        // Контроль попадания курсора теперь сработает идеально, так как границы вычислены верно
         if (cursorAbsoluteOffset <= openBracketPos || cursorAbsoluteOffset > closeBracketPos) {
             return -1;
         }
+
 
         return targetParamId;
     }

@@ -359,12 +359,22 @@ namespace LivePT {
 
                 if (eqPos != std::string::npos) {
                     fieldName = token.substr(0, eqPos);
-                    fieldName.erase(0, fieldName.find_first_not_of(" \t\r\n."));
+
+                    // ИСПРАВЛЕНИЕ: Удаляем пробелы и символы перевода строк, 
+                    // но НЕ трогаем точку на этом шаге, чтобы не сломать find_first_of
+                    fieldName.erase(0, fieldName.find_first_not_of(" \t\r\n"));
                     fieldName.erase(fieldName.find_last_not_of(" \t\r\n") + 1);
+
+                    // Отдельно и гарантированно срезаем ведущую точку назначенного инициализатора C++20
+                    if (!fieldName.empty() && fieldName[0] == '.') {
+                        fieldName.erase(0, 1);
+                    }
+
                     valueStr = token.substr(eqPos + 1);
                     valueStr.erase(0, valueStr.find_first_not_of(" \t\r\n"));
                     valueStr.erase(valueStr.find_last_not_of(" \t\r\n") + 1);
 
+                    // Честное сопоставление по очищенному имени поля без риска свалиться в позиционный фолбэк
                     for (size_t mIdx = 0; mIdx < membersCache.size(); ++mIdx) {
                         if (membersCache[mIdx].name == fieldName) {
                             member = &membersCache[mIdx];
@@ -373,6 +383,7 @@ namespace LivePT {
                         }
                     }
                 }
+
                 else {
                     if (positionalIndex < membersCache.size()) {
                         member = &membersCache[positionalIndex];
@@ -402,134 +413,85 @@ namespace LivePT {
                         WriteStructBytes(fieldAddress, member->typeName, nestedInnerText, currentAbsoluteFieldOffset, targetId, structTotalSize);
                     }
                 }
-                else {
-                    std::string cleanPrimitiveStr = valueStr;
-                    size_t pOpen = cleanPrimitiveStr.find('(');
-                    size_t pClose = cleanPrimitiveStr.rfind(')');
-                    if (pOpen != std::string::npos && pClose != std::string::npos && pClose > pOpen) {
-                        cleanPrimitiveStr = cleanPrimitiveStr.substr(pOpen + 1, pClose - pOpen - 1);
-                    }
+                size_t dColon = valueStr.rfind("::");
+                if (dColon != std::string::npos) {
+                    std::string enumValueToken = valueStr.substr(dColon + 2);
+                    enumValueToken.erase(0, enumValueToken.find_first_not_of(" \t\r\n"));
+                    enumValueToken.erase(enumValueToken.find_last_not_of(" \t\r\n") + 1);
 
-                    while (!cleanPrimitiveStr.empty() && (cleanPrimitiveStr.back() == 'f' || cleanPrimitiveStr.back() == 'F' ||
-                        cleanPrimitiveStr.back() == 'u' || cleanPrimitiveStr.back() == 'U' ||
-                        cleanPrimitiveStr.back() == 'l' || cleanPrimitiveStr.back() == 'L')) {
-                        cleanPrimitiveStr.pop_back();
-                    }
+                    int finalEnumInt = 0;
+                    bool enumFound = false;
 
-                    size_t dColon = cleanPrimitiveStr.rfind("::");
-                    if (dColon != std::string::npos) {
-                        std::string enumValueToken = cleanPrimitiveStr.substr(dColon + 2);
-                        enumValueToken.erase(0, enumValueToken.find_first_not_of(" \t\r\n"));
-                        enumValueToken.erase(enumValueToken.find_last_not_of(" \t\r\n") + 1);
+                    // 1. Поиск соответствия токена в существующей базе параметров paramDesc
+                    for (const auto& p : paramDesc) {
+                        if (p.enumInfo.isEnum && !p.enumInfo.elements.empty()) {
+                            for (const auto& elem : p.enumInfo.elements) {
+                                std::string cleanElemName = elem.name;
+                                size_t subC = cleanElemName.rfind("::");
+                                if (subC != std::string::npos) cleanElemName = cleanElemName.substr(subC + 2);
 
-                        int finalEnumInt = 0;
-                        bool enumFound = false;
-
-                        // 1. ЧЕСТНЫЙ ПОИСК: Сканируем базу данных в поисках метаданных PDB
-                        for (const auto& p : paramDesc) {
-                            if (p.enumInfo.isEnum && !p.enumInfo.elements.empty()) {
-                                for (const auto& elem : p.enumInfo.elements) {
-                                    // Очищаем имя элемента из PDB от возможных системных префиксов
-                                    std::string cleanElemName = elem.name;
-                                    if (cleanElemName.rfind("enum ", 0) == 0)  cleanElemName.erase(0, 5);
-                                    if (cleanElemName.rfind("class ", 0) == 0) cleanElemName.erase(0, 6);
-
-                                    size_t subC = cleanElemName.rfind("::");
-                                    if (subC != std::string::npos) {
-                                        cleanElemName = cleanElemName.substr(subC + 2);
-                                    }
-
-                                    // Сравниваем чистые токены (например, "roundbox" == "roundbox")
-                                    if (cleanElemName == enumValueToken || elem.name == enumValueToken) {
-                                        finalEnumInt = elem.value;
-                                        enumFound = true;
-                                        break;
-                                    }
+                                if (cleanElemName == enumValueToken || elem.name == enumValueToken) {
+                                    finalEnumInt = elem.value;
+                                    enumFound = true;
+                                    break;
                                 }
                             }
-                            if (enumFound) break;
                         }
+                        if (enumFound) break;
+                    }
 
-                        // 2. ЗАЩИТНЫЙ БАРЬЕР: Если энум не найден в PDB, пишем ошибку в лог и выходим без порчи памяти
-                        if (!enumFound) {
-                            Log("[LivePT Integrity Error] Unknown enum token inside structure: '" + enumValueToken + "'. Parsing skipped.");
-                            continue;
-                        }
+                    // 2. ЧЕСТНЫЙ ON-DEMAND ЗАПРОС К PDB ПО ТИПУ ПОЛЯ СТРУКТУРЫ (СПАСЕНИЕ АГРЕГАТОВ)
+                    if (!enumFound && member) {
+                        std::string cleanEnumName = member->typeName;
 
-                        // 3. ПОБАЙТОВАЯ ЗАПИСЬ: Переносим вычисленный int по адресу поля структуры
-                        *reinterpret_cast<int*>(fieldAddress) = finalEnumInt;
+                        // Убираем системные префиксы компилятора MSVC, чтобы DbgHelp не ругался
+                        if (cleanEnumName.rfind("enum ", 0) == 0)  cleanEnumName.erase(0, 5);
+                        if (cleanEnumName.rfind("class ", 0) == 0) cleanEnumName.erase(0, 6);
 
-                        // 4. МАСКА ВАЛИДНОСТИ: Размечаем байты структуры для покадрового копировщика в eval.h
-                        for (DWORD b = 0; b < member->size; ++b) {
-                            if (currentAbsoluteFieldOffset + b < structTotalSize) {
-                                paramDesc[targetId].validFieldsMask[currentAbsoluteFieldOffset + b] = true;
+                        std::wstring wEnumName(cleanEnumName.begin(), cleanEnumName.end());
+                        std::vector<std::string> parsedNames;
+                        std::vector<int> parsedValues;
+
+                        // Запрашиваем элементы энума из PDB напрямую по имени его типа
+                        if (LivePT::LoadEnumMetadataDirect(wEnumName.c_str(), parsedNames, parsedValues)) {
+                            for (size_t eIdx = 0; eIdx < parsedNames.size(); ++eIdx) {
+                                std::string cleanElemName = parsedNames[eIdx];
+                                size_t subC = cleanElemName.rfind("::");
+                                if (subC != std::string::npos) cleanElemName = cleanElemName.substr(subC + 2);
+
+                                if (cleanElemName == enumValueToken || parsedNames[eIdx] == enumValueToken) {
+                                    finalEnumInt = parsedValues[eIdx];
+                                    enumFound = true;
+                                    break;
+                                }
                             }
                         }
+                    }
+
+                    // Если энума реально нет в PDB — пишем ошибку и корректно пропускаем
+                    if (!enumFound) {
+                        Log("[LivePT Integrity Error] Unknown enum token inside structure: '" + enumValueToken + "'. Parsing skipped.");
                         continue;
                     }
 
+                    // Побайтовая запись int в память поля структуры агрегата
+                    *reinterpret_cast<int*>(fieldAddress) = finalEnumInt;
 
-                    const char* strStart = cleanPrimitiveStr.data();
-                    const char* strEnd = cleanPrimitiveStr.data() + cleanPrimitiveStr.size();
+                    DWORD safeEnumSize = member->size;
+                    if (safeEnumSize == 0) {
+                        safeEnumSize = sizeof(int); // Гарантируем 4 байта под стандартный enum class
+                    }
 
-                    if (member->size == 4) {
-                        float val = 0.0f;
-                        auto [ptr, ec] = std::from_chars(strStart, strEnd, val);
-                        bool isConstant = (ec == std::errc{});
-
-                        if (isConstant) {
-                            if (member->typeName == "int" || member->typeName == "long") {
-                                *reinterpret_cast<int*>(fieldAddress) = static_cast<int>(val);
-                            }
-                            else {
-                                *reinterpret_cast<float*>(fieldAddress) = val;
-                            }
-                        }
-
-                        for (DWORD b = 0; b < member->size; ++b) {
-                            if (currentAbsoluteFieldOffset + b < structTotalSize) {
-                                paramDesc[targetId].validFieldsMask[currentAbsoluteFieldOffset + b] = isConstant;
-                            }
+                    // Маркируем байты маски валидности как TRUE для переноса в EvalSyntaxShield
+                    for (DWORD b = 0; b < safeEnumSize; ++b) {
+                        if (currentAbsoluteFieldOffset + b < structTotalSize) {
+                            paramDesc[targetId].validFieldsMask[currentAbsoluteFieldOffset + b] = true;
                         }
                     }
-                    else if (member->size == 8) {
-                        double val = 0.0;
-                        auto [ptr, ec] = std::from_chars(strStart, strEnd, val);
-                        bool isConstant = (ec == std::errc{});
-                        if (isConstant) {
-                            *reinterpret_cast<double*>(fieldAddress) = val;
-                        }
-                        for (DWORD b = 0; b < member->size; ++b) {
-                            if (currentAbsoluteFieldOffset + b < structTotalSize) {
-                                paramDesc[targetId].validFieldsMask[currentAbsoluteFieldOffset + b] = isConstant;
-                            }
-                        }
-                    }
-                    else if (member->size == 1) {
-                        bool isConstant = false;
-                        if (member->typeName == "bool") {
-                            if (cleanPrimitiveStr == "true" || cleanPrimitiveStr == "1") {
-                                *reinterpret_cast<bool*>(fieldAddress) = true;
-                                isConstant = true;
-                            }
-                            else if (cleanPrimitiveStr == "false" || cleanPrimitiveStr == "0") {
-                                *reinterpret_cast<bool*>(fieldAddress) = false;
-                                isConstant = true;
-                            }
-                        }
-                        else {
-                            int val = 0;
-                            auto [ptr, ec] = std::from_chars(strStart, strEnd, val);
-                            if (ec == std::errc{}) {
-                                *reinterpret_cast<unsigned char*>(fieldAddress) = static_cast<unsigned char>(val);
-                                isConstant = true;
-                            }
-                        }
-                        if (currentAbsoluteFieldOffset < structTotalSize) {
-                            paramDesc[targetId].validFieldsMask[currentAbsoluteFieldOffset] = isConstant;
-                        }
-                    }
+                    continue;
                 }
+
+
             }
     }
 
@@ -691,6 +653,14 @@ namespace LivePT {
             int real_id = getID(absPath + ":" + std::to_string(paramDesc[target_id].counterID));
             if (real_id < 0 || real_id >= static_cast<int>(paramDesc.size())) {
                 return static_cast<TargetType>(literalValue);
+            }
+
+            // ЖЕЛЕЗНОЕ ИСПРАВЛЕНИЕ ДИФФА:
+            // Если у живого рантайм-параметра real_id еще нет апдейтера, 
+            // принудительно копируем его из статического шаблона target_id
+            if (real_id != target_id && !paramDesc[real_id].stringUpdater && paramDesc[target_id].stringUpdater) {
+                paramDesc[real_id].stringUpdater = paramDesc[target_id].stringUpdater;
+                paramDesc[real_id].loaded = true;
             }
 
             if constexpr (std::is_enum_v<TargetType>) {

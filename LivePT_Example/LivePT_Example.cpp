@@ -338,7 +338,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
                     },
                 .size = size2{236.06f, rr},
                 .Angle = angle(-10.5f),
-                .type = eval(ptype::box),
+                .type = eval(ptype::circle),
                 .show = true,
                 .color = color3{0, 172, 50}
             }));
@@ -350,9 +350,9 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 				.x = -123.69f,
 				.y = 140.76f
 				},
-            .size = size2{236.06f, rr},
+            .size = size2{236.06f, 111},
             .Angle = angle(-10.5f),
-            .type = ptype::box,
+            .type = ptype::circle,
             .show = true,
             .color = color3{0, 172, 50}
             }));
