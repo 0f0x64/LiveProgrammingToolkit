@@ -165,20 +165,21 @@ void DrawLine(LinePrimitive lp, std::source_location location = std::source_loca
 struct TestRect {
     pos2 pos;
     size2 size;
-    angle Angle;
+    float Angle;
+    ptype type;   // <-- Óáåæäàåìñÿ, ÷òî ýòî ïîëå ïðèñóòñòâóåò
+    bool show;
     color3 color;
     bool fill;
 };
 
 
 LPT_LIVE_FUNCTION(void, DrawTestRect, TestRect, in) {
- 
+
     int posX = (gc.w / 2) + in.pos.x;
     int posY = (gc.h / 2) + in.pos.y;
     if (IsPrimitiveSelected(posX, posY, gc.hWnd)) {
         LivePT::OpenFileAndMoveCursorToLocation(location);
     }
-
 
     BOOL highlight = LivePT::IsCursorInsideFunctionCall(location);
 
@@ -202,7 +203,22 @@ LPT_LIVE_FUNCTION(void, DrawTestRect, TestRect, in) {
     GetWorldTransform(gc.memDC, &oldForm);
     SetWorldTransform(gc.memDC, &xForm);
 
-    Rectangle(gc.memDC, -in.size.w, -in.size.h, in.size.w, in.size.h);
+    // --- ÆÈÂÎÅ ÂÅÒÂËÅÍÈÅ ÍÀ WINAPI ÍÀ ÎÑÍÎÂÅ ÅÍÓÌÀ ---
+    switch (in.type)
+    {
+    case ptype::box:
+        Rectangle(gc.memDC, -in.size.w, -in.size.h, in.size.w, in.size.h);
+        break;
+
+    case ptype::circle:
+        // Ðèñóåì ïîëíîöåííûé êðóã íà îñíîâå øèðèíû size.w
+        Ellipse(gc.memDC, -in.size.w, -in.size.w, in.size.w, in.size.w);
+        break;
+
+    default:
+        Rectangle(gc.memDC, -in.size.w, -in.size.h, in.size.w, in.size.h);
+        break;
+    }
 
     SelectObject(gc.memDC, hOldBrush);
     SelectObject(gc.memDC, hOldPen);
@@ -350,11 +366,11 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 				.x = -158.69f,
 				.y = 207.76f
 				},
-            .size = size2{236.06f, rr},
-            .Angle = angle(-10.5f),
-            .type = ptype::circle,
+            .size = size2{136.06f, rr},
+            .Angle = angle(334.9f),
+            .type = ptype::roundbox,
             .show = true,
-            .color = color3{0, 161, 37}
+            .color = color3{26, 161, 21}
             }));
 
   
@@ -366,18 +382,20 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
                     { true, pos2{-9.40f, 142.80f}, 21, 956, color3{75, 34, 99} },
                     { true, pos2{188.40f, 310.20f}, 19, 956, color3{73, 56, 158} },
                     { true, pos2{373.40f, 616.20f}, 15, 956, color3{103, 82, 183} },
-                    { true, pos2{516.40f, 416.20f}, 15, 956, color3{103, 82, 183} },
+                    { true, pos2{470.40f, 314.20f}, 15, 956, color3{103, 82, 183} },
                 })
             });
 
         DrawTestRect({
                 .pos = pos2{
-				.x = 302.58f,
-				.y = -116.13f
-				},
-                .size = size2{151.87f, 200.35f},
-                .Angle = angle(42.0f),
-                .color = color3{100, 4, 14},
+                .x = 508.58f,
+                .y = 11.87f
+                },
+                .size = size2{168.20f, 221.87f},
+                .Angle = angle(64.0f),
+                .type = ptype::roundbox,
+                .show = true,
+                .color = color3{132, 128, 0},
                 .fill = true
             });
 
@@ -388,6 +406,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
                     },
                 .size = size2{134.95f, 145.87f},
                 .Angle = angle(228.0f),
+                .type = ptype::roundbox,
+                .show = true,
                 .color = color3{58, 61, 176},
                 .fill = true
             });
