@@ -389,7 +389,12 @@ namespace LivePT {
                     paramDesc[targetId].validFieldsMask.resize(structTotalSize, false);
                 }
 
-                if (!LivePT::LookupStructMembersFromParams(member->typeName).empty()) {
+                // Шаг 1: Если в значении есть "::", но нет скобок '{', это чистый энум поля.
+                // Принудительно заставляем код уйти в ветку примитивов/энумов (else).
+                bool isPureEnumField = (valueStr.find("::") != std::string::npos) && (valueStr.find('{') == std::string::npos);
+
+                if (!isPureEnumField && !LivePT::LookupStructMembersFromParams(member->typeName).empty()) {
+
                     size_t openB = valueStr.find('{');
                     size_t closeB = valueStr.rfind('}');
                     if (openB == std::string::npos) openB = valueStr.find('(');
@@ -422,7 +427,15 @@ namespace LivePT {
                         enumValueToken.erase(0, enumValueToken.find_first_not_of(" \t\r\n"));
                         enumValueToken.erase(enumValueToken.find_last_not_of(" \t\r\n") + 1);
 
+                        // Шаг 2: Срезаем скобки и запятые, оставшиеся от синтаксиса eval(...)
+                        while (!enumValueToken.empty() && (enumValueToken.back() == ')' || enumValueToken.back() == '}' || enumValueToken.back() == ',')) {
+                            enumValueToken.pop_back();
+                        }
+                        enumValueToken.erase(0, enumValueToken.find_first_not_of(" \t\r\n"));
+                        enumValueToken.erase(enumValueToken.find_last_not_of(" \t\r\n") + 1);
+
                         int finalEnumInt = 0;
+
                         bool enumFound = false;
 
                         // 1. ЧЕСТНЫЙ ПОИСК: Сканируем базу данных в поисках метаданных PDB
@@ -450,7 +463,33 @@ namespace LivePT {
                             if (enumFound) break;
                         }
 
-                        // 2. ЗАЩИТНЫЙ БАРЬЕР: Если энум не найден в PDB, пишем ошибку в лог и выходим без порчи памяти
+                        // Шаг 3: Если рантайм-кэш не знает про 'circle', выкачиваем его напрямую из PDB по типу поля!
+                        if (!enumFound && member) {
+                            std::string cleanEnumName = member->typeName;
+                            // Очищаем от внутренних префиксов MSVC компилятора
+                            if (cleanEnumName.rfind("enum ", 0) == 0)  cleanEnumName.erase(0, 5);
+                            if (cleanEnumName.rfind("class ", 0) == 0) cleanEnumName.erase(0, 6);
+
+                            std::wstring wEnumName(cleanEnumName.begin(), cleanEnumName.end());
+                            std::vector<std::string> parsedNames;
+                            std::vector<int> parsedValues;
+
+                            // Делаем фолбэк-запрос к файлу .pdb через DbgHelp
+                            if (LivePT::LoadEnumMetadataDirect(wEnumName.c_str(), parsedNames, parsedValues)) {
+                                for (size_t eIdx = 0; eIdx < parsedNames.size(); ++eIdx) {
+                                    std::string cleanElemName = parsedNames[eIdx];
+                                    size_t subC = cleanElemName.rfind("::");
+                                    if (subC != std::string::npos) cleanElemName = cleanElemName.substr(subC + 2);
+
+                                    if (cleanElemName == enumValueToken || parsedNames[eIdx] == enumValueToken) {
+                                        finalEnumInt = parsedValues[eIdx];
+                                        enumFound = true;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+
                         if (!enumFound) {
                             Log("[LivePT Integrity Error] Unknown enum token inside structure: '" + enumValueToken + "'. Parsing skipped.");
                             continue;

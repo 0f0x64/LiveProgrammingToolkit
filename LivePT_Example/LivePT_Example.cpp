@@ -329,16 +329,16 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         float x = eval(292.0f);
         float y = eval(-1.0f);
 
-        float rr = rand() % 20 + eval(189);
+        float rr = rand() % 20 + eval(191);
 
         Draw((Primitive{
                 .pos = pos2{
-                    .x = 277.31f,
-                    .y = -603.24f
+                    .x = 361.31f,
+                    .y = -594.24f
                     },
                 .size = size2{236.06f, rr},
                 .Angle = angle(-10.5f),
-                .type = eval(ptype::box),
+                .type = eval(ptype::circle),
                 .show = true,
                 .color = color3{0, 172, 50}
             }));
@@ -347,37 +347,37 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         Draw(eval(Primitive{
             .pos = pos2{
-				.x = -123.69f,
-				.y = 140.76f
+				.x = -158.69f,
+				.y = 207.76f
 				},
             .size = size2{236.06f, rr},
             .Angle = angle(-10.5f),
-            .type = ptype::box,
+            .type = ptype::circle,
             .show = true,
-            .color = color3{0, 172, 50}
+            .color = color3{0, 161, 37}
             }));
 
   
 
         DrawLine({
             .points = eval(std::vector<HeavyPoint>{
-                    { true, pos2{-515.70f, 222.70f}, 58, 944, color3{239, 61, 125} },
+                    { true, pos2{-446.70f, 171.70f}, 58, 944, color3{247, 61, 125} },
                     { true, pos2{-246.80f, 317.80f}, 20, 956, color3{95, 35, 59} },
                     { true, pos2{-9.40f, 142.80f}, 21, 956, color3{75, 34, 99} },
-                    { true, pos2{154.40f, 262.20f}, 19, 956, color3{73, 56, 158} },
+                    { true, pos2{188.40f, 310.20f}, 19, 956, color3{73, 56, 158} },
                     { true, pos2{373.40f, 616.20f}, 15, 956, color3{103, 82, 183} },
-                    { true, pos2{615.40f, 496.20f}, 15, 956, color3{103, 82, 183} },
+                    { true, pos2{516.40f, 416.20f}, 15, 956, color3{103, 82, 183} },
                 })
             });
 
         DrawTestRect({
                 .pos = pos2{
-				.x = 468.00f,
-				.y = -34.13f
+				.x = 302.58f,
+				.y = -116.13f
 				},
-                .size = size2{148.74f, 196.20f},
-                .Angle = angle(47.0f),
-                .color = color3{106, 19, 29},
+                .size = size2{151.87f, 200.35f},
+                .Angle = angle(42.0f),
+                .color = color3{100, 4, 14},
                 .fill = true
             });
 
