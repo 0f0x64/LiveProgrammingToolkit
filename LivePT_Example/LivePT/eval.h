@@ -657,32 +657,10 @@ namespace LivePT {
                 }
                 else {
                     paramDesc[target_id].stringUpdater = [target_id](std::any& targetAny, const std::string& textValue) {
+                        
                         std::string innerArgs;
-                        size_t openBrace = textValue.find('{');
-                        size_t closeBrace = textValue.rfind('}');
 
-                        if (openBrace != std::string::npos && closeBrace != std::string::npos && closeBrace > openBrace) {
-                            std::string rawInner = textValue.substr(openBrace + 1, closeBrace - openBrace - 1);
-                            innerArgs.reserve(rawInner.length());
-                            bool inComment = false;
-                            for (size_t i = 0; i < rawInner.length(); ++i) {
-                                char c = rawInner[i];
-                                char nextC = (i + 1 < rawInner.length()) ? rawInner[i + 1] : '\0';
-                                if (inComment) {
-                                    if (c == '\n' || c == '\r') inComment = false;
-                                    continue;
-                                }
-                                if ((c == '/' && nextC == '/') || c == '#') {
-                                    inComment = true;
-                                    if (c == '/') i++;
-                                    continue;
-                                }
-                                innerArgs += c;
-                            }
-                        }
-                        else {
-                            if (!LivePT::ExtractAndStripComments(textValue, innerArgs)) return;
-                        }
+                        if (!LivePT::ExtractAndStripComments(textValue, innerArgs)) return;
 
                         TargetType* pStructInstance = std::any_cast<TargetType>(&targetAny);
                         if (!pStructInstance) return;
@@ -745,31 +723,6 @@ namespace LivePT {
         }
     };
 
-
-    template <typename T>
-    struct MsvcVectorProxy {
-        T* myFirst;
-        T* myLast;
-        T* myEnd;
-    };
-
-    struct GenericVectorState {
-        void* heapMemory = nullptr;
-        size_t elementCount = 0;
-        size_t elementSize = 0;
-        size_t lastTextHash = 0;
-    };
-
-    inline std::unordered_map<int, GenericVectorState>& GetGenericVectorMap() {
-        static std::unordered_map<int, GenericVectorState> instance;
-        return instance;
-    }
-
-    // ЧАСТИЧНАЯ СПЕЦИАЛИЗАЦИЯ ДЛЯ ДИНАМИЧЕСКИХ ВЕКТОРОВ НА СТУДО-ЯКОРЯХ
-        // 2. ЧАСТИЧНАЯ СПЕЦИАЛИЗАЦИЯ ДЛЯ ДИНАМИЧЕСКИХ ВЕКТОРОВ
-        // =========================================================================
-    // ПОЛНАЯ И ИСПРАВЛЕННАЯ ЧАСТИЧНАЯ СПЕЦИАЛИЗАЦИЯ ДЛЯ ДИНАМИЧЕСКИХ ВЕКТОРОВ
-    // =========================================================================
     template <typename ElementType, auto MacroName, FixedString<260> AbsoluteFile, int Line, int Column>
     struct EvalSyntaxShield<std::vector<ElementType>, MacroName, AbsoluteFile, Line, Column> {
 
