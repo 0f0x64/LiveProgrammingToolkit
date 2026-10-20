@@ -499,11 +499,14 @@ namespace LivePT {
 
                 if (member->size == 4) {
                     bool isFloat = (member->typeName == "float");
+                    bool parsedSuccessfully = false;
+
                     if (isFloat) {
                         float val = 0.0f;
                         auto [ptr, ec] = std::from_chars(strStart, strEnd, val);
                         if (ec == std::errc{}) {
                             *reinterpret_cast<float*>(fieldAddress) = val;
+                            parsedSuccessfully = true; // Успешно считали константу
                         }
                     }
                     else {
@@ -511,11 +514,17 @@ namespace LivePT {
                         auto [ptr, ec] = std::from_chars(strStart, strEnd, val);
                         if (ec == std::errc{}) {
                             *reinterpret_cast<int*>(fieldAddress) = static_cast<int>(val);
+                            parsedSuccessfully = true; // Успешно считали константу
                         }
                     }
 
-                    for (DWORD b = 0; b < member->size; ++b) {
-                        paramDesc[targetId].parsedFieldsOffsets.insert(currentAbsoluteFieldOffset + b);
+                    // [БАЙПАС]: Фиксируем смещение в карте обновлений ТОЛЬКО если это 
+                    // чистый числовой литерал. Если там написана переменная 'rr', 
+                    // мы мягко пропускаем разметку, оставляя поле под управлением рантайма!
+                    if (parsedSuccessfully) {
+                        for (DWORD b = 0; b < member->size; ++b) {
+                            paramDesc[targetId].parsedFieldsOffsets.insert(currentAbsoluteFieldOffset + b);
+                        }
                     }
                 }
                 else if (member->size == 8) {
@@ -523,6 +532,8 @@ namespace LivePT {
                     auto [ptr, ec] = std::from_chars(strStart, strEnd, val);
                     if (ec == std::errc{}) {
                         *reinterpret_cast<double*>(fieldAddress) = val;
+
+                        // [БАЙПАС]
                         for (DWORD b = 0; b < member->size; ++b) {
                             paramDesc[targetId].parsedFieldsOffsets.insert(currentAbsoluteFieldOffset + b);
                         }
@@ -548,10 +559,13 @@ namespace LivePT {
                             parsedOk = true;
                         }
                     }
+
+                    // [БАЙПАС]
                     if (parsedOk) {
                         paramDesc[targetId].parsedFieldsOffsets.insert(currentAbsoluteFieldOffset);
                     }
                 }
+
             }
         }
     }

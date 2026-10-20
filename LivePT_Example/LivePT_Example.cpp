@@ -345,7 +345,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         float x = eval(292.0f);
         float y = eval(-1.0f);
 
-        float rr = rand() % eval(82) + eval(203);
+        float rr = (rand() % 100) * eval(1) 
+            + eval(51);
 
 
 
