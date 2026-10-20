@@ -52,7 +52,7 @@
 ### 📦 Поддерживаемый синтаксис и ограничения макроса `eval(...)`
 * **Примитивные константные литералы:** Любые целые числа и числа с плавающей точкой, включая отрицательные значения и специфические суффиксы.
 * **Элементы перечислений (как стандартных, так и `enum class`).**
-* **Именованные агрегатные структуры (Явный тип):** При передаче структуры с указанием ее имени, ядро LivePT побайтово переносит измененные поля констант в рантайм.
+* **Именованные агрегатные структуры (Явный тип):** При передаче структуры с указанием ее имени, ядро LivePT извлекает нативные смещения полей напрямую из Windows API (`TI_GET_OFFSET`) и точечно переносит измененные байты констант в рантайм-память поверх живого объекта.
 * **Сложная вложенность структур:** Побайтовый движок `WriteStructBytes` рекурсивно раскладывает аргументы любой глубины вложенности, если их типы известны PDB.
 * **Динамические векторы констант (`std::vector<T>`) с возможностью изменения размера:**
   LivePT v0.5 поддерживает глубокое отслеживание динамических массивов. Вы можете обернуть вектор структур целиком:
@@ -62,7 +62,7 @@
       { true, pos2{-24.0f, 31.0f}, 2, 95, color3{95, 35, 59} }
   });
   ```
-  * **Добавление и удаление элементов:** Прокси-парсер `MsvcVectorProxy` автоматически сравнивает количество элементов в исходном коде Visual Studio с количеством элементов в runtime-памяти. Если вы вручную допишете новый элемент структуры через запятую в коде Visual Studio или удалите существующий, ядро LivePT автоматически выполнит операцию `resize()` для вектора в памяти запущенного приложения, пересчитает сквозную битовую маску валидности полей `validFieldsMask` и мгновенно перераспределит кучу без утечек памяти и падений.
+    * **Добавление и удаление элементов:** Прокси-парсер автоматически сравнивает количество элементов в исходном коде Visual Studio с количеством элементов в runtime-памяти. Если вы вручную допишете новый элемент структуры через запятую в коде Visual Studio или удалите существующий, ядро LivePT автоматически выполнит операцию `resize()` для вектора в памяти запущенного приложения, полностью очистит старые смещения, соберет сквозную карту нативных PDB-смещений измененных байт и мгновенно перераспределит кучу без утечек памяти и падений.
 
 ### ⚡ Использование макроса `LPT_LIVE_FUNCTION` (Без `eval`)
 Вместо оборачивания отдельных параметров через `eval(...)`, LivePT v0.5 позволяет переводить **функции целиком** в интерактивный режим. Это избавляет код от визуального шума макросов на уровне вызовов, позволяя оборачивать структуры и их аргументы одной декларацией.
@@ -168,7 +168,7 @@ Adjust settings directly within the configuration block of the header file via `
 ### 📦 Supported Syntax & `eval(...)` Macro Constraints
 * **Primitive Constant Literals:** Ints, floats, signed limits, and explicit type suffixes.
 * **Enumeration Members (both standard and `enum class`).**
-* **Explicitly Named Aggregates:** Explicit structure layouts are parsed bitwise by the `WriteStructBytes` core using real-time structural metadata.
+* **Explicitly Named Aggregates:** When a structure is passed with an explicit type, the LivePT core fetches native field offsets directly from the Windows API (`TI_GET_OFFSET`) and precisely applies the modified constant bytes over the live object in runtime memory.
 * **Deep Nesting Support:** Structural byte shifting recursively unrolls nested aggregates of any depth, provided they are accessible via the generated PDB.
 * **Resizable Dynamic Vectors (`std::vector<T>`):**
   LivePT v0.5 features specialized runtime parsing proxies for dynamic array allocations. You can safely wrap an entire structure vector block:
@@ -178,7 +178,7 @@ Adjust settings directly within the configuration block of the header file via `
       { true, pos2{-24.0f, 31.0f}, 2, 95, color3{95, 35, 59} }
   });
   ```
-  * **Element Insertion & Deletion:** The `MsvcVectorProxy` interceptor monitors element counts within the source document against active memory arrays. Manually appending a new comma-separated struct item inside Visual Studio or deleting one causes LivePT to automatically trigger a safe `.resize()` on the live runtime vector, recalculate the `validFieldsMask` bit-array, and reallocate the heap without memory leaks or crashes.
+    * **Element Insertion & Deletion:** The proxy parser monitors element counts within the source document against active memory arrays. Manually appending a new comma-separated struct item inside Visual Studio or deleting one causes LivePT to automatically trigger a safe `.resize()` on the live runtime vector, completely clear old entries, rebuild a precise end-to-end map of native PDB byte offsets, and reallocate the heap without memory leaks or crashes.
 
 ### ⚡ Exploiting the `LPT_LIVE_FUNCTION` Macro (Without `eval`)
 Instead of wrapping individual parameters in repetitive `eval(...)` macro arguments, LivePT v0.5 introduces the ability to convert **entire functions** into interactive nodes. This approach eliminates visual clutter at call sites, declaring argument blocks interactive out-of-the-box.

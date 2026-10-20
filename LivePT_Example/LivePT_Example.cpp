@@ -350,13 +350,16 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
 
 
+
+
+
         Draw(eval(Primitive{
             .pos = pos2{
-				.x = -28.69f,
-				.y = -141.24f
+				.x = 245.31f,
+				.y = -111.24f
 				},
-            .size = size2{87.82f, rr},
-            .Angle = angle(279.9f),
+            .size = size2{74.54f, 99.31f},
+            .Angle = angle(298.9f),
             .color = color3{131, 161, 21},
             .type = ptype::roundbox,
             .show = true,
@@ -378,8 +381,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         DrawTestRect(TestRect{
         .pos = pos2{
-            .x = 345.58f,
-            .y = -479.13f
+            .x = 245.58f,
+            .y = -335.13f
             },
         .size = size2{158.56f, 138.37f},
         .Angle = angle(106.9f),
@@ -391,8 +394,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         DrawTestRect(TestRect{
                 .pos = pos2{
-                    .x = -430.42f,
-                    .y = -421.13f
+                    .x = -158.42f,
+                    .y = -180.13f
                     },
                 .size = size2{94.11f, 116.78f},
                 .Angle = angle(18.0f),
