@@ -180,8 +180,7 @@ namespace LivePT {
         /* Пробрасываем измененные данные из базы LivePT в локальную переменную */ \
         StructType live_r = std::forward<T>(raw_r); \
         if (rId >= 0 && rId < static_cast<int>(LivePT::paramDesc.size())) { \
-            std::string actualKey = LivePT::NormalizePath(file) + ":" + std::to_string(LivePT::paramDesc[rId].counterID); \
-            int real_id = LivePT::getID(actualKey); \
+            int real_id = LivePT::getID(LivePT::paramDesc[rId].stringIdKey); \
             if (real_id >= 0 && real_id < static_cast<int>(LivePT::paramDesc.size()) && LivePT::paramDesc[real_id].loaded) { \
                 if (auto pCachedVal = std::any_cast<StructType>(&LivePT::paramDesc[real_id].value)) { \
                     char* targetBase = reinterpret_cast<char*>(&live_r); \

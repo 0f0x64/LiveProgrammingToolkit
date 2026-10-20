@@ -41,6 +41,7 @@ namespace LivePT {
         int column = 0;
         std::function<void(std::any& targetAny, const std::string& textValue)> stringUpdater = nullptr;
         std::string macroName;
+        std::string stringIdKey;
     };
 
     inline std::vector<ref>& getParamDesc() {
@@ -177,6 +178,7 @@ namespace LivePT {
             std::string vsLookupKey = absolutePath + ":" + std::to_string(cleanCounterID);
             registry[vsLookupKey] = assignedId;
             paramDesc[assignedId].counterID = cleanCounterID;
+            paramDesc[assignedId].stringIdKey = vsLookupKey;
             cleanCounterID++;
         }
 
