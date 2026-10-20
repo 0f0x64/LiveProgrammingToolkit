@@ -521,10 +521,6 @@ namespace LivePT {
                 innerValueA.erase(0, innerValueA.find_first_not_of(" \t\n"));
                 innerValueA.erase(innerValueA.find_last_not_of(" \t\n") + 1);
 
-                // --- ЛОГИРОВАНИЕ СТРОКИ ИЗ VS ---
-                Log("[LivePT VS Update] Param ID: " + std::to_string(targetId) + " | Macro: " + p.macroName);
-                Log("[LivePT VS Update] Extracted Raw Text String: '" + innerValueA + "'");
-
                 UpdateParamValue(targetId, innerValueA);
             }
         }

@@ -269,7 +269,7 @@ namespace LivePT {
 
                             // ПРУФ-ЛОГ: Выводим системное смещение, которое нам отдал дебаггер Windows
                             std::string fNameAnsi = DbgHelpWideToUtf8(pChildName);
-                            Log("[LivePT PDB Native] Field: '" + fNameAnsi + "' | Type: " + fieldTypeName + " | Native MSVC Offset: " + std::to_string(offset));
+                            //Log("[LivePT PDB Native] Field: '" + fNameAnsi + "' | Type: " + fieldTypeName + " | Native MSVC Offset: " + std::to_string(offset));
 
                             ctx->pNames->push_back(fNameAnsi);
                             ctx->pOffsets->push_back(offset);
@@ -296,12 +296,12 @@ namespace LivePT {
         if (!EnsureDbgHelpInitialized()) return false;
 
         std::string targetNameAnsi = DbgHelpWideToUtf8(targetStructName);
-        Log("[LivePT PDB System] === Requesting Native MSVC Layout for: " + targetNameAnsi + " ===");
+        //Log("[LivePT PDB System] === Requesting Native MSVC Layout for: " + targetNameAnsi + " ===");
 
         DbgHelpStructContext ctx = { g_hDbgHelpGlobalProcess, g_DbgHelpGlobalModuleBase, targetStructName, &outNames, &outOffsets, &outSizes, &outTypeNames };
         SymEnumTypesW(g_hDbgHelpGlobalProcess, g_DbgHelpGlobalModuleBase, DbgHelpStructTypesCallback, &ctx);
 
-        Log("[LivePT PDB System] Layout retrieval completed.\n");
+        //Log("[LivePT PDB System] Layout retrieval completed.\n");
         return !outNames.empty();
     }
 

@@ -713,20 +713,9 @@ namespace LivePT {
                         const auto& offsets = paramDesc[real_id].parsedFieldsOffsets;
                         size_t totalSize = sizeof(TargetType);
 
-                        // --- ДИАГНОСТИЧЕСКИЙ ЛОГ КАЖДОГО КАДРА ---
-                        static DWORD lastLogTick = 0;
-                        DWORD currentTick = GetTickCount();
-                        if (currentTick - lastLogTick > 2000) { // Логируем раз в 2 секунды, чтобы не забивать поток
-                            lastLogTick = currentTick;
-                            Log("[LivePT Runtime] Copying Struct: " + std::string(typeid(TargetType).name()) + " | Total fields modified: " + std::to_string(offsets.size()));
-                        }
-
                         for (DWORD offset : offsets) {
                             if (offset < totalSize) {
                                 // Если это первый лог после изменения, покажем старое и новое значение байта
-                                if (currentTick - lastLogTick < 16) {
-                                    Log("[LivePT Runtime]   Applying byte at Offset: " + std::to_string(offset) + " | Orig: " + std::to_string((int)targetBase[offset]) + " -> New: " + std::to_string((int)cacheBase[offset]));
-                                }
                                 targetBase[offset] = cacheBase[offset];
                             }
                         }
@@ -734,12 +723,6 @@ namespace LivePT {
                 }
                 else {
                     // Сигнализируем, если структура в базе почему-то не помечена как загруженная
-                    static DWORD lastErrTick = 0;
-                    DWORD currentTick = GetTickCount();
-                    if (currentTick - lastErrTick > 2000) {
-                        lastErrTick = currentTick;
-                        Log("[LivePT Runtime WARNING] paramDesc[real_id].loaded is FALSE for real_id: " + std::to_string(real_id));
-                    }
                 }
                 return resultStruct;
             }
@@ -871,19 +854,9 @@ namespace LivePT {
                     size_t vectorTotalBytes = resultVector.size() * sizeof(ElementType);
 
                     // --- ДИАГНОСТИЧЕСКИЙ ЛОГ ДЛЯ ВЕКТОРОВ ---
-                    static DWORD lastVecLogTick = 0;
-                    DWORD currentTick = GetTickCount();
-                    if (currentTick - lastVecLogTick > 2000 && !offsets.empty()) {
-                        lastVecLogTick = currentTick;
-                        Log("[LivePT Vector Runtime] Copying Array Elements. Total modified bytes in heap: " + std::to_string(offsets.size()));
-                    }
-
                     // 2. Идем строго по сквозным смещениям байт элементов вектора
                     for (DWORD offset : offsets) {
                         if (offset < vectorTotalBytes) {
-                            if (currentTick - lastVecLogTick < 16) {
-                                Log("[LivePT Vector Runtime]   Applying array byte at absolute offset: " + std::to_string(offset) + " | Orig: " + std::to_string((int)targetBase[offset]) + " -> New: " + std::to_string((int)cacheBase[offset]));
-                            }
                             targetBase[offset] = cacheBase[offset];
                         }
                     }
