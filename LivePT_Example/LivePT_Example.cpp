@@ -165,7 +165,7 @@ void DrawLine(LinePrimitive lp, std::source_location location = std::source_loca
 struct TestRect {
     pos2 pos;
     size2 size;
-    float Angle;
+    angle Angle;
     ptype type;   // <-- Убеждаемся, что это поле присутствует
     bool show;
     color3 color;
@@ -363,8 +363,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         Draw(eval(Primitive{
             .pos = pos2{
-				.x = -82.69f,
-				.y = 67.76f
+				.x = -76.69f,
+				.y = 57.76f
 				},
             .size = size2{136.06f, rr},
             .Angle = angle(397.9f),
@@ -388,27 +388,27 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         DrawTestRect({
                 .pos = pos2{
-                .x = 592.58f,
-                .y = 64.87f
+                .x = 596.58f,
+                .y = 99.87f
                 },
-                .size = size2{109.45f, 144.41f},
-                .Angle = angle(66.0f),
+                .size = size2{93.31f, 123.13f},
+                .Angle = angle(32.0f),
                 .type = ptype::box,
-                .show = true,
-                .color = color3{84, 128, 0},
+                .show = false,
+                .color = color3{14, 128, 0},
                 .fill = true
             });
 
         DrawTestRect({
                 .pos = pos2{
-                    .x = -436.00f,
-                    .y = -242.13f
+                    .x = -397.00f,
+                    .y = -607.13f
                     },
-                .size = size2{134.95f, 145.87f},
-                .Angle = angle(228.0f),
-                .type = ptype::roundbox,
-                .show = false,
-                .color = color3{18, 19, 114},
+                .size = size2{152.20f, 164.53f},
+                .Angle = angle(229.0f),
+                .type = ptype::circle,
+                .show = true,
+                .color = color3{120, 19, 114},
                 .fill = true
             });
 
