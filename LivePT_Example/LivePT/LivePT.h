@@ -170,25 +170,29 @@ namespace LivePT {
                 } \
                 StructType* pStructInstance = std::any_cast<StructType>(&targetAny); \
                 if (!pStructInstance) return; \
+                \
+                /* [ИСПРАВЛЕНО]: Очищаем старые смещения перед новой итерацией десериализации */ \
+                LivePT::paramDesc[rId].parsedFieldsOffsets.clear(); \
                 LivePT::WriteStructBytes(reinterpret_cast<char*>(pStructInstance), typeid(StructType).name(), innerArgs, 0, rId, sizeof(StructType)); \
             }; \
             LivePT::paramDesc[rId].loaded = true; \
-        } \
-        \
+        }\
         /* Пробрасываем измененные данные из базы LivePT в локальную переменную */ \
         StructType live_r = std::forward<T>(raw_r); \
         if (rId >= 0 && rId < static_cast<int>(LivePT::paramDesc.size())) { \
-            std::string actualKey = absPath + ":" + std::to_string(LivePT::paramDesc[rId].counterID); \
+            std::string actualKey = LivePT::NormalizePath(file) + ":" + std::to_string(LivePT::paramDesc[rId].counterID); \
             int real_id = LivePT::getID(actualKey); \
             if (real_id >= 0 && real_id < static_cast<int>(LivePT::paramDesc.size()) && LivePT::paramDesc[real_id].loaded) { \
                 if (auto pCachedVal = std::any_cast<StructType>(&LivePT::paramDesc[real_id].value)) { \
                     char* targetBase = reinterpret_cast<char*>(&live_r); \
                     const char* cacheBase = reinterpret_cast<const char*>(pCachedVal); \
+                    \
+                    /* Точечный плоский перенос байт по PDB-смещениям */ \
+                    const auto& offsets = LivePT::paramDesc[real_id].parsedFieldsOffsets; \
                     size_t totalSz = sizeof(StructType); \
-                    const auto& mask = LivePT::paramDesc[real_id].validFieldsMask; \
-                    if (mask.size() == totalSz) { \
-                        for (size_t b = 0; b < totalSz; ++b) { \
-                            if (mask[b]) targetBase[b] = cacheBase[b]; \
+                    for (DWORD offset : offsets) { \
+                        if (offset < totalSz) { \
+                            targetBase[offset] = cacheBase[offset]; \
                         } \
                     } \
                 } \
@@ -197,6 +201,7 @@ namespace LivePT {
         return FuncName##_Live(std::move(live_r), rId, loc); \
     } \
     ReturnType FuncName##_Live(StructType VarName, int runtimeId, std::source_location location)
+
 
 
 #else

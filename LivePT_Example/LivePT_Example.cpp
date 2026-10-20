@@ -54,9 +54,9 @@ struct Primitive {
     pos2 pos;
     size2 size;
     angle Angle;
+    color3 color;
     ptype type = ptype::circle;
     bool show;
-    color3 color;
 };
 
 int drawCounter = 0;
@@ -161,17 +161,17 @@ void DrawLine(LinePrimitive lp, std::source_location location = std::source_loca
 }
 
 
-
+#pragma pack(push, 1)
 struct TestRect {
-    pos2 pos;
-    size2 size;
-    angle Angle;
-    ptype type;   // <-- Убеждаемся, что это поле присутствует
-    bool show;
-    color3 color;
-    bool fill;
+    pos2 pos;        // 8 байт (offset 0)
+    size2 size;      // 8 байт (offset 8)
+    angle Angle;     // 4 байта (offset 16) -> float/angle встает на идеальную границу 4 байт!
+    ptype type = ptype::circle;      // 4 байта (offset 20) -> enum встает на границу 4 байт!
+    bool show;       // 1 байт  (offset 27)
+    color3 color;    // 3 байта (offset 24) -> ложится в хвост структуры
+    bool fill;       // 1 байт  (offset 28)
 };
-
+#pragma pack(pop)
 
 LPT_LIVE_FUNCTION(void, DrawTestRect, TestRect, in) {
 
@@ -211,7 +211,7 @@ LPT_LIVE_FUNCTION(void, DrawTestRect, TestRect, in) {
         break;
 
     case ptype::circle:
-        Ellipse(gc.memDC, -in.size.w, -in.size.w, in.size.w, in.size.w);
+        Ellipse(gc.memDC, -in.size.w, -in.size.h, in.size.w, in.size.h);
         break;
 
     case ptype::roundbox:
@@ -347,37 +347,26 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         float rr = rand() % 20 + eval(191);
 
-        Draw((Primitive{
-                .pos = pos2{
-                    .x = 486.31f,
-                    .y = -432.24f
-                    },
-                .size = size2{236.06f, rr},
-                .Angle = angle(-10.5f),
-                .type = eval(ptype::box),
-                .show = true,
-                .color = color3{0, 172, 50}
-            }));
 
 
 
         Draw(eval(Primitive{
             .pos = pos2{
-				.x = -76.69f,
-				.y = 57.76f
+				.x = -171.69f,
+				.y = -164.24f
 				},
-            .size = size2{136.06f, rr},
-            .Angle = angle(397.9f),
+            .size = size2{176.82f, 267.30f},
+            .Angle = angle(455.9f),
+            .color = color3{4, 161, 21},
             .type = ptype::roundbox,
             .show = true,
-            .color = color3{26, 161, 21}
             }));
 
   
 
         DrawLine({
             .points = eval(std::vector<HeavyPoint>{
-                    { true, pos2{-531.70f, 315.70f}, 58, 944, color3{247, 61, 125} },
+                    { true, pos2{-501.70f, 288.70f}, 58, 944, color3{247, 61, 125} },
                     { true, pos2{-246.80f, 317.80f}, 20, 956, color3{95, 35, 59} },
                     { true, pos2{-9.40f, 142.80f}, 21, 956, color3{75, 34, 99} },
                     { true, pos2{188.40f, 310.20f}, 19, 956, color3{73, 56, 158} },
@@ -386,31 +375,32 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
                 })
             });
 
-        DrawTestRect({
+        DrawTestRect(TestRect{
+        .pos = pos2{
+            .x = 380.58f,
+            .y = 160.87f
+            },
+        .size = size2{195.55f, 172.11f},
+        .Angle = angle(48.0f),
+        .type = ptype::circle,
+        .show = true,
+        .color = color3{209, 28, 0},
+        .fill = true
+            });
+
+        DrawTestRect(TestRect{
                 .pos = pos2{
-                .x = 596.58f,
-                .y = 99.87f
-                },
-                .size = size2{93.31f, 123.13f},
-                .Angle = angle(32.0f),
-                .type = ptype::box,
-                .show = false,
-                .color = color3{14, 128, 0},
+                    .x = -621.42f,
+                    .y = -579.13f
+                    },
+                .size = size2{195.74f, 200.70f},
+                .Angle = angle(103.0f),
+                .type = ptype::circle,
+                .show = true,
+                .color = color3{170, 28, 0},
                 .fill = true
             });
 
-        DrawTestRect({
-                .pos = pos2{
-                    .x = -397.00f,
-                    .y = -607.13f
-                    },
-                .size = size2{152.20f, 164.53f},
-                .Angle = angle(229.0f),
-                .type = ptype::circle,
-                .show = true,
-                .color = color3{120, 19, 114},
-                .fill = true
-            });
 
         BitBlt(hdc, 0, 0, w, h, memDC, 0, 0, SRCCOPY);
         SelectObject(memDC, oldBM);

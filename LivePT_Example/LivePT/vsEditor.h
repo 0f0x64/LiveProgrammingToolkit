@@ -482,7 +482,6 @@ namespace LivePT {
         auto& p = paramDesc[targetId];
         long tabSize = GetVSTabSize();
 
-        // 1. Находим физическое смещение начала строки макроса p.line
         size_t lineStartOffset = 0;
         long currentLineIdx = 1;
         while (currentLineIdx < p.line && lineStartOffset < fileText.length()) {
@@ -494,27 +493,21 @@ namespace LivePT {
             else break;
         }
 
-        // 2. Выделяем текст базовой строки макроса
         size_t nextNL = fileText.find(L'\n', lineStartOffset);
         if (nextNL == std::wstring::npos) nextNL = fileText.length();
         std::wstring lineText = fileText.substr(lineStartOffset, nextNL - lineStartOffset);
 
-        // 3. Вычисляем физический символ по p.column с защитой от \r
         long currentVisualCol = 1;
         size_t paramCharIdx = lineText.length();
         for (size_t i = 0; i < lineText.length(); ++i) {
             if (currentVisualCol >= p.column) { paramCharIdx = i; break; }
-
-            if (lineText[i] == L'\r') {
-                continue; // Игнорируем \r, он не имеет визуальной ширины
-            }
+            if (lineText[i] == L'\r') continue;
             currentVisualCol += (lineText[i] == L'\t') ? (tabSize - ((currentVisualCol - 1) % tabSize)) : 1;
         }
         size_t anchorOffset = lineStartOffset + paramCharIdx;
 
         if (anchorOffset >= fileText.length()) return;
 
-        // 4. Находим открывающую скобку макроса eval(
         size_t openBracket = fileText.find(L'(', anchorOffset);
 
         if (openBracket != std::wstring::npos && openBracket < fileText.length()) {
@@ -522,15 +515,15 @@ namespace LivePT {
 
             if (closeBracketPos != std::wstring::npos && closeBracketPos > openBracket) {
                 std::wstring innerValueW = fileText.substr(openBracket + 1, closeBracketPos - openBracket - 1);
-
-                // Удаляем \r из wstring перед конвертацией, чтобы не ломать кодировку
                 innerValueW.erase(std::remove(innerValueW.begin(), innerValueW.end(), L'\r'), innerValueW.end());
 
                 std::string innerValueA = ConvertWStringToUtf8(innerValueW);
-
-                // Очищаем от мусорных пробелов и переносов строк по краям
                 innerValueA.erase(0, innerValueA.find_first_not_of(" \t\n"));
                 innerValueA.erase(innerValueA.find_last_not_of(" \t\n") + 1);
+
+                // --- ЛОГИРОВАНИЕ СТРОКИ ИЗ VS ---
+                Log("[LivePT VS Update] Param ID: " + std::to_string(targetId) + " | Macro: " + p.macroName);
+                Log("[LivePT VS Update] Extracted Raw Text String: '" + innerValueA + "'");
 
                 UpdateParamValue(targetId, innerValueA);
             }
@@ -1026,18 +1019,35 @@ namespace LivePT {
 
         isWarmedUp = true;
 
-        // Запускаем асинхронный разбор PDB в фоновом потоке
         std::thread warmupThread([totalParams]() {
             auto& localParams = LivePT::getParamDesc();
-
-            // Временный кэш потока для предотвращения гонок данных
             std::unordered_map<std::wstring, std::vector<StructMemberDesc>> localMetadataCache;
             localMetadataCache.reserve(16);
 
-            // Шаг 1: Глубокий рекурсивный обход PDB для всех корневых типов
             for (size_t i = 0; i < totalParams; ++i) {
                 auto& p = localParams[i];
-                if (p.enumInfo.isEnum || !p.value.has_value()) continue;
+                if (!p.value.has_value()) continue;
+
+                // [ИСПРАВЛЕНО]: Если это чистый энум — прогреваем его метаданные из PDB прямо сейчас!
+                if (p.enumInfo.isEnum && p.enumInfo.elements.empty()) {
+                    std::string rawTypeName = p.value.type().name();
+                    const char* typePtr = rawTypeName.c_str();
+                    if (strncmp(typePtr, "enum ", 5) == 0) typePtr += 5;
+                    else if (strncmp(typePtr, "class ", 6) == 0) typePtr += 6;
+
+                    size_t len = strlen(typePtr);
+                    std::wstring wEnumName(len, L'\0');
+                    MultiByteToWideChar(CP_ACP, 0, typePtr, static_cast<int>(len), wEnumName.data(), static_cast<int>(len));
+
+                    std::vector<std::string> parsedNames;
+                    std::vector<int> parsedValues;
+                    if (LoadEnumMetadataDirect(wEnumName.c_str(), parsedNames, parsedValues)) {
+                        for (size_t eIdx = 0; eIdx < parsedNames.size(); ++eIdx) {
+                            p.enumInfo.elements.push_back({ parsedValues[eIdx], parsedNames[eIdx] });
+                        }
+                    }
+                    continue;
+                }
 
                 std::string typeNameAnsi = p.value.type().name();
                 if (typeNameAnsi.empty()) continue;
@@ -1050,16 +1060,20 @@ namespace LivePT {
                 std::wstring wTypeName(len, L'\0');
                 MultiByteToWideChar(CP_ACP, 0, typePtr, static_cast<int>(len), wTypeName.data(), static_cast<int>(len));
 
-                // Поток лезет в PDB, вытаскивает метаданные типа и всех вложенных структур
                 DeepWarmupTypeFromPdb(wTypeName, localMetadataCache);
             }
 
-            // Шаг 2: Применяем схемы к корневым элементам вектора параметров
             for (size_t i = 0; i < totalParams; ++i) {
                 auto& p = localParams[i];
-                if (p.enumInfo.isEnum || !p.value.has_value()) continue;
+                if (!p.value.has_value()) continue;
 
                 std::string typeNameAnsi = p.value.type().name();
+
+                // Пропускаем энумы, их элементы мы уже обработали на Шаге 1
+                if (p.enumInfo.isEnum || typeNameAnsi.find("enum ") != std::string::npos) {
+                    continue;
+                }
+
                 const char* typePtr = typeNameAnsi.c_str();
                 if (strncmp(typePtr, "struct ", 7) == 0) typePtr += 7;
                 else if (strncmp(typePtr, "class ", 6) == 0) typePtr += 6;
@@ -1075,8 +1089,7 @@ namespace LivePT {
                 }
             }
 
-            // Шаг 3: Сохраняем абсолютно ВСЕ выкачанные типы (включая скрытые подструктуры)
-            // в наш изолированный глобальный реестр схем. Вектор localParams при этом НЕ РАСШИРЯЕТСЯ!
+            // Шаг 3: Сохраняем выкачанные типы структур в изолированный глобальный реестр схем
             auto& globalSchemaRegistry = GetGlobalTypeSchemaRegistry();
             for (const auto& [wName, members] : localMetadataCache) {
                 std::string ansiName(wName.begin(), wName.end());
@@ -1085,7 +1098,7 @@ namespace LivePT {
 
             // Сигнализируем основному циклу, что вся база данных типов готова к работе
             g_IsLptPdbWarmupCompleted = true;
-            Log("[LivePT Deep Warmup] Background recursive PDB parsing completed. All nested types are stored safely.");
+            Log("[LivePT Deep Warmup] Background recursive PDB parsing completed. Enums and Structs isolated successfully.");
             });
 
         warmupThread.detach();

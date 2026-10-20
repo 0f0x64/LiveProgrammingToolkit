@@ -31,7 +31,9 @@ namespace LivePT {
         EnumTypeDesc enumInfo;
         StructTypeDesc structInfo;
 
-        std::vector<bool> validFieldsMask;
+        // [НОВЫЙ ПОДХОД]: Храним только те смещения полей структуры,
+        // которые были успешно и явно извлечены из текстового токена.
+        std::unordered_set<DWORD> parsedFieldsOffsets;
 
         long long typeMinBound = 0;
         long long typeMaxBound = 0;
@@ -159,12 +161,13 @@ namespace LivePT {
             .fileName = absolutePath,
             .counterID = 0,
             .enumInfo = enumDesc,
-            .validFieldsMask = {}, // Явное обнуление полей структуры для агрегата
+            .structInfo = {},
+            .parsedFieldsOffsets = {}, // [ИСПРАВЛЕНО]: Теперь здесь пустой std::unordered_set<DWORD>
             .typeMinBound = 0,
             .typeMaxBound = 0,
             .line = line,
             .column = column,
-            .macroName = std::string(macroName) // <-- Железное сохранение имени в std::string
+            .macroName = std::string(macroName)
             });
 
         fileMap[key] = paramID;
@@ -311,266 +314,250 @@ namespace LivePT {
         DWORD absoluteBaseOffset,
         int targetId,
         size_t structTotalSize)
-        {
-            std::vector<StructMemberDesc> membersCache = LivePT::LookupStructMembersFromParams(curTypeName);
+    {
+        std::vector<StructMemberDesc> membersCache = LivePT::LookupStructMembersFromParams(curTypeName);
 
-            if (membersCache.empty()) {
-                std::string valClean = curInnerText;
-                size_t subOpen = valClean.find('(');
-                size_t subClose = valClean.rfind(')');
-                if (subOpen != std::string::npos && subClose != std::string::npos && subClose > subOpen) {
-                    valClean = valClean.substr(subOpen + 1, subClose - subOpen - 1);
+        if (membersCache.empty()) {
+            std::string valClean = curInnerText;
+            size_t subOpen = valClean.find('(');
+            size_t subClose = valClean.rfind(')');
+            if (subOpen != std::string::npos && subClose != std::string::npos && subClose > subOpen) {
+                valClean = valClean.substr(subOpen + 1, subClose - subOpen - 1);
+            }
+            while (!valClean.empty() && (valClean.back() == 'f' || valClean.back() == 'F' || valClean.back() == 'u' || valClean.back() == 'U')) {
+                valClean.pop_back();
+            }
+            const char* sS = valClean.data();
+            const char* sE = valClean.data() + valClean.size();
+            float fV = 0.0f;
+            std::from_chars(sS, sE, fV);
+            *reinterpret_cast<float*>(byteBase) = fV;
+            paramDesc[targetId].parsedFieldsOffsets.insert(absoluteBaseOffset);
+            return;
+        }
+
+        auto tokens = LivePT::SplitByOuterCommas(curInnerText);
+        size_t positionalIndex = 0;
+
+        for (const auto& token : tokens) {
+            std::string fieldName = "";
+            std::string valueStr = token;
+            const StructMemberDesc* member = nullptr;
+
+            size_t eqPos = std::string::npos;
+            int bCount = 0;
+            int pCount = 0;
+
+            for (size_t i = 0; i < token.length(); ++i) {
+                char c = token[i];
+                if (c == '{') bCount++;
+                else if (c == '}') { bCount--; if (bCount < 0) bCount = 0; }
+                else if (c == '(') pCount++;
+                else if (c == ')') { pCount--; if (pCount < 0) pCount = 0; }
+
+                if (c == '=' && bCount == 0 && pCount == 0) {
+                    eqPos = i;
+                    break;
                 }
-                while (!valClean.empty() && (valClean.back() == 'f' || valClean.back() == 'F' || valClean.back() == 'u' || valClean.back() == 'U')) {
-                    valClean.pop_back();
-                }
-                const char* sS = valClean.data();
-                const char* sE = valClean.data() + valClean.size();
-                float fV = 0.0f;
-                std::from_chars(sS, sE, fV);
-                *reinterpret_cast<float*>(byteBase) = fV;
-                return;
             }
 
-            auto tokens = LivePT::SplitByOuterCommas(curInnerText);
-            size_t positionalIndex = 0;
+            if (eqPos != std::string::npos) {
+                fieldName = token.substr(0, eqPos);
+                fieldName.erase(0, fieldName.find_first_not_of(" \t\r\n."));
+                fieldName.erase(fieldName.find_last_not_of(" \t\r\n") + 1);
+                valueStr = token.substr(eqPos + 1);
+                valueStr.erase(0, valueStr.find_first_not_of(" \t\r\n"));
+                valueStr.erase(valueStr.find_last_not_of(" \t\r\n") + 1);
 
-            for (const auto& token : tokens) {
-                std::string fieldName = "";
-                std::string valueStr = token;
-                const StructMemberDesc* member = nullptr;
-
-                size_t eqPos = std::string::npos;
-                int bCount = 0;
-                int pCount = 0;
-
-                for (size_t i = 0; i < token.length(); ++i) {
-                    char c = token[i];
-                    if (c == '{') bCount++;
-                    else if (c == '}') { bCount--; if (bCount < 0) bCount = 0; }
-                    else if (c == '(') pCount++;
-                    else if (c == ')') { pCount--; if (pCount < 0) pCount = 0; }
-
-                    if (c == '=' && bCount == 0 && pCount == 0) {
-                        eqPos = i;
+                for (size_t mIdx = 0; mIdx < membersCache.size(); ++mIdx) {
+                    if (membersCache[mIdx].name == fieldName) {
+                        member = &membersCache[mIdx];
+                        positionalIndex = mIdx + 1;
                         break;
                     }
                 }
-
-                if (eqPos != std::string::npos) {
-                    fieldName = token.substr(0, eqPos);
-                    fieldName.erase(0, fieldName.find_first_not_of(" \t\r\n."));
-                    fieldName.erase(fieldName.find_last_not_of(" \t\r\n") + 1);
-                    valueStr = token.substr(eqPos + 1);
-                    valueStr.erase(0, valueStr.find_first_not_of(" \t\r\n"));
-                    valueStr.erase(valueStr.find_last_not_of(" \t\r\n") + 1);
-
-                    for (size_t mIdx = 0; mIdx < membersCache.size(); ++mIdx) {
-                        if (membersCache[mIdx].name == fieldName) {
-                            member = &membersCache[mIdx];
-                            positionalIndex = mIdx + 1;
-                            break;
-                        }
-                    }
+            }
+            else {
+                if (positionalIndex < membersCache.size()) {
+                    member = &membersCache[positionalIndex];
                 }
-                else {
-                    if (positionalIndex < membersCache.size()) {
-                        member = &membersCache[positionalIndex];
-                    }
-                    positionalIndex++;
+                positionalIndex++;
+            }
+
+            if (!member) continue;
+
+            // Смещение берется напрямую из нативного PDB-кэша MSVC, 
+            // который мы только что системно починили в DbgHelpRef.h
+            char* fieldAddress = byteBase + member->offset;
+            DWORD currentAbsoluteFieldOffset = absoluteBaseOffset + member->offset;
+
+            bool isPureEnumField = (valueStr.find("::") != std::string::npos) && (valueStr.find('{') == std::string::npos);
+
+            if (!isPureEnumField && !LivePT::LookupStructMembersFromParams(member->typeName).empty()) {
+                size_t openB = valueStr.find('{');
+                size_t closeB = valueStr.rfind('}');
+                if (openB == std::string::npos) openB = valueStr.find('(');
+                if (closeB == std::string::npos) closeB = valueStr.rfind(')');
+
+                if (openB != std::string::npos && closeB != std::string::npos && closeB > openB) {
+                    std::string nestedInnerText = valueStr.substr(openB + 1, closeB - openB - 1);
+                    WriteStructBytes(fieldAddress, member->typeName, nestedInnerText, currentAbsoluteFieldOffset, targetId, structTotalSize);
+                }
+            }
+            else {
+                std::string cleanPrimitiveStr = valueStr;
+                size_t pOpen = cleanPrimitiveStr.find('(');
+                size_t pClose = cleanPrimitiveStr.rfind(')');
+                if (pOpen != std::string::npos && pClose != std::string::npos && pClose > pOpen) {
+                    cleanPrimitiveStr = cleanPrimitiveStr.substr(pOpen + 1, pClose - pOpen - 1);
                 }
 
-                if (!member) continue;
-
-                char* fieldAddress = byteBase + member->offset;
-                DWORD currentAbsoluteFieldOffset = absoluteBaseOffset + member->offset;
-
-                if (paramDesc[targetId].validFieldsMask.size() < structTotalSize) {
-                    paramDesc[targetId].validFieldsMask.resize(structTotalSize, false);
+                while (!cleanPrimitiveStr.empty() && (cleanPrimitiveStr.back() == 'f' || cleanPrimitiveStr.back() == 'F' ||
+                    cleanPrimitiveStr.back() == 'u' || cleanPrimitiveStr.back() == 'U' ||
+                    cleanPrimitiveStr.back() == 'l' || cleanPrimitiveStr.back() == 'L')) {
+                    cleanPrimitiveStr.pop_back();
                 }
 
-                // Шаг 1: Если в значении есть "::", но нет скобок '{', это чистый энум поля.
-                // Принудительно заставляем код уйти в ветку примитивов/энумов (else).
-                bool isPureEnumField = (valueStr.find("::") != std::string::npos) && (valueStr.find('{') == std::string::npos);
+                size_t dColon = cleanPrimitiveStr.rfind("::");
+                if (dColon != std::string::npos) {
+                    std::string enumValueToken = cleanPrimitiveStr.substr(dColon + 2);
+                    enumValueToken.erase(0, enumValueToken.find_first_not_of(" \t\r\n"));
+                    enumValueToken.erase(enumValueToken.find_last_not_of(" \t\r\n") + 1);
 
-                if (!isPureEnumField && !LivePT::LookupStructMembersFromParams(member->typeName).empty()) {
-
-                    size_t openB = valueStr.find('{');
-                    size_t closeB = valueStr.rfind('}');
-                    if (openB == std::string::npos) openB = valueStr.find('(');
-                    if (closeB == std::string::npos) closeB = valueStr.rfind(')');
-
-                    if (openB != std::string::npos && closeB != std::string::npos && closeB > openB) {
-                        std::string nestedInnerText = valueStr.substr(openB + 1, closeB - openB - 1);
-
-                        // Рекурсивный вызов уже новой функции
-                        WriteStructBytes(fieldAddress, member->typeName, nestedInnerText, currentAbsoluteFieldOffset, targetId, structTotalSize);
+                    while (!enumValueToken.empty() && (enumValueToken.back() == ')' || enumValueToken.back() == '}' || enumValueToken.back() == ',')) {
+                        enumValueToken.pop_back();
                     }
-                }
-                else {
-                    std::string cleanPrimitiveStr = valueStr;
-                    size_t pOpen = cleanPrimitiveStr.find('(');
-                    size_t pClose = cleanPrimitiveStr.rfind(')');
-                    if (pOpen != std::string::npos && pClose != std::string::npos && pClose > pOpen) {
-                        cleanPrimitiveStr = cleanPrimitiveStr.substr(pOpen + 1, pClose - pOpen - 1);
-                    }
+                    enumValueToken.erase(0, enumValueToken.find_first_not_of(" \t\r\n"));
+                    enumValueToken.erase(enumValueToken.find_last_not_of(" \t\r\n") + 1);
 
-                    while (!cleanPrimitiveStr.empty() && (cleanPrimitiveStr.back() == 'f' || cleanPrimitiveStr.back() == 'F' ||
-                        cleanPrimitiveStr.back() == 'u' || cleanPrimitiveStr.back() == 'U' ||
-                        cleanPrimitiveStr.back() == 'l' || cleanPrimitiveStr.back() == 'L')) {
-                        cleanPrimitiveStr.pop_back();
-                    }
+                    int finalEnumInt = 0;
+                    bool enumFound = false;
 
-                    size_t dColon = cleanPrimitiveStr.rfind("::");
-                    if (dColon != std::string::npos) {
-                        std::string enumValueToken = cleanPrimitiveStr.substr(dColon + 2);
-                        enumValueToken.erase(0, enumValueToken.find_first_not_of(" \t\r\n"));
-                        enumValueToken.erase(enumValueToken.find_last_not_of(" \t\r\n") + 1);
+                    for (const auto& p : paramDesc) {
+                        if (p.enumInfo.isEnum && !p.enumInfo.elements.empty()) {
+                            for (const auto& elem : p.enumInfo.elements) {
+                                std::string cleanElemName = elem.name;
+                                if (cleanElemName.rfind("enum ", 0) == 0)  cleanElemName.erase(0, 5);
+                                if (cleanElemName.rfind("class ", 0) == 0) cleanElemName.erase(0, 6);
 
-                        // Шаг 2: Срезаем скобки и запятые, оставшиеся от синтаксиса eval(...)
-                        while (!enumValueToken.empty() && (enumValueToken.back() == ')' || enumValueToken.back() == '}' || enumValueToken.back() == ',')) {
-                            enumValueToken.pop_back();
-                        }
-                        enumValueToken.erase(0, enumValueToken.find_first_not_of(" \t\r\n"));
-                        enumValueToken.erase(enumValueToken.find_last_not_of(" \t\r\n") + 1);
-
-                        int finalEnumInt = 0;
-
-                        bool enumFound = false;
-
-                        // 1. ЧЕСТНЫЙ ПОИСК: Сканируем базу данных в поисках метаданных PDB
-                        for (const auto& p : paramDesc) {
-                            if (p.enumInfo.isEnum && !p.enumInfo.elements.empty()) {
-                                for (const auto& elem : p.enumInfo.elements) {
-                                    // Очищаем имя элемента из PDB от возможных системных префиксов
-                                    std::string cleanElemName = elem.name;
-                                    if (cleanElemName.rfind("enum ", 0) == 0)  cleanElemName.erase(0, 5);
-                                    if (cleanElemName.rfind("class ", 0) == 0) cleanElemName.erase(0, 6);
-
-                                    size_t subC = cleanElemName.rfind("::");
-                                    if (subC != std::string::npos) {
-                                        cleanElemName = cleanElemName.substr(subC + 2);
-                                    }
-
-                                    // Сравниваем чистые токены (например, "roundbox" == "roundbox")
-                                    if (cleanElemName == enumValueToken || elem.name == enumValueToken) {
-                                        finalEnumInt = elem.value;
-                                        enumFound = true;
-                                        break;
-                                    }
+                                size_t subC = cleanElemName.rfind("::");
+                                if (subC != std::string::npos) {
+                                    cleanElemName = cleanElemName.substr(subC + 2);
                                 }
-                            }
-                            if (enumFound) break;
-                        }
 
-                        // Шаг 3: Если рантайм-кэш не знает про 'circle', выкачиваем его напрямую из PDB по типу поля!
-                        if (!enumFound && member) {
-                            std::string cleanEnumName = member->typeName;
-                            // Очищаем от внутренних префиксов MSVC компилятора
-                            if (cleanEnumName.rfind("enum ", 0) == 0)  cleanEnumName.erase(0, 5);
-                            if (cleanEnumName.rfind("class ", 0) == 0) cleanEnumName.erase(0, 6);
-
-                            std::wstring wEnumName(cleanEnumName.begin(), cleanEnumName.end());
-                            std::vector<std::string> parsedNames;
-                            std::vector<int> parsedValues;
-
-                            // Делаем фолбэк-запрос к файлу .pdb через DbgHelp
-                            if (LivePT::LoadEnumMetadataDirect(wEnumName.c_str(), parsedNames, parsedValues)) {
-                                for (size_t eIdx = 0; eIdx < parsedNames.size(); ++eIdx) {
-                                    std::string cleanElemName = parsedNames[eIdx];
-                                    size_t subC = cleanElemName.rfind("::");
-                                    if (subC != std::string::npos) cleanElemName = cleanElemName.substr(subC + 2);
-
-                                    if (cleanElemName == enumValueToken || parsedNames[eIdx] == enumValueToken) {
-                                        finalEnumInt = parsedValues[eIdx];
-                                        enumFound = true;
-                                        break;
-                                    }
+                                if (cleanElemName == enumValueToken || elem.name == enumValueToken) {
+                                    finalEnumInt = elem.value;
+                                    enumFound = true;
+                                    break;
                                 }
                             }
                         }
-
-                        if (!enumFound) {
-                            Log("[LivePT Integrity Error] Unknown enum token inside structure: '" + enumValueToken + "'. Parsing skipped.");
-                            continue;
-                        }
-
-                        // 3. ПОБАЙТОВАЯ ЗАПИСЬ: Переносим вычисленный int по адресу поля структуры
-                        *reinterpret_cast<int*>(fieldAddress) = finalEnumInt;
-
-                        // 4. МАСКА ВАЛИДНОСТИ: Размечаем байты структуры для покадрового копировщика в eval.h
-                        for (DWORD b = 0; b < member->size; ++b) {
-                            if (currentAbsoluteFieldOffset + b < structTotalSize) {
-                                paramDesc[targetId].validFieldsMask[currentAbsoluteFieldOffset + b] = true;
-                            }
-                        }
-                        continue;
+                        if (enumFound) break;
                     }
 
+                    if (!enumFound && member) {
+                        std::string cleanEnumName = member->typeName;
+                        if (cleanEnumName.rfind("enum ", 0) == 0)  cleanEnumName.erase(0, 5);
+                        if (cleanEnumName.rfind("class ", 0) == 0) cleanEnumName.erase(0, 6);
 
-                    const char* strStart = cleanPrimitiveStr.data();
-                    const char* strEnd = cleanPrimitiveStr.data() + cleanPrimitiveStr.size();
+                        std::wstring wEnumName(cleanEnumName.begin(), cleanEnumName.end());
+                        std::vector<std::string> parsedNames;
+                        std::vector<int> parsedValues;
 
-                    if (member->size == 4) {
+                        if (LivePT::LoadEnumMetadataDirect(wEnumName.c_str(), parsedNames, parsedValues)) {
+                            for (size_t eIdx = 0; eIdx < parsedNames.size(); ++eIdx) {
+                                std::string cleanElemName = parsedNames[eIdx];
+                                size_t subC = cleanElemName.rfind("::");
+                                if (subC != std::string::npos) cleanElemName = cleanElemName.substr(subC + 2);
+
+                                if (cleanElemName == enumValueToken || parsedNames[eIdx] == enumValueToken) {
+                                    finalEnumInt = parsedValues[eIdx];
+                                    enumFound = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    if (!enumFound) continue;
+
+                    *reinterpret_cast<int*>(fieldAddress) = finalEnumInt;
+
+                    // [ИСПРАВЛЕНО]: Гарантируем, что для 4-байтового энума в карту 
+                    // смещений parsedFieldsOffsets будут занесены абсолютно все 4 байта (b от 0 до 3),
+                    // даже если PDB выдал урезанный размер поля.
+                    DWORD realEnumSize = (member->size < 4) ? 4 : member->size;
+
+                    for (DWORD b = 0; b < realEnumSize; ++b) {
+                        paramDesc[targetId].parsedFieldsOffsets.insert(currentAbsoluteFieldOffset + b);
+                    }
+                    continue;
+                }
+
+                const char* strStart = cleanPrimitiveStr.data();
+                const char* strEnd = cleanPrimitiveStr.data() + cleanPrimitiveStr.size();
+
+                if (member->size == 4) {
+                    bool isFloat = (member->typeName == "float");
+                    if (isFloat) {
                         float val = 0.0f;
                         auto [ptr, ec] = std::from_chars(strStart, strEnd, val);
-                        bool isConstant = (ec == std::errc{});
-
-                        if (isConstant) {
-                            if (member->typeName == "int" || member->typeName == "long") {
-                                *reinterpret_cast<int*>(fieldAddress) = static_cast<int>(val);
-                            }
-                            else {
-                                *reinterpret_cast<float*>(fieldAddress) = val;
-                            }
-                        }
-
-                        for (DWORD b = 0; b < member->size; ++b) {
-                            if (currentAbsoluteFieldOffset + b < structTotalSize) {
-                                paramDesc[targetId].validFieldsMask[currentAbsoluteFieldOffset + b] = isConstant;
-                            }
+                        if (ec == std::errc{}) {
+                            *reinterpret_cast<float*>(fieldAddress) = val;
                         }
                     }
-                    else if (member->size == 8) {
-                        double val = 0.0;
+                    else {
+                        float val = 0.0f;
                         auto [ptr, ec] = std::from_chars(strStart, strEnd, val);
-                        bool isConstant = (ec == std::errc{});
-                        if (isConstant) {
-                            *reinterpret_cast<double*>(fieldAddress) = val;
-                        }
-                        for (DWORD b = 0; b < member->size; ++b) {
-                            if (currentAbsoluteFieldOffset + b < structTotalSize) {
-                                paramDesc[targetId].validFieldsMask[currentAbsoluteFieldOffset + b] = isConstant;
-                            }
+                        if (ec == std::errc{}) {
+                            *reinterpret_cast<int*>(fieldAddress) = static_cast<int>(val);
                         }
                     }
-                    else if (member->size == 1) {
-                        bool isConstant = false;
-                        if (member->typeName == "bool") {
-                            if (cleanPrimitiveStr == "true" || cleanPrimitiveStr == "1") {
-                                *reinterpret_cast<bool*>(fieldAddress) = true;
-                                isConstant = true;
-                            }
-                            else if (cleanPrimitiveStr == "false" || cleanPrimitiveStr == "0") {
-                                *reinterpret_cast<bool*>(fieldAddress) = false;
-                                isConstant = true;
-                            }
+
+                    for (DWORD b = 0; b < member->size; ++b) {
+                        paramDesc[targetId].parsedFieldsOffsets.insert(currentAbsoluteFieldOffset + b);
+                    }
+                }
+                else if (member->size == 8) {
+                    double val = 0.0;
+                    auto [ptr, ec] = std::from_chars(strStart, strEnd, val);
+                    if (ec == std::errc{}) {
+                        *reinterpret_cast<double*>(fieldAddress) = val;
+                        for (DWORD b = 0; b < member->size; ++b) {
+                            paramDesc[targetId].parsedFieldsOffsets.insert(currentAbsoluteFieldOffset + b);
                         }
-                        else {
-                            int val = 0;
-                            auto [ptr, ec] = std::from_chars(strStart, strEnd, val);
-                            if (ec == std::errc{}) {
-                                *reinterpret_cast<unsigned char*>(fieldAddress) = static_cast<unsigned char>(val);
-                                isConstant = true;
-                            }
+                    }
+                }
+                else if (member->size == 1) {
+                    bool parsedOk = false;
+                    if (member->typeName == "bool") {
+                        if (cleanPrimitiveStr == "true" || cleanPrimitiveStr == "1") {
+                            *reinterpret_cast<bool*>(fieldAddress) = true;
+                            parsedOk = true;
                         }
-                        if (currentAbsoluteFieldOffset < structTotalSize) {
-                            paramDesc[targetId].validFieldsMask[currentAbsoluteFieldOffset] = isConstant;
+                        else if (cleanPrimitiveStr == "false" || cleanPrimitiveStr == "0") {
+                            *reinterpret_cast<bool*>(fieldAddress) = false;
+                            parsedOk = true;
                         }
+                    }
+                    else {
+                        int val = 0;
+                        auto [ptr, ec] = std::from_chars(strStart, strEnd, val);
+                        if (ec == std::errc{}) {
+                            *reinterpret_cast<unsigned char*>(fieldAddress) = static_cast<unsigned char>(val);
+                            parsedOk = true;
+                        }
+                    }
+                    if (parsedOk) {
+                        paramDesc[targetId].parsedFieldsOffsets.insert(currentAbsoluteFieldOffset);
                     }
                 }
             }
+        }
     }
+
+
+
 
     inline bool ExtractVectorElements(const std::string& textValue, std::vector<std::string>& outElements) {
         outElements.clear();
@@ -610,11 +597,13 @@ namespace LivePT {
     }
 
     //----
+       // Обновлённый метод ленивой десериализации внутри EvalSyntaxShield
+        // 1. БАЗОВЫЙ ШАБЛОН ДЛЯ ПРИМИТИВОВ, ЭНУМОВ И ОДИНОЧНЫХ СТРУКТУР
+        // 1. БАЗОВЫЙ ШАБЛОН ДЛЯ ПРИМИТИВОВ, ЭНУМОВ И ОДИНОЧНЫХ СТРУКТУР
     template <typename TargetType, auto MacroName, FixedString<260> AbsoluteFile, int Line, int Column>
     struct EvalSyntaxShield {
         template <typename TLiteral>
         inline static TargetType Get(TLiteral literalValue) {
-            // Передаем MacroName дальше в реестр
             int target_id = GlobalEvalRegistry<TargetType, MacroName, AbsoluteFile, Line, Column>::cached_id;
 
             if (target_id < 0 || target_id >= static_cast<int>(paramDesc.size())) {
@@ -637,55 +626,29 @@ namespace LivePT {
                         };
                 }
                 else if constexpr (std::integral<TargetType> || std::floating_point<TargetType>) {
-                    long long minB = static_cast<long long>((std::numeric_limits<TargetType>::min)());
-                    long long maxB = static_cast<long long>((std::numeric_limits<TargetType>::max)());
-                    if constexpr (std::floating_point<TargetType>) {
-                        minB = static_cast<long long>(-(std::numeric_limits<TargetType>::max)());
-                    }
-                    paramDesc[target_id].typeMinBound = minB;
-                    paramDesc[target_id].typeMaxBound = maxB;
-
                     paramDesc[target_id].stringUpdater = [target_id](std::any& targetAny, const std::string& textValue) {
                         std::string cleanText = textValue;
-
-
                         size_t openBracket = cleanText.find('(');
                         size_t closeBracket = cleanText.rfind(')');
                         if (openBracket != std::string::npos && closeBracket != std::string::npos && closeBracket > openBracket) {
-
                             cleanText = cleanText.substr(openBracket + 1, closeBracket - openBracket - 1);
                         }
-
                         while (!cleanText.empty() && (cleanText.back() == 'f' || cleanText.back() == 'F')) {
                             cleanText.pop_back();
                         }
-
                         std::stringstream ss(cleanText);
                         TargetType parsedValue;
-                        if (ss >> parsedValue) {
-                            targetAny = parsedValue;
-                        }
+                        if (ss >> parsedValue) targetAny = parsedValue;
                         };
                 }
                 else {
-                    // === ЧАСТЬ 1: ОЧИЩЕННЫЙ РЕКУРСИВНЫЙ ПАРСЕР СТРУКТУР ===
-// Найти в файле eval.h внутри EvalSyntaxShield::Get 
-// блок "=== ЧАСТЬ 1: ОЧИЩЕННЫЙ РЕКУРСИВНЫЙ ПАРСЕР СТРУКТУР ===" 
-// и заменить лямбду stringUpdater на эту:
-
                     paramDesc[target_id].stringUpdater = [target_id](std::any& targetAny, const std::string& textValue) {
                         std::string innerArgs;
-
-                        // Новая логика: ищем самую первую открывающую фигурную скобку '{' 
-                        // во всей строке вызова функции (например, "DrawTestRect({ .pos = ... })")
                         size_t openBrace = textValue.find('{');
                         size_t closeBrace = textValue.rfind('}');
 
                         if (openBrace != std::string::npos && closeBrace != std::string::npos && closeBrace > openBrace) {
-                            // Извлекаем только то, что находится внутри корневых фигурных скобок
                             std::string rawInner = textValue.substr(openBrace + 1, closeBrace - openBrace - 1);
-
-                            // Очищаем от однострочных комментариев и символов '#'
                             innerArgs.reserve(rawInner.length());
                             bool inComment = false;
                             for (size_t i = 0; i < rawInner.length(); ++i) {
@@ -704,7 +667,6 @@ namespace LivePT {
                             }
                         }
                         else {
-                            // Резервный вариант на случай круглых скобок
                             if (!LivePT::ExtractAndStripComments(textValue, innerArgs)) return;
                         }
 
@@ -718,14 +680,12 @@ namespace LivePT {
 
                         size_t structTotalSize = sizeof(TargetType);
 
-                        // Запускаем ваш побайтовый движок LivePT
+                        paramDesc[target_id].parsedFieldsOffsets.clear();
                         WriteStructBytes(byteBase, mainTypeName, innerArgs, 0, target_id, structTotalSize);
                         };
-
                 }
                 paramDesc[target_id].loaded = true;
             }
-
             std::string absPath = NormalizePath(AbsoluteFile.c_str());
             int real_id = getID(absPath + ":" + std::to_string(paramDesc[target_id].counterID));
             if (real_id < 0 || real_id >= static_cast<int>(paramDesc.size())) {
@@ -743,27 +703,42 @@ namespace LivePT {
                 }
             }
             else {
-                // 1. Каждый кадр берем абсолютно "живой" объект со стека (где x пульсирует)
+                // Накладываем измененные в IDE байты поверх живого объекта со стека
                 TargetType resultStruct = literalValue;
-
-                if (real_id >= 0 && real_id < static_cast<int>(paramDesc.size()) && paramDesc[real_id].loaded) {
+                if (paramDesc[real_id].loaded) {
                     if (auto pCachedVal = std::any_cast<TargetType>(&paramDesc[real_id].value)) {
-
                         char* targetBase = reinterpret_cast<char*>(&resultStruct);
                         const char* cacheBase = reinterpret_cast<const char*>(pCachedVal);
 
-                        size_t structTotalSize = sizeof(TargetType);
-                        const auto& mask = paramDesc[real_id].validFieldsMask;
+                        const auto& offsets = paramDesc[real_id].parsedFieldsOffsets;
+                        size_t totalSize = sizeof(TargetType);
 
-                        // 2. Плоский побайтовый перенос за наносекунды
-                        // Если размер маски совпадает со структурой, переносим только константные байты
-                        if (mask.size() == structTotalSize) {
-                            for (size_t b = 0; b < structTotalSize; ++b) {
-                                if (mask[b]) {
-                                    targetBase[b] = cacheBase[b];
+                        // --- ДИАГНОСТИЧЕСКИЙ ЛОГ КАЖДОГО КАДРА ---
+                        static DWORD lastLogTick = 0;
+                        DWORD currentTick = GetTickCount();
+                        if (currentTick - lastLogTick > 2000) { // Логируем раз в 2 секунды, чтобы не забивать поток
+                            lastLogTick = currentTick;
+                            Log("[LivePT Runtime] Copying Struct: " + std::string(typeid(TargetType).name()) + " | Total fields modified: " + std::to_string(offsets.size()));
+                        }
+
+                        for (DWORD offset : offsets) {
+                            if (offset < totalSize) {
+                                // Если это первый лог после изменения, покажем старое и новое значение байта
+                                if (currentTick - lastLogTick < 16) {
+                                    Log("[LivePT Runtime]   Applying byte at Offset: " + std::to_string(offset) + " | Orig: " + std::to_string((int)targetBase[offset]) + " -> New: " + std::to_string((int)cacheBase[offset]));
                                 }
+                                targetBase[offset] = cacheBase[offset];
                             }
                         }
+                    }
+                }
+                else {
+                    // Сигнализируем, если структура в базе почему-то не помечена как загруженная
+                    static DWORD lastErrTick = 0;
+                    DWORD currentTick = GetTickCount();
+                    if (currentTick - lastErrTick > 2000) {
+                        lastErrTick = currentTick;
+                        Log("[LivePT Runtime WARNING] paramDesc[real_id].loaded is FALSE for real_id: " + std::to_string(real_id));
                     }
                 }
                 return resultStruct;
@@ -772,6 +747,7 @@ namespace LivePT {
             return static_cast<TargetType>(literalValue);
         }
     };
+
 
     template <typename T>
     struct MsvcVectorProxy {
@@ -793,6 +769,10 @@ namespace LivePT {
     }
 
     // ЧАСТИЧНАЯ СПЕЦИАЛИЗАЦИЯ ДЛЯ ДИНАМИЧЕСКИХ ВЕКТОРОВ НА СТУДО-ЯКОРЯХ
+        // 2. ЧАСТИЧНАЯ СПЕЦИАЛИЗАЦИЯ ДЛЯ ДИНАМИЧЕСКИХ ВЕКТОРОВ
+        // =========================================================================
+    // ПОЛНАЯ И ИСПРАВЛЕННАЯ ЧАСТИЧНАЯ СПЕЦИАЛИЗАЦИЯ ДЛЯ ДИНАМИЧЕСКИХ ВЕКТОРОВ
+    // =========================================================================
     template <typename ElementType, auto MacroName, FixedString<260> AbsoluteFile, int Line, int Column>
     struct EvalSyntaxShield<std::vector<ElementType>, MacroName, AbsoluteFile, Line, Column> {
 
@@ -843,76 +823,68 @@ namespace LivePT {
                     size_t elemSize = sizeof(ElementType);
                     size_t vectorTotalBytes = pVec->size() * elemSize;
 
-                    // Гарантируем, что размер маски валидности соответствует общему числу байт вектора
-                    if (paramDesc[target_id].validFieldsMask.size() < vectorTotalBytes) {
-                        paramDesc[target_id].validFieldsMask.resize(vectorTotalBytes, false);
-                    }
-
-                    // Получаем чистое текстовое имя типа элемента вектора для метаданных PDB
                     std::string mainTypeName = typeid(ElementType).name();
                     if (mainTypeName.rfind("struct ", 0) == 0) mainTypeName.erase(0, 7);
                     if (mainTypeName.rfind("class ", 0) == 0) mainTypeName.erase(0, 6);
 
-                    // ПЕРЕИСПОЛЬЗОВАНИЕ: Последовательно гоним каждый элемент вектора через общую WriteStructBytes
+                    // Очищаем старые смещения перед новой итерацией десериализации вектора
+                    paramDesc[target_id].parsedFieldsOffsets.clear();
+
+                    // Последовательно гоним каждый элемент вектора через общую WriteStructBytes
                     for (size_t idx = 0; idx < elements.size(); ++idx) {
                         char* targetElementAddr = byteBase + (idx * elemSize);
                         std::string structToken = elements[idx];
 
-                        // Снимаем внешние фигурные скобки самого элемента, если они есть (например, {1, 2} -> 1, 2)
                         size_t subOpen = structToken.find('{');
                         size_t subClose = structToken.rfind('}');
                         if (subOpen != std::string::npos && subClose != std::string::npos && subClose > subOpen) {
                             structToken = structToken.substr(subOpen + 1, subClose - subOpen - 1);
                         }
 
-                        // Считаем сквозное абсолютное смещение байт для текущего элемента массива в маске
+                        // Считаем сквозное абсолютное смещение байт для текущего элемента массива в памяти вектора
                         DWORD elementAbsoluteBaseOffset = static_cast<DWORD>(idx * elemSize);
 
                         // Вызываем общую проверенную функцию одиночной структуры
                         LivePT::WriteStructBytes(targetElementAddr, mainTypeName, structToken, elementAbsoluteBaseOffset, target_id, vectorTotalBytes);
                     }
-                }; 
-            paramDesc[target_id].loaded = true;
-        }
+                    };
+                paramDesc[target_id].loaded = true;
+            }
 
-        std::string absPath = NormalizePath(AbsoluteFile.c_str());
-        int real_id = getID(absPath + ":" + std::to_string(paramDesc[target_id].counterID));
+            std::string absPath = NormalizePath(AbsoluteFile.c_str());
+            int real_id = getID(absPath + ":" + std::to_string(paramDesc[target_id].counterID));
 
-        std::vector<ElementType> resultVector = literalValue;
+            if (real_id >= 0 && real_id < static_cast<int>(paramDesc.size()) && paramDesc[real_id].loaded) {
+                if (auto pCachedVector = std::any_cast<std::vector<ElementType>>(&paramDesc[real_id].value)) {
 
-        if (real_id >= 0 && real_id < static_cast<int>(paramDesc.size()) && paramDesc[real_id].loaded) {
-            if (auto pCachedVector = std::any_cast<std::vector<ElementType>>(&paramDesc[real_id].value)) {
+                    // Защита: Если размер вектора изменился в коде IDE, копируем его целиком
+                    if (literalValue.size() != pCachedVector->size()) {
+                        return *pCachedVector;
+                    }
 
-                if (literalValue.size() != pCachedVector->size()) {
-                    return *pCachedVector;
-                }
+                    // 1. Берем живой вектор со стека (со всеми его рантайм-данными)
+                    std::vector<ElementType> resultVector = literalValue;
 
-                std::vector<ElementType> resultVector = literalValue;
+                    char* targetBase = reinterpret_cast<char*>(resultVector.data());
+                    const char* cacheBase = reinterpret_cast<const char*>(pCachedVector->data());
 
-                char* targetBase = reinterpret_cast<char*>(resultVector.data());
-                const char* cacheBase = reinterpret_cast<const char*>(pCachedVector->data());
+                    // 2. Идем строго по сквозным смещениям байт элементов вектора
+                    const auto& offsets = paramDesc[real_id].parsedFieldsOffsets;
+                    size_t vectorTotalBytes = resultVector.size() * sizeof(ElementType);
 
-                size_t vectorTotalBytes = resultVector.size() * sizeof(ElementType);
-                const auto& mask = paramDesc[real_id].validFieldsMask;
-
-                if (mask.size() == vectorTotalBytes) {
-                    for (size_t b = 0; b < vectorTotalBytes; ++b) {
-                        if (mask[b]) {
-                            targetBase[b] = cacheBase[b];
+                    for (DWORD offset : offsets) {
+                        if (offset < vectorTotalBytes) {
+                            targetBase[offset] = cacheBase[offset];
                         }
                     }
+
+                    return resultVector;
                 }
-
-                return resultVector;
             }
+
+            return literalValue;
         }
-
-        return literalValue;
-
-
-
-    }
-};
+    };
 
 
     template <typename LiteralType, auto MacroName, FixedString<260> AbsoluteFile, int Line, int Column>
