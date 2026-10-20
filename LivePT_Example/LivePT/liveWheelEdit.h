@@ -2,7 +2,7 @@
 #define LPT_WM_BUTTONUP   WM_LBUTTONUP
 #elif LivePT_TriggerButton == VK_MBUTTON
 #define LPT_WM_BUTTONUP   WM_MBUTTONUP
-#endif
+#endif 
 
 #include "enumMenu.h"
 
@@ -744,7 +744,7 @@ namespace LivePT {
                 }
             }
 
-            // === ЛОГИКА ДРАГА ОБЫЧНЫХ ЧИСЕЛ ===
+            // === Г‹ГЋГѓГ€ГЉГЂ Г„ГђГЂГѓГЂ ГЋГЃГ›Г—ГЌГ›Г• Г—Г€Г‘Г…Г‹ ===
             if (!g_dragState.isProportionalStructDrag && cursorColIdx >= 0 && cursorColIdx < static_cast<long>(currentLineText.length())) {
                 long startCol = cursorColIdx;
                 long endCol = cursorColIdx;
@@ -769,14 +769,14 @@ namespace LivePT {
                     std::wstring numW = currentLineText.substr(startCol, endCol - startCol);
                     std::string cleanText(numW.begin(), numW.end());
 
-                    //  СИНТАКСИЧЕСКАЯ ЗАЩИТА КОДА 
-                    // Проверяем символы строго СЛЕВА и СПРАВА от найденного числа.
-                    // Если рядом стоит буква или знак подчеркивания, значит это ЧАСТЬ ИМЕНИ ТИПА (как color3 или pos2).
-                    // Менять её как обычное число нельзя!
+                    //  Г‘Г€ГЌГ’ГЂГЉГ‘Г€Г—Г…Г‘ГЉГЂГџ Г‡ГЂГ™Г€Г’ГЂ ГЉГЋГ„ГЂ 
+                    // ГЏГ°Г®ГўГҐГ°ГїГҐГ¬ Г±ГЁГ¬ГўГ®Г«Г» Г±ГІГ°Г®ГЈГ® Г‘Г‹Г…Г‚ГЂ ГЁ Г‘ГЏГђГЂГ‚ГЂ Г®ГІ Г­Г Г©Г¤ГҐГ­Г­Г®ГЈГ® Г·ГЁГ±Г«Г .
+                    // Г…Г±Г«ГЁ Г°ГїГ¤Г®Г¬ Г±ГІГ®ГЁГІ ГЎГіГЄГўГ  ГЁГ«ГЁ Г§Г­Г ГЄ ГЇГ®Г¤Г·ГҐГ°ГЄГЁГўГ Г­ГЁГї, Г§Г­Г Г·ГЁГІ ГЅГІГ® Г—ГЂГ‘Г’Гњ Г€ГЊГ…ГЌГ€ Г’Г€ГЏГЂ (ГЄГ ГЄ color3 ГЁГ«ГЁ pos2).
+                    // ГЊГҐГ­ГїГІГј ГҐВё ГЄГ ГЄ Г®ГЎГ»Г·Г­Г®ГҐ Г·ГЁГ±Г«Г® Г­ГҐГ«ГјГ§Гї!
                     bool isLeftValid = (startCol == 0 || (!iswalnum(currentLineText[startCol - 1]) && currentLineText[startCol - 1] != L'_'));
                     bool isRightValid = (endCol >= static_cast<long>(currentLineText.length()) || (!iswalnum(currentLineText[endCol]) && currentLineText[endCol] != L'_' && currentLineText[endCol] != L'f' && currentLineText[endCol] != L'F'));
 
-                    // Дополнительно: если число состоит только из одной цифры, стоящей вплотную к букве (например, '3' в color3)
+                    // Г„Г®ГЇГ®Г«Г­ГЁГІГҐГ«ГјГ­Г®: ГҐГ±Г«ГЁ Г·ГЁГ±Г«Г® Г±Г®Г±ГІГ®ГЁГІ ГІГ®Г«ГјГЄГ® ГЁГ§ Г®Г¤Г­Г®Г© Г¶ГЁГґГ°Г», Г±ГІГ®ГїГ№ГҐГ© ГўГЇГ«Г®ГІГ­ГіГѕ ГЄ ГЎГіГЄГўГҐ (Г­Г ГЇГ°ГЁГ¬ГҐГ°, '3' Гў color3)
                     if (isLeftValid && isRightValid) {
                         g_dragState.dragLine = line;
                         g_dragState.dragStartCol = startCol + 1;
@@ -789,8 +789,8 @@ namespace LivePT {
                         clickedInsideNumber = true;
                     }
                     else {
-                        // Клик пришелся на имя типа (color3) из-за лага фокуса. 
-                        // Блокируем числовой драг, предотвращая поломку кода.
+                        // ГЉГ«ГЁГЄ ГЇГ°ГЁГёГҐГ«Г±Гї Г­Г  ГЁГ¬Гї ГІГЁГЇГ  (color3) ГЁГ§-Г§Г  Г«Г ГЈГ  ГґГ®ГЄГіГ±Г . 
+                        // ГЃГ«Г®ГЄГЁГ°ГіГҐГ¬ Г·ГЁГ±Г«Г®ГўГ®Г© Г¤Г°Г ГЈ, ГЇГ°ГҐГ¤Г®ГІГўГ°Г Г№Г Гї ГЇГ®Г«Г®Г¬ГЄГі ГЄГ®Г¤Г .
                         clickedInsideNumber = false;
                     }
                 }
