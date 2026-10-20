@@ -183,11 +183,12 @@ LPT_LIVE_FUNCTION(void, DrawTestRect, TestRect, in) {
 
     BOOL highlight = LivePT::IsCursorInsideFunctionCall(location);
 
-    HBRUSH hBrush = in.fill ? CreateSolidBrush(RGB(in.color.r, in.color.g, in.color.b)) : (HBRUSH)GetStockObject(NULL_BRUSH);
-    HPEN hPen = CreatePen(PS_SOLID, highlight ? 4 : 2, RGB(in.color.r, in.color.g, in.color.b));
+    // 1. Создаем уникальные хэндлы для тела примитива
+    HBRUSH hBodyBrush = in.fill ? CreateSolidBrush(RGB(in.color.r, in.color.g, in.color.b)) : (HBRUSH)GetStockObject(NULL_BRUSH);
+    HPEN hBodyPen = CreatePen(PS_SOLID, highlight ? 4 : 2, RGB(in.color.r, in.color.g, in.color.b));
 
-    HBRUSH hOldBrush = (HBRUSH)SelectObject(gc.memDC, hBrush);
-    HPEN hOldPen = (HPEN)SelectObject(gc.memDC, hPen);
+    HBRUSH hOldBrush = (HBRUSH)SelectObject(gc.memDC, hBodyBrush);
+    HPEN hOldPen = (HPEN)SelectObject(gc.memDC, hBodyPen);
 
     float radians = in.Angle * (3.14159265f / 180.0f);
     float cosA = std::cos(radians);
@@ -203,16 +204,18 @@ LPT_LIVE_FUNCTION(void, DrawTestRect, TestRect, in) {
     GetWorldTransform(gc.memDC, &oldForm);
     SetWorldTransform(gc.memDC, &xForm);
 
-    // --- ЖИВОЕ ВЕТВЛЕНИЕ НА WINAPI НА ОСНОВЕ ЕНУМА ---
-    switch (in.type)
+    if (in.show) switch (in.type)
     {
     case ptype::box:
         Rectangle(gc.memDC, -in.size.w, -in.size.h, in.size.w, in.size.h);
         break;
 
     case ptype::circle:
-        // Рисуем полноценный круг на основе ширины size.w
         Ellipse(gc.memDC, -in.size.w, -in.size.w, in.size.w, in.size.w);
+        break;
+
+    case ptype::roundbox:
+        RoundRect(gc.memDC, -in.size.w, -in.size.h, in.size.w, in.size.h, 40, 40);
         break;
 
     default:
@@ -220,21 +223,26 @@ LPT_LIVE_FUNCTION(void, DrawTestRect, TestRect, in) {
         break;
     }
 
+    // Восстанавливаем исходные объекты отрисовки
     SelectObject(gc.memDC, hOldBrush);
     SelectObject(gc.memDC, hOldPen);
-    DeleteObject(hPen);
-    if (in.fill) DeleteObject(hBrush);
 
-    hBrush = highlight ? CreateSolidBrush(RGB(255, 255, 255)) : CreateSolidBrush(RGB(122, 122, 122));
-    hOldBrush = (HBRUSH)SelectObject(gc.memDC, hBrush);
+    // Удаляем созданные объекты тела (защита от утечки GDI)
+    DeleteObject(hBodyPen);
+    if (in.fill) DeleteObject(hBodyBrush);
+
+    // 2. Создаем СОВЕРШЕННО ОТДЕЛЬНУЮ кисть для центрального маркера подсветки
+    HBRUSH hMarkerBrush = highlight ? CreateSolidBrush(RGB(255, 255, 255)) : CreateSolidBrush(RGB(122, 122, 122));
+    HBRUSH hOldMarkerBrush = (HBRUSH)SelectObject(gc.memDC, hMarkerBrush);
+
     Ellipse(gc.memDC, -12, -12, 12, 12);
-    SelectObject(gc.memDC, hOldBrush);
-    DeleteObject(hBrush);
+
+    SelectObject(gc.memDC, hOldMarkerBrush);
+    DeleteObject(hMarkerBrush); // Безопасно удаляем только маркер
 
     SetWorldTransform(gc.memDC, &oldForm);
     drawCounter++;
 }
-
 
 void Draw(Primitive p, std::source_location location = std::source_location::current()) {
 
@@ -249,8 +257,9 @@ void Draw(Primitive p, std::source_location location = std::source_location::cur
 
     BOOL highlight = LivePT::IsCursorInsideFunctionCall(location);
 
-    HBRUSH hBrush = CreateSolidBrush(RGB(p.color.r, p.color.g, p.color.b));
-    HBRUSH hOldBrush = (HBRUSH)SelectObject(gc.memDC, hBrush);
+    // 1. Создаем уникальную кисть для тела примитива
+    HBRUSH hBodyBrush = CreateSolidBrush(RGB(p.color.r, p.color.g, p.color.b));
+    HBRUSH hOldBrush = (HBRUSH)SelectObject(gc.memDC, hBodyBrush);
 
     float angleVal = p.Angle;
     float radians = angleVal * (3.14159265f / 180.0f);
@@ -258,7 +267,6 @@ void Draw(Primitive p, std::source_location location = std::source_location::cur
     float sinA = std::sin(radians);
 
     XFORM xForm;
-
     xForm.eM11 = cosA;  xForm.eM12 = sinA;
     xForm.eM21 = -sinA; xForm.eM22 = cosA;
     xForm.eDx = (float)posX;
@@ -266,8 +274,8 @@ void Draw(Primitive p, std::source_location location = std::source_location::cur
 
     XFORM oldForm;
     GetWorldTransform(gc.memDC, &oldForm);
-
     SetWorldTransform(gc.memDC, &xForm);
+
     if (p.show)
     {
         switch (p.type) {
@@ -277,27 +285,19 @@ void Draw(Primitive p, std::source_location location = std::source_location::cur
         }
     }
 
+    // Восстанавливаем исходную системную кисть и удаляем кисть тела
     SelectObject(gc.memDC, hOldBrush);
-    DeleteObject(hBrush);
+    DeleteObject(hBodyBrush);
 
-    static HBRUSH hBrushHighlight = CreateSolidBrush(RGB(255, 255, 255)); // Белая
-    static HBRUSH hBrushNormal = CreateSolidBrush(RGB(122, 122, 122)); // Серая
-
-    // Просто выбираем нужную готовую кисть в зависимости от подсветки.
-    // Переменную hOldBrush перезаписывать нельзя — она должна хранить самую первую системную кисть!
-    if (highlight)
-    {
-        SelectObject(gc.memDC, hBrushHighlight);
-    }
-    else
-    {
-        SelectObject(gc.memDC, hBrushNormal);
-    }
+    // 2. Создаем изолированную кисть для центрального маркера подсветки
+    HBRUSH hMarkerBrush = highlight ? CreateSolidBrush(RGB(255, 255, 255)) : CreateSolidBrush(RGB(122, 122, 122));
+    HBRUSH hOldMarkerBrush = (HBRUSH)SelectObject(gc.memDC, hMarkerBrush);
 
     Ellipse(gc.memDC, -12, -12, 12, 12);
-    SelectObject(gc.memDC, hOldBrush);
-    DeleteObject(hBrush);
 
+    // Восстанавливаем контекст устройства и удаляем только маркер
+    SelectObject(gc.memDC, hOldMarkerBrush);
+    DeleteObject(hMarkerBrush);
 
     SetWorldTransform(gc.memDC, &oldForm);
 
@@ -349,12 +349,12 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         Draw((Primitive{
                 .pos = pos2{
-                    .x = 361.31f,
-                    .y = -594.24f
+                    .x = 486.31f,
+                    .y = -432.24f
                     },
                 .size = size2{236.06f, rr},
                 .Angle = angle(-10.5f),
-                .type = eval(ptype::circle),
+                .type = eval(ptype::box),
                 .show = true,
                 .color = color3{0, 172, 50}
             }));
@@ -363,11 +363,11 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         Draw(eval(Primitive{
             .pos = pos2{
-				.x = -158.69f,
-				.y = 207.76f
+				.x = -82.69f,
+				.y = 67.76f
 				},
             .size = size2{136.06f, rr},
-            .Angle = angle(334.9f),
+            .Angle = angle(397.9f),
             .type = ptype::roundbox,
             .show = true,
             .color = color3{26, 161, 21}
@@ -377,38 +377,38 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         DrawLine({
             .points = eval(std::vector<HeavyPoint>{
-                    { true, pos2{-446.70f, 171.70f}, 58, 944, color3{247, 61, 125} },
+                    { true, pos2{-531.70f, 315.70f}, 58, 944, color3{247, 61, 125} },
                     { true, pos2{-246.80f, 317.80f}, 20, 956, color3{95, 35, 59} },
                     { true, pos2{-9.40f, 142.80f}, 21, 956, color3{75, 34, 99} },
                     { true, pos2{188.40f, 310.20f}, 19, 956, color3{73, 56, 158} },
                     { true, pos2{373.40f, 616.20f}, 15, 956, color3{103, 82, 183} },
-                    { true, pos2{470.40f, 314.20f}, 15, 956, color3{103, 82, 183} },
+                    { true, pos2{454.40f, 366.20f}, 15, 956, color3{103, 82, 183} },
                 })
             });
 
         DrawTestRect({
                 .pos = pos2{
-                .x = 508.58f,
-                .y = 11.87f
+                .x = 592.58f,
+                .y = 64.87f
                 },
-                .size = size2{168.20f, 221.87f},
-                .Angle = angle(64.0f),
-                .type = ptype::roundbox,
+                .size = size2{109.45f, 144.41f},
+                .Angle = angle(66.0f),
+                .type = ptype::box,
                 .show = true,
-                .color = color3{132, 128, 0},
+                .color = color3{84, 128, 0},
                 .fill = true
             });
 
         DrawTestRect({
                 .pos = pos2{
-                    .x = -504.00f,
-                    .y = -220.13f
+                    .x = -436.00f,
+                    .y = -242.13f
                     },
                 .size = size2{134.95f, 145.87f},
                 .Angle = angle(228.0f),
                 .type = ptype::roundbox,
-                .show = true,
-                .color = color3{58, 61, 176},
+                .show = false,
+                .color = color3{18, 19, 114},
                 .fill = true
             });
 
