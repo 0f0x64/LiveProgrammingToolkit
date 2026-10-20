@@ -161,7 +161,7 @@ void DrawLine(LinePrimitive lp, std::source_location location = std::source_loca
 }
 
 
-#pragma pack(push, 1)
+
 struct TestRect {
     pos2 pos;        // 8 байт (offset 0)
     size2 size;      // 8 байт (offset 8)
@@ -171,7 +171,7 @@ struct TestRect {
     color3 color;    // 3 байта (offset 24) -> ложится в хвост структуры
     bool fill;       // 1 байт  (offset 28)
 };
-#pragma pack(pop)
+
 
 LPT_LIVE_FUNCTION(void, DrawTestRect, TestRect, in) {
 
@@ -377,27 +377,27 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         DrawTestRect(TestRect{
         .pos = pos2{
-            .x = 380.58f,
-            .y = 160.87f
+            .x = 420.58f,
+            .y = 185.87f
             },
-        .size = size2{195.55f, 172.11f},
-        .Angle = angle(48.0f),
+        .size = size2{239.55f, 172.11f},
+        .Angle = angle(163.0f),
         .type = ptype::circle,
         .show = true,
-        .color = color3{209, 28, 0},
+        .color = color3{132, 28, 0},
         .fill = true
             });
 
         DrawTestRect(TestRect{
                 .pos = pos2{
-                    .x = -621.42f,
-                    .y = -579.13f
+                    .x = -564.42f,
+                    .y = -557.13f
                     },
-                .size = size2{195.74f, 200.70f},
-                .Angle = angle(103.0f),
-                .type = ptype::circle,
+                .size = size2{129.74f, 200.70f},
+                .Angle = angle(64.0f),
+                .type = ptype::box,
                 .show = true,
-                .color = color3{170, 28, 0},
+                .color = color3{101, 28, 0},
                 .fill = true
             });
 
