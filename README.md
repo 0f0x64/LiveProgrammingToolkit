@@ -47,7 +47,7 @@
 * **Модификаторы скорости:** Удерживайте `Shift` во время драга для ускорения шага изменения в 10 раз, или `Ctrl` — для ускорения в 100 раз.
 * **Мгновенная инверсия флагов по двойному клику:** Сделайте **двойной клик** кнопкой-триггером мыши по литералу `eval(true)` или `eval(false)`. Состояние логического флага мгновенно инвертируется в текстовом документе.
 * **Интерактивное меню `enum`:** Сделайте двойной клик по элементу перечисления (например, `eval(ptype::box)`). Библиотека считает префикс типа, запросит у `DbgHelp` все доступные варианты этого `enum` и отобразит темное нативное контекстное меню Win32 для быстрого выбора.
-* **Пропорциональный драг структур (Struct Drag):** Если вы зажмете мышь на имени типа или открывающей скобке выражения `eval(pos2{...})`, перемещение мыши будет пропорционально масштабировать (умножать) все внутренние поля структуры одновременно.
+* **Кастомный драг структур (Struct Drag): Если вы зажмете мышь на имени типа или открывающей скобке выражения eval(pos2{...}), ядро передает текущую текстовую строку аргументов и дельту мыши в ваш зарегистрированный Drag-коллабэк. Логика полностью определяется пользователем: коллбэк может пропорционально масштабировать (умножать) все внутренние поля, изменять только определенные координаты или выполнять кастомную математику трансформации, возвращая готовую строку для записи в IDE.
 
 ### 📦 Поддерживаемый синтаксис и ограничения макроса `eval(...)`
 * **Примитивные константные литералы:** Любые целые числа и числа с плавающей точкой, включая отрицательные значения и специфические суффиксы.
@@ -163,7 +163,7 @@ Adjust settings directly within the configuration block of the header file via `
 * **Speed Coefficients:** Hold `Shift` while dragging for a 10x multiplier, or `Ctrl` for a 100x speed increase.
 * **Double-Click Boolean Inversion:** **Double-click** the trigger key over an `eval(true)` or `eval(false)` token to instantly flip its logical state directly inside the source text document.
 * **Dynamic Enum Context Menu:** Double-click the trigger key over any enum variable (e.g., `eval(ptype::box)`). The engine queries `DbgHelp` for all matching enum constants and opens a native dark Win32 context menu right under your cursor.
-* **Proportional Struct Scaling (Struct Drag):** Holding the trigger button over a structure type identifier or its opening brace (e.g., `eval(pos2{...})`) proportionally scales (multiplies) all numerical members simultaneously as you drag.
+* **Custom Struct Drag (Struct Drag): Holding the trigger button over a structure type identifier or its opening brace (e.g., eval(pos2{...})) dispatches the raw arguments string and mouse deltas directly to your custom registered Drag Callback. The transformation logic is completely user-defined: your callback can proportionally scale (multiply) all numerical members, modify specific coordinate axes, or apply custom math before returning the final formatted string back to the IDE automation layer.
 
 ### 📦 Supported Syntax & `eval(...)` Macro Constraints
 * **Primitive Constant Literals:** Ints, floats, signed limits, and explicit type suffixes.
