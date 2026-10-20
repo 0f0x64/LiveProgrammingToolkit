@@ -593,11 +593,39 @@ namespace LivePT {
     inline int FindParamIdByStrictGeometry(const std::string& normalizedFile, long cursorLine, long cursorColumn) {
         auto& params = LivePT::getParamDesc();
         int targetParamId = -1;
+        long exactMatchParamId = -1;
+        long bestPrecedingColumn = -1;
 
         for (int localId = 0; ; ++localId) {
             std::string vsLookupKey = normalizedFile + ":" + std::to_string(localId);
             int paramId = LivePT::getID(vsLookupKey);
 
+            if (paramId == -1) break;
+            if (paramId < 0 || paramId >= static_cast<int>(params.size())) continue;
+
+            const auto& p = params[paramId];
+
+            // Ищем строго на текущей строке редактирования
+            if (p.line == cursorLine) {
+                // Если курсор стоит прямо на начале макроса или внутри него
+                if (p.column <= cursorColumn) {
+                    if (p.column > bestPrecedingColumn) {
+                        bestPrecedingColumn = p.column;
+                        exactMatchParamId = paramId;
+                    }
+                }
+            }
+        }
+
+        // Если нашли точное совпадение на строке курсора — возвращаем его
+        if (exactMatchParamId != -1) {
+            return exactMatchParamId;
+        }
+
+        // Фолбэк на старую логику (для случаев, когда курсор улетел на пустую строку ниже макроса)
+        for (int localId = 0; ; ++localId) {
+            std::string vsLookupKey = normalizedFile + ":" + std::to_string(localId);
+            int paramId = LivePT::getID(vsLookupKey);
             if (paramId == -1) break;
             if (paramId < 0 || paramId >= static_cast<int>(params.size())) continue;
 
@@ -608,73 +636,6 @@ namespace LivePT {
             else {
                 break;
             }
-        }
-
-        if (targetParamId == -1 || g_currentFileFullText.empty()) {
-            return -1;
-        }
-
-        const auto& p = params[targetParamId];
-        long tabSize = GetVSTabSize();
-
-        size_t macroLineOffset = 0;
-        long currentLineIdx = 1;
-        while (currentLineIdx < p.line && macroLineOffset < g_currentFileFullText.length()) {
-            size_t nextNL = g_currentFileFullText.find(L'\n', macroLineOffset);
-            if (nextNL != std::wstring::npos) {
-                macroLineOffset = nextNL + 1;
-                currentLineIdx++;
-            }
-            else break;
-        }
-
-        size_t cursorLineOffset = 0;
-        currentLineIdx = 1;
-        while (currentLineIdx < cursorLine && cursorLineOffset < g_currentFileFullText.length()) {
-            size_t nextNL = g_currentFileFullText.find(L'\n', cursorLineOffset);
-            if (nextNL != std::wstring::npos) {
-                cursorLineOffset = nextNL + 1;
-                currentLineIdx++;
-            }
-            else break;
-        }
-
-        long currentVisualCol = 1;
-        size_t cursorCharIdx = 0;
-        size_t nextNL = g_currentFileFullText.find(L'\n', cursorLineOffset);
-        if (nextNL == std::wstring::npos) nextNL = g_currentFileFullText.length();
-        std::wstring cursorLineText = g_currentFileFullText.substr(cursorLineOffset, nextNL - cursorLineOffset);
-
-        for (size_t i = 0; i < cursorLineText.length(); ++i) {
-            if (currentVisualCol >= cursorColumn) {
-                cursorCharIdx = i;
-                break;
-            }
-            if (cursorLineText[i] == L'\r') continue;
-            currentVisualCol += (cursorLineText[i] == L'\t') ? (tabSize - ((currentVisualCol - 1) % tabSize)) : 1;
-        }
-        if (currentVisualCol < cursorColumn) cursorCharIdx = cursorLineText.length();
-
-        size_t cursorAbsoluteOffset = cursorLineOffset + cursorCharIdx;
-
-        // [ИСПРАВЛЕНО]: Ищем открывающую скобку '(' конкретного макроса/функции
-        // Имя берем прямо из структуры p.macroName
-        std::wstring wMacroName(p.macroName.begin(), p.macroName.end());
-
-        // Поиск символа '(' начинается сразу за концом имени токена (p.column + длина имени)
-        size_t openBracketPos = g_currentFileFullText.find(L'(', macroLineOffset + (p.column > 0 ? p.column - 1 : 0));
-        if (openBracketPos == std::wstring::npos || openBracketPos >= g_currentFileFullText.length()) {
-            return -1;
-        }
-
-        size_t closeBracketPos = FindMacroCloseBracket(g_currentFileFullText, openBracketPos);
-        if (closeBracketPos == std::wstring::npos) {
-            return -1;
-        }
-
-        // Контроль попадания курсора внутрь скобок
-        if (cursorAbsoluteOffset <= openBracketPos || cursorAbsoluteOffset > closeBracketPos) {
-            return -1;
         }
 
         return targetParamId;
