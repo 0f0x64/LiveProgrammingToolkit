@@ -857,7 +857,6 @@ namespace LivePT {
             if (real_id >= 0 && real_id < static_cast<int>(paramDesc.size()) && paramDesc[real_id].loaded) {
                 if (auto pCachedVector = std::any_cast<std::vector<ElementType>>(&paramDesc[real_id].value)) {
 
-                    // Защита: Если размер вектора изменился в коде IDE, копируем его целиком
                     if (literalValue.size() != pCachedVector->size()) {
                         return *pCachedVector;
                     }
@@ -868,12 +867,23 @@ namespace LivePT {
                     char* targetBase = reinterpret_cast<char*>(resultVector.data());
                     const char* cacheBase = reinterpret_cast<const char*>(pCachedVector->data());
 
-                    // 2. Идем строго по сквозным смещениям байт элементов вектора
                     const auto& offsets = paramDesc[real_id].parsedFieldsOffsets;
                     size_t vectorTotalBytes = resultVector.size() * sizeof(ElementType);
 
+                    // --- ДИАГНОСТИЧЕСКИЙ ЛОГ ДЛЯ ВЕКТОРОВ ---
+                    static DWORD lastVecLogTick = 0;
+                    DWORD currentTick = GetTickCount();
+                    if (currentTick - lastVecLogTick > 2000 && !offsets.empty()) {
+                        lastVecLogTick = currentTick;
+                        Log("[LivePT Vector Runtime] Copying Array Elements. Total modified bytes in heap: " + std::to_string(offsets.size()));
+                    }
+
+                    // 2. Идем строго по сквозным смещениям байт элементов вектора
                     for (DWORD offset : offsets) {
                         if (offset < vectorTotalBytes) {
+                            if (currentTick - lastVecLogTick < 16) {
+                                Log("[LivePT Vector Runtime]   Applying array byte at absolute offset: " + std::to_string(offset) + " | Orig: " + std::to_string((int)targetBase[offset]) + " -> New: " + std::to_string((int)cacheBase[offset]));
+                            }
                             targetBase[offset] = cacheBase[offset];
                         }
                     }
@@ -881,6 +891,7 @@ namespace LivePT {
                     return resultVector;
                 }
             }
+
 
             return literalValue;
         }
