@@ -369,20 +369,20 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         DrawLine({
             .points = eval(std::vector<HeavyPoint>{
-                    { true, pos2{-457.70f, 367.70f}, 82, 944, color3{11, 61, 125} },
+                    { true, pos2{-458.70f, 267.70f}, 82, 944, color3{11, 61, 125} },
                     { true, pos2{-246.80f, 317.80f}, 42, 956, color3{61, 35, 59} },
                     { true, pos2{-9.40f, 142.80f}, 21, 956, color3{144, 34, 99} },
                     { true, pos2{188.40f, 310.20f}, 19, 956, color3{73, 56, 158} },
                     { true, pos2{281.40f, 495.20f}, 15, 956, color3{103, 82, 183} },
                     { true, pos2{402.40f, 408.20f}, 15, 956, color3{103, 82, 183} },
-                        { true, pos2{423.40f, 236.20f}, 15, 956, color3{103, 82, 183} },    
+                        { true, pos2{452.40f, 259.20f}, 15, 956, color3{103, 82, 183} },    
                 })
             });
 
         DrawTestRect(TestRect{
         .pos = pos2{
-            .x = 240.58f,
-            .y = -365.13f
+            .x = 157.58f,
+            .y = -371.13f
             },
         .size = size2{183.64f, 160.27f},
         .Angle = angle(95.9f),
@@ -394,8 +394,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         DrawTestRect(TestRect{
                 .pos = pos2{
-                    .x = -314.42f,
-                    .y = -147.13f
+                    .x = -308.42f,
+                    .y = -143.13f
                     },
                 .size = size2{122.53f, 152.05f},
                 .Angle = angle(-36.0f),
