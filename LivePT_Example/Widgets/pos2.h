@@ -2,7 +2,7 @@
 
 #pragma once
 #include <windows.h>
-#include <windowsx.h> // Обязательно для корректной знаковой арифметики GET_X_LPARAM
+#include <windowsx.h> 
 #include <cmath>
 #include <functional>
 #include <string>
@@ -18,7 +18,6 @@ namespace Widgets {
         HWND hWindow = NULL;
         HWND hPadStatic = NULL;
 
-        // Используем оригинальный pos2 из вашего проекта
         pos2 currentPos = { 0.0f, 0.0f };
         std::function<void(std::string)> vsUpdaterCallback = nullptr;
         std::function<void(float, float)> textGenerator = nullptr;
@@ -27,7 +26,6 @@ namespace Widgets {
         bool isCursorHidden = false;
         POINT lastMousePos = { 0, 0 };
 
-        // ЭТАЛОННЫЕ БАЗОВЫЕ РАЗМЕРЫ (для масштаба 100% / 96 DPI)
         const int BASE_width = 140;
         const int BASE_height = 140;
         const int BASE_gridStep = 20;
@@ -37,7 +35,6 @@ namespace Widgets {
 
     inline void UpdatePosCode() {
         if (g_posCtx.textGenerator) {
-            // Вызываем генератор, который помнит правила форматирования кода в VS
             g_posCtx.textGenerator(g_posCtx.currentPos.x, g_posCtx.currentPos.y);
         }
         InvalidateRect(g_posCtx.hWindow, NULL, FALSE);
@@ -47,7 +44,7 @@ namespace Widgets {
         switch (uMsg) {
         case WM_SETCURSOR: {
             if (g_posCtx.isTracking) {
-                SetCursor(NULL); // Прячем курсор при перетаскивании
+                SetCursor(NULL); 
                 return TRUE;
             }
             SetCursor(LoadCursor(NULL, IDC_HAND));
@@ -88,7 +85,6 @@ namespace Widgets {
             HPEN hMutedPen = CreatePen(PS_SOLID, 1, RGB(55, 55, 58));
             HPEN oldPen = (HPEN)SelectObject(memDC, hMutedPen);
 
-            // ДИНАМИЧЕСКИЙ РАСЧЕТ ШАГА СЕТКИ ТРЕКПАДА С УЧЕТОМ DPI
             float scale = GetWidgetScale(hwnd);
             int currentGridStep = static_cast<int>(g_posCtx.BASE_gridStep * scale);
             if (currentGridStep < 5) currentGridStep = 5;
@@ -112,7 +108,7 @@ namespace Widgets {
         }
         case WM_LBUTTONDOWN: {
             g_posCtx.isTracking = true;
-            SetCapture(hwnd); // Жесткий захват мыши предотвращает залипание вне окна
+            SetCapture(hwnd); 
             GetCursorPos(&g_posCtx.lastMousePos);
 
             if (!g_posCtx.isCursorHidden) {
@@ -125,7 +121,6 @@ namespace Widgets {
             if (g_posCtx.isTracking) {
                 POINT currentMouse; GetCursorPos(&currentMouse);
 
-                // Считаем дельту перемещения физической мыши
                 int dx = currentMouse.x - g_posCtx.lastMousePos.x;
                 int dy = currentMouse.y - g_posCtx.lastMousePos.y;
 
@@ -145,14 +140,14 @@ namespace Widgets {
                 int cy = rc.top + (rc.bottom - rc.top) / 2;
 
                 g_posCtx.lastMousePos = { cx, cy };
-                SetCursorPos(cx, cy); // Возвращаем скрытую мышь обратно в геометрический центр трекпада
+                SetCursorPos(cx, cy); 
             }
             return 0;
         }
         case WM_LBUTTONUP:
             if (g_posCtx.isTracking) {
                 g_posCtx.isTracking = false;
-                ReleaseCapture(); // Освобождаем мышь, так как драг завершен
+                ReleaseCapture(); 
 
                 if (g_posCtx.isCursorHidden) {
                     ShowCursor(TRUE); g_posCtx.isCursorHidden = false;
@@ -249,7 +244,6 @@ namespace Widgets {
             wc.hbrBackground = CreateSolidBrush(RGB(30, 30, 32)); return RegisterClassExA(&wc) != 0;
             }();
 
-        // ДИНАМИЧЕСКИЙ РАСЧЕТ МАСШТАБА ОКНА НА ОСНОВЕ DPI СИСТЕМЫ
         float scale = GetWidgetScale();
         int scaledWidth = static_cast<int>(g_posCtx.BASE_width * scale);
         int scaledHeight = static_cast<int>(g_posCtx.BASE_height * scale);

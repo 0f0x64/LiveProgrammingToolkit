@@ -30,9 +30,6 @@ namespace LivePT {
         unsigned int counterID;
         EnumTypeDesc enumInfo;
         StructTypeDesc structInfo;
-
-        // [НОВЫЙ ПОДХОД]: Храним только те смещения полей структуры,
-        // которые были успешно и явно извлечены из текстового токена.
         std::unordered_set<DWORD> parsedFieldsOffsets;
 
         long long typeMinBound = 0;
@@ -163,7 +160,7 @@ namespace LivePT {
             .counterID = 0,
             .enumInfo = enumDesc,
             .structInfo = {},
-            .parsedFieldsOffsets = {}, // [ИСПРАВЛЕНО]: Теперь здесь пустой std::unordered_set<DWORD>
+            .parsedFieldsOffsets = {}, 
             .typeMinBound = 0,
             .typeMaxBound = 0,
             .line = line,
@@ -213,8 +210,7 @@ namespace LivePT {
             }
             }();
     };
-    //----
-
+    
     inline std::vector<StructMemberDesc> LookupStructMembersFromParams(const std::string& typeNameStr) {
         std::string cleanName = typeNameStr;
         cleanName.erase(0, cleanName.find_first_not_of(" \t\r\n."));
@@ -223,14 +219,12 @@ namespace LivePT {
         if (cleanName.rfind("struct ", 0) == 0) cleanName.erase(0, 7);
         if (cleanName.rfind("class ", 0) == 0) cleanName.erase(0, 6);
 
-        // 1. СНАЧАЛА ПРОВЕРЯЕМ ГЛОБАЛЬНЫЙ РЕЕСТР СХЕМ (прогретый заранее в фоне)
         auto& schemaRegistry = GetGlobalTypeSchemaRegistry();
         auto itSchema = schemaRegistry.find(cleanName);
         if (itSchema != schemaRegistry.end()) {
             return itSchema->second;
         }
 
-        // 2. ФОЛБЭК: Если типа нет в реестре, ищем по старинке в векторе параметров
         for (const auto& p : paramDesc) {
             if (p.structInfo.isStruct) {
                 std::string pTypeName = p.value.type().name();
@@ -308,7 +302,6 @@ namespace LivePT {
         return true;
     }
 
-        // Полная копия рантайм-логики LocalWriteStructBytes, переведенная в классическую функцию
     inline void WriteStructBytes(
         char* byteBase,
         const std::string& curTypeName,
@@ -388,8 +381,6 @@ namespace LivePT {
 
             if (!member) continue;
 
-            // Смещение берется напрямую из нативного PDB-кэша MSVC, 
-            // который мы только что системно починили в DbgHelpRef.h
             char* fieldAddress = byteBase + member->offset;
             DWORD currentAbsoluteFieldOffset = absoluteBaseOffset + member->offset;
 
@@ -485,9 +476,6 @@ namespace LivePT {
 
                     *reinterpret_cast<int*>(fieldAddress) = finalEnumInt;
 
-                    // [ИСПРАВЛЕНО]: Гарантируем, что для 4-байтового энума в карту 
-                    // смещений parsedFieldsOffsets будут занесены абсолютно все 4 байта (b от 0 до 3),
-                    // даже если PDB выдал урезанный размер поля.
                     DWORD realEnumSize = (member->size < 4) ? 4 : member->size;
 
                     for (DWORD b = 0; b < realEnumSize; ++b) {
@@ -508,7 +496,7 @@ namespace LivePT {
                         auto [ptr, ec] = std::from_chars(strStart, strEnd, val);
                         if (ec == std::errc{}) {
                             *reinterpret_cast<float*>(fieldAddress) = val;
-                            parsedSuccessfully = true; // Успешно считали константу
+                            parsedSuccessfully = true; 
                         }
                     }
                     else {
@@ -516,13 +504,10 @@ namespace LivePT {
                         auto [ptr, ec] = std::from_chars(strStart, strEnd, val);
                         if (ec == std::errc{}) {
                             *reinterpret_cast<int*>(fieldAddress) = static_cast<int>(val);
-                            parsedSuccessfully = true; // Успешно считали константу
+                            parsedSuccessfully = true; 
                         }
                     }
 
-                    // [БАЙПАС]: Фиксируем смещение в карте обновлений ТОЛЬКО если это 
-                    // чистый числовой литерал. Если там написана переменная 'rr', 
-                    // мы мягко пропускаем разметку, оставляя поле под управлением рантайма!
                     if (parsedSuccessfully) {
                         for (DWORD b = 0; b < member->size; ++b) {
                             paramDesc[targetId].parsedFieldsOffsets.insert(currentAbsoluteFieldOffset + b);
@@ -535,7 +520,6 @@ namespace LivePT {
                     if (ec == std::errc{}) {
                         *reinterpret_cast<double*>(fieldAddress) = val;
 
-                        // [БАЙПАС]
                         for (DWORD b = 0; b < member->size; ++b) {
                             paramDesc[targetId].parsedFieldsOffsets.insert(currentAbsoluteFieldOffset + b);
                         }
@@ -562,7 +546,6 @@ namespace LivePT {
                         }
                     }
 
-                    // [БАЙПАС]
                     if (parsedOk) {
                         paramDesc[targetId].parsedFieldsOffsets.insert(currentAbsoluteFieldOffset);
                     }
@@ -571,9 +554,6 @@ namespace LivePT {
             }
         }
     }
-
-
-
 
     inline bool ExtractVectorElements(const std::string& textValue, std::vector<std::string>& outElements) {
         outElements.clear();
@@ -612,10 +592,6 @@ namespace LivePT {
         return !outElements.empty();
     }
 
-    //----
-       // Обновлённый метод ленивой десериализации внутри EvalSyntaxShield
-        // 1. БАЗОВЫЙ ШАБЛОН ДЛЯ ПРИМИТИВОВ, ЭНУМОВ И ОДИНОЧНЫХ СТРУКТУР
-        // 1. БАЗОВЫЙ ШАБЛОН ДЛЯ ПРИМИТИВОВ, ЭНУМОВ И ОДИНОЧНЫХ СТРУКТУР
     template <typename TargetType, auto MacroName, FixedString<260> AbsoluteFile, int Line, int Column>
     struct EvalSyntaxShield {
         template <typename TLiteral>
@@ -697,7 +673,7 @@ namespace LivePT {
                 }
             }
             else {
-                // Накладываем измененные в IDE байты поверх живого объекта со стека
+
                 TargetType resultStruct = literalValue;
                 if (paramDesc[real_id].loaded) {
                     if (auto pCachedVal = std::any_cast<TargetType>(&paramDesc[real_id].value)) {
@@ -709,14 +685,13 @@ namespace LivePT {
 
                         for (DWORD offset : offsets) {
                             if (offset < totalSize) {
-                                // Если это первый лог после изменения, покажем старое и новое значение байта
                                 targetBase[offset] = cacheBase[offset];
                             }
                         }
                     }
                 }
                 else {
-                    // Сигнализируем, если структура в базе почему-то не помечена как загруженная
+                    // todo: error handle
                 }
                 return resultStruct;
             }
@@ -779,10 +754,8 @@ namespace LivePT {
                     if (mainTypeName.rfind("struct ", 0) == 0) mainTypeName.erase(0, 7);
                     if (mainTypeName.rfind("class ", 0) == 0) mainTypeName.erase(0, 6);
 
-                    // Очищаем старые смещения перед новой итерацией десериализации вектора
                     paramDesc[target_id].parsedFieldsOffsets.clear();
 
-                    // Последовательно гоним каждый элемент вектора через общую WriteStructBytes
                     for (size_t idx = 0; idx < elements.size(); ++idx) {
                         char* targetElementAddr = byteBase + (idx * elemSize);
                         std::string structToken = elements[idx];
@@ -793,10 +766,8 @@ namespace LivePT {
                             structToken = structToken.substr(subOpen + 1, subClose - subOpen - 1);
                         }
 
-                        // Считаем сквозное абсолютное смещение байт для текущего элемента массива в памяти вектора
                         DWORD elementAbsoluteBaseOffset = static_cast<DWORD>(idx * elemSize);
 
-                        // Вызываем общую проверенную функцию одиночной структуры
                         LivePT::WriteStructBytes(targetElementAddr, mainTypeName, structToken, elementAbsoluteBaseOffset, target_id, vectorTotalBytes);
                     }
                     };
@@ -813,7 +784,6 @@ namespace LivePT {
                         return *pCachedVector;
                     }
 
-                    // 1. Берем живой вектор со стека (со всеми его рантайм-данными)
                     std::vector<ElementType> resultVector = literalValue;
 
                     char* targetBase = reinterpret_cast<char*>(resultVector.data());
@@ -822,8 +792,6 @@ namespace LivePT {
                     const auto& offsets = paramDesc[real_id].parsedFieldsOffsets;
                     size_t vectorTotalBytes = resultVector.size() * sizeof(ElementType);
 
-                    // --- ДИАГНОСТИЧЕСКИЙ ЛОГ ДЛЯ ВЕКТОРОВ ---
-                    // 2. Идем строго по сквозным смещениям байт элементов вектора
                     for (DWORD offset : offsets) {
                         if (offset < vectorTotalBytes) {
                             targetBase[offset] = cacheBase[offset];
@@ -867,14 +835,9 @@ namespace LivePT {
         }
     };
 
-
-
-    // 2. Шаблонный триггер для форсирования выполнения кода ДО main()
     template <auto FunctionNameStr, auto AbsoluteFileStr, int Line, int Column, typename T>
     struct RuntimeFunctionRegistry {
         static inline const int cached_id = []() {
-            // Вызываем ваш оригинальныйRegisterEvalPreMain из source: 4
-            // В качестве macroName передается имя целевой функции (например, "Draw")
             if constexpr (std::is_enum_v<T>) {
                 return RegisterEvalPreMain(AbsoluteFileStr.c_str(), FunctionNameStr.c_str(), std::any{ static_cast<int>(T{}) }, Line, Column, EnumTypeDesc{ .isEnum = true });
             }
@@ -889,14 +852,11 @@ namespace LivePT {
             }();
     };
 
-    // 3. Умный безмакросный прокси-контейнер для параметров функций
-        // 3. Умный безмакросный прокси-контейнер для параметров функций
     template <typename T>
     struct LiveRef {
         T value;
         int runtimeId = -1;
 
-        // Перехват Lvalue (переменные, ссылки)
         template <size_t N, size_t M>
         constexpr LiveRef(
             const T& val,
@@ -910,7 +870,6 @@ namespace LivePT {
             runtimeId = RuntimeFunctionRegistry<staticFn, staticFile, line, column, T>::cached_id;
         }
 
-        // Перехват Rvalue (временные объекты, литералы, агрегатная инициализация {...})
         template <size_t N, size_t M>
         constexpr LiveRef(
             T&& val,

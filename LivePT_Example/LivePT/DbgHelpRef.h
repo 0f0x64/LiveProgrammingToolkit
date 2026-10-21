@@ -188,13 +188,12 @@ namespace LivePT {
         case 7:  // Беззнаковые целые типы (unsigned)
             if (length == 8) return "unsigned long long";
             if (length == 2) return "unsigned short";
-            if (length == 1) return "unsigned char"; // [ИСПРАВЛЕНО]: Теперь вернет честный unsigned char для r, g, b!
+            if (length == 1) return "unsigned char"; 
             return "unsigned int";
         case 8:  return (length == 4) ? "float" : "double";
         case 10: return "bool";
         default: return "unknown_type";
         }
-
     }
 
     inline BOOL CALLBACK DbgHelpStructTypesCallback(PSYMBOL_INFOW pSymInfo, ULONG SymbolSize, PVOID UserContext) {
@@ -202,7 +201,7 @@ namespace LivePT {
 
         if (wcscmp(pSymInfo->Name, ctx->targetName) == 0) {
             DWORD childrenCount = 0;
-            // Получаем честное количество дочерних полей структуры из PDB
+
             if (SymGetTypeInfo(ctx->hProcess, ctx->modBase, pSymInfo->TypeIndex, TI_GET_CHILDRENCOUNT, &childrenCount) && childrenCount > 0) {
                 ULONG mallocSize = sizeof(TI_FINDCHILDREN_PARAMS) + (childrenCount * sizeof(ULONG));
                 TI_FINDCHILDREN_PARAMS* pChildren = (TI_FINDCHILDREN_PARAMS*)malloc(mallocSize);
@@ -217,13 +216,11 @@ namespace LivePT {
 
                             DWORD symTag = 0;
                             SymGetTypeInfo(ctx->hProcess, ctx->modBase, childIndex, TI_GET_SYMTAG, &symTag);
-                            if (symTag != 7) continue; // Игнорируем всё, кроме SymTagData (поля структуры)
+                            if (symTag != 7) continue; 
 
                             wchar_t* pChildName = nullptr;
                             SymGetTypeInfo(ctx->hProcess, ctx->modBase, childIndex, TI_GET_SYMNAME, &pChildName);
 
-                            // [СИСТЕМНОЕ ИСПРАВЛЕНИЕ]: Запрашиваем у Windows финальный offset члена структуры.
-                            // Этот offset уже посчитан компилятором с учетом абсолютно всех флагов /Zp, оптимизаций и пакинга!
                             DWORD offset = 0;
                             SymGetTypeInfo(ctx->hProcess, ctx->modBase, childIndex, TI_GET_OFFSET, &offset);
 
@@ -254,22 +251,17 @@ namespace LivePT {
                                 fieldTypeName = DbgHelpGetTypeName(ctx->hProcess, ctx->modBase, fieldTypeIndex);
                                 SymGetTypeInfo(ctx->hProcess, ctx->modBase, fieldTypeIndex, TI_GET_LENGTH, &fieldSize);
 
-                                // [ИСПРАВЛЕНО]: Системная защита для энумов. 
-                                // Если тип поля является энумом (или содержит имя энума), 
-                                // а DbgHelp вернул некорректный размер, форсируем стандартный размер int (4 байта).
                                 if (fieldSize == 0) {
                                     if (fieldSymTag == 2 || fieldTypeName == "ptype" || fieldTypeName.find("enum") != std::string::npos) {
                                         fieldSize = 4;
                                     }
                                     else {
-                                        fieldSize = 1; // Дефолт для bool/char
+                                        fieldSize = 1; 
                                     }
                                 }
                             }
 
-                            // ПРУФ-ЛОГ: Выводим системное смещение, которое нам отдал дебаггер Windows
                             std::string fNameAnsi = DbgHelpWideToUtf8(pChildName);
-                            //Log("[LivePT PDB Native] Field: '" + fNameAnsi + "' | Type: " + fieldTypeName + " | Native MSVC Offset: " + std::to_string(offset));
 
                             ctx->pNames->push_back(fNameAnsi);
                             ctx->pOffsets->push_back(offset);
@@ -296,12 +288,10 @@ namespace LivePT {
         if (!EnsureDbgHelpInitialized()) return false;
 
         std::string targetNameAnsi = DbgHelpWideToUtf8(targetStructName);
-        //Log("[LivePT PDB System] === Requesting Native MSVC Layout for: " + targetNameAnsi + " ===");
 
         DbgHelpStructContext ctx = { g_hDbgHelpGlobalProcess, g_DbgHelpGlobalModuleBase, targetStructName, &outNames, &outOffsets, &outSizes, &outTypeNames };
         SymEnumTypesW(g_hDbgHelpGlobalProcess, g_DbgHelpGlobalModuleBase, DbgHelpStructTypesCallback, &ctx);
 
-        //Log("[LivePT PDB System] Layout retrieval completed.\n");
         return !outNames.empty();
     }
 
@@ -309,4 +299,4 @@ namespace LivePT {
 
 
 
-} // namespace LivePT
+} 

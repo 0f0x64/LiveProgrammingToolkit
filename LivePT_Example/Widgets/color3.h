@@ -42,7 +42,6 @@ namespace Widgets {
         float currentSat = 0.0f;
         float currentValue = 1.0f;
 
-        // ЭТАЛОННЫЕ БАЗОВЫЕ РАЗМЕРЫ ГЕОМЕТРИИ (для масштаба 100% / 96 DPI)
         const int BASE_windowWidth = 215;
         const int BASE_windowHeight = 130;
 
@@ -117,7 +116,6 @@ namespace Widgets {
         int dy = mouseY - currentCenterY;
         float distance = std::sqrt(static_cast<float>(dx * dx + dy * dy));
 
-        // Математически ограничиваем радиус для корректной работы за пределами круга
         if (distance > currentRadius) distance = static_cast<float>(currentRadius);
 
         float angle = std::atan2(static_cast<float>(-dy), static_cast<float>(dx));
@@ -172,9 +170,7 @@ namespace Widgets {
 
         case WM_ERASEBKGND:
             return 1;
-            // =========================================================================
-            // МОНОЛИТНЫЙ ВЫВОД ВСЕГО ИНТЕРФЕЙСА ЗА 1 ПРОХОД (БЕЗ WM_DRAWITEM)
-            // =========================================================================
+
         case WM_PAINT: {
             PAINTSTRUCT ps; HDC hdc = BeginPaint(hwnd, &ps);
 
@@ -183,12 +179,10 @@ namespace Widgets {
             int h = clientRc.bottom - clientRc.top;
             float scale = GetWidgetScale(hwnd);
 
-            // 1. СОЗДАЕМ ЕДИНЫЙ БЭК-БУФЕР ДЛЯ ВСЕГО ОКНА (Двойная буферизация)
             HDC memDC = CreateCompatibleDC(hdc);
             HBITMAP memBM = CreateCompatibleBitmap(hdc, w, h);
             HBITMAP oldBM = (HBITMAP)SelectObject(memDC, memBM);
 
-            // Кэш для шейдерного квадрата колеса
             static std::vector<DWORD> g_wheelTextureCache;
             static int g_lastWheelW = 0; static int g_lastWheelH = 0;
             static float g_lastV = -1.0f;
@@ -202,7 +196,6 @@ namespace Widgets {
             int wheelBoxWidth = r * 2;
             int wheelBoxHeight = r * 2;
 
-            // ШЕЙДЕРНЫЙ ЦИКЛ ОБНОВЛЕНИЯ КРУГА
             if (wheelBoxWidth != g_lastWheelW || wheelBoxHeight != g_lastWheelH || g_pickerCtx.currentValue != g_lastV) {
                 g_lastWheelW = wheelBoxWidth; g_lastWheelH = wheelBoxHeight; g_lastV = g_pickerCtx.currentValue;
                 g_wheelTextureCache.assign(wheelBoxWidth * wheelBoxHeight, 0x002D2D30);
@@ -223,13 +216,9 @@ namespace Widgets {
                 }
             }
 
-            // 2. ОТРИСОВКА ВСЕХ СЛОЕВ СТРОГО В КОНТЕКСТ ПАМЯТИ (memDC)
-
-            // Заливаем фон бэк-буфера
             HBRUSH hBg = CreateSolidBrush(RGB(45, 45, 48));
             FillRect(memDC, &clientRc, hBg); DeleteObject(hBg);
 
-            // Выводим круг в память
             BITMAPINFO wheelBmi = {};
             wheelBmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
             wheelBmi.bmiHeader.biWidth = wheelBoxWidth; wheelBmi.bmiHeader.biHeight = -wheelBoxHeight;
@@ -238,9 +227,6 @@ namespace Widgets {
             StretchDIBits(memDC, wheelBoxLeft, wheelBoxTop, wheelBoxWidth, wheelBoxHeight,
                 0, 0, wheelBoxWidth, wheelBoxHeight, g_wheelTextureCache.data(), &wheelBmi, DIB_RGB_COLORS, SRCCOPY);
 
-            // -----------------------------------------------------------------
-// 2. АППАРАТНАЯ ОТРИСОВКА СЛАЙДЕРА ЯРКОСТИ (ИСПРАВЛЕННЫЙ MASSIВ ВЕРШИН)
-// -----------------------------------------------------------------
             int vLeft = static_cast<int>(g_pickerCtx.BASE_valLeft * scale);
             int vTop = static_cast<int>(g_pickerCtx.BASE_valTop * scale);
             int vWidth = static_cast<int>(g_pickerCtx.BASE_valWidth * scale);
@@ -248,10 +234,8 @@ namespace Widgets {
 
             DWORD targetFullColor = HsvToGdiColor(g_pickerCtx.currentHue, g_pickerCtx.currentSat, 1.0f);
 
-            // ИСПРАВЛЕНО: Объявляем массив из ДВУХ вершин, как того требует Win32 API
             TRIVERTEX vertices[2];
 
-            // Настраиваем верхнюю вершину (Индекс 0) -> Выбранный цвет на полной яркости
             vertices[0].x = vLeft;
             vertices[0].y = vTop;
             vertices[0].Red = ((targetFullColor >> 16) & 0xFF) << 8;
@@ -259,7 +243,6 @@ namespace Widgets {
             vertices[0].Blue = (targetFullColor & 0xFF) << 8;
             vertices[0].Alpha = 0;
 
-            // Настраиваем нижнюю вершину (Индекс 1) -> Чистый черный цвет
             vertices[1].x = vLeft + vWidth;
             vertices[1].y = vTop + vHeight;
             vertices[1].Red = 0;
@@ -267,17 +250,12 @@ namespace Widgets {
             vertices[1].Blue = 0;
             vertices[1].Alpha = 0;
 
-            // Связываем индексы вершин (0 и 1) в прямоугольник градиента
             GRADIENT_RECT gRect;
             gRect.UpperLeft = 0;
             gRect.LowerRight = 1;
 
-            // ИСПРАВЛЕНО: Передаем массив vertices. Компилятор сам неявно 
-            // преобразует его имя в указатель нужного типа PTRIVERTEX.
             GradientFill(memDC, vertices, 2, &gRect, 1, GRADIENT_FILL_RECT_V);
 
-
-            // Рисуем превью цвета в память
             RECT previewRect = {
                 static_cast<int>(g_pickerCtx.BASE_previewLeft * scale), static_cast<int>(g_pickerCtx.BASE_previewTop * scale),
                 static_cast<int>(g_pickerCtx.BASE_previewRight * scale), static_cast<int>(g_pickerCtx.BASE_previewBottom * scale)
@@ -285,7 +263,6 @@ namespace Widgets {
             HBRUSH hPreviewBrush = CreateSolidBrush(RGB(g_pickerCtx.currentRGB.r, g_pickerCtx.currentRGB.g, g_pickerCtx.currentRGB.b));
             FillRect(memDC, &previewRect, hPreviewBrush); DeleteObject(hPreviewBrush);
 
-            // 3. ОТРИСОВКА МАРКЕРОВ ПОВЕРХ РЕНДЕРА ТОЖЕ В ПАМЯТЬ (memDC)
             float rad = g_pickerCtx.currentHue * (static_cast<float>(M_PI) / 180.0f);
             int crossX = cx + static_cast<int>(std::cos(rad) * g_pickerCtx.currentSat * r);
             int crossY = cy - static_cast<int>(std::sin(rad) * g_pickerCtx.currentSat * r);
@@ -294,36 +271,28 @@ namespace Widgets {
             HPEN oldPen = (HPEN)SelectObject(memDC, hMarkerPen);
             HBRUSH oldBrush = (HBRUSH)SelectObject(memDC, GetStockObject(NULL_BRUSH));
 
-            // Прицел на круге
             Ellipse(memDC, crossX - 4, crossY - 4, crossX + 5, crossY + 5);
 
-            // Рамка слайдера яркости
             int markerY = vTop + static_cast<int>((1.0f - g_pickerCtx.currentValue) * (vHeight - 1));
             int thickness = static_cast<int>(2 * scale); if (thickness < 1) thickness = 1;
             RECT rcMarker = { vLeft - 1, markerY - thickness, vLeft + vWidth + 1, markerY + thickness + 1 };
             FrameRect(memDC, &rcMarker, (HBRUSH)GetStockObject(WHITE_BRUSH));
 
-            // Рамка превью
             RECT rcPreview = { previewRect.left, previewRect.top, previewRect.right, previewRect.bottom };
             FrameRect(memDC, &rcPreview, (HBRUSH)GetStockObject(WHITE_BRUSH));
 
-            // Восстанавливаем memDC
             SelectObject(memDC, oldBrush); SelectObject(memDC, oldPen); DeleteObject(hMarkerPen);
 
-            // 4. ВЫПЛЕСКИВАЕМ ВЕСЬ ГОТОВЫЙ КАДР НА ЭКРАН ЗА 1 ТАКТ (Идеальная плавность)
             BitBlt(hdc, 0, 0, w, h, memDC, 0, 0, SRCCOPY);
 
-            // Очищаем ресурсы буфера
             SelectObject(memDC, oldBM); DeleteObject(memBM); DeleteDC(memDC);
             EndPaint(hwnd, &ps); return 0;
         }
-
 
         case WM_LBUTTONDOWN: {
             POINT pt = { LOWORD(lParam), HIWORD(lParam) };
             float scale = GetWidgetScale(hwnd);
 
-            // Проверяем попадание в круг
             int cx = static_cast<int>(g_pickerCtx.BASE_centerX * scale);
             int cy = static_cast<int>(g_pickerCtx.BASE_centerY * scale);
             int r = static_cast<int>(g_pickerCtx.BASE_radius * scale);
@@ -333,7 +302,6 @@ namespace Widgets {
                 ProcessWheelClick(hwnd, pt.x, pt.y); return 0;
             }
 
-            // Проверяем попадание в слайдер
             int vLeft = static_cast<int>(g_pickerCtx.BASE_valLeft * scale);
             int vTop = static_cast<int>(g_pickerCtx.BASE_valTop * scale);
             int vWidth = static_cast<int>(g_pickerCtx.BASE_valWidth * scale);
@@ -377,7 +345,6 @@ namespace Widgets {
         std::stringstream ss(srcText); std::string token;
         float rawVals[3] = { 0.0f, 0.0f, 0.0f }; int idx = 0;
 
-        // 1. УМНЫЙ ПАРСИНГ ТЕКСТА ИЗ VISUAL STUDIO
         while (std::getline(ss, token, ',')) {
             if (idx >= 3) break;
             size_t eqPos = token.find('='); if (eqPos == std::string::npos) eqPos = token.find(':');
@@ -394,7 +361,6 @@ namespace Widgets {
             rawVals[idx] = val; idx++;
         }
 
-        // 2. НОРМАЛИЗАЦИЯ И СОХРАНЕНИЕ ЦВЕТА В КОНТЕКСТ
         float rNorm = 0.0f, gNorm = 0.0f, bNorm = 0.0f;
         if (isFloatingPoint) {
             rNorm = std::clamp(rawVals[0], 0.0f, 1.0f); gNorm = std::clamp(rawVals[1], 0.0f, 1.0f); bNorm = std::clamp(rawVals[2], 0.0f, 1.0f);
@@ -408,7 +374,6 @@ namespace Widgets {
         g_pickerCtx.currentRGB.b = static_cast<unsigned char>(bNorm * 255.0f);
         g_pickerCtx.vsUpdaterCallback = vsUpdater;
 
-        // 3. МАТЕМАТИЧЕСКИЙ ПЕРЕВОД RGB -> HSV ДЛЯ СТАРТОВОЙ ПОЗИЦИИ КУРСОРОВ
         float maxVal = (std::max)({ rNorm, gNorm, bNorm }); float minVal = (std::min)({ rNorm, gNorm, bNorm });
         float delta = maxVal - minVal; g_pickerCtx.currentValue = maxVal;
         g_pickerCtx.currentSat = (maxVal == 0.0f) ? 0.0f : (delta / maxVal);
@@ -420,7 +385,6 @@ namespace Widgets {
             if (g_pickerCtx.currentHue < 0.0f) g_pickerCtx.currentHue += 360.0f;
         }
 
-        // 4. ГЕНЕРАТОР ЖИВОГО ТЕКСТА ДЛЯ ОБНОВЛЕНИЯ КОДА В VS
         g_pickerCtx.textGenerator = [vsUpdater, isMultiLine, hasExplicitFields, isFloatingPoint](unsigned char r, unsigned char g, unsigned char b) {
             char buf[512]{};
             if (isFloatingPoint) {
@@ -448,7 +412,6 @@ namespace Widgets {
             vsUpdater(buf);
             };
 
-        // 5. ПРОВЕРКА СУЩЕСТВОВАНИЯ ОКНА ПЕРЕД СОЗДАНИЕМ
         if (g_pickerCtx.hWindow && IsWindow(g_pickerCtx.hWindow)) {
             InvalidateRect(g_pickerCtx.hWindow, NULL, FALSE); SetActiveWindow(g_pickerCtx.hWindow); return;
         }
@@ -462,14 +425,11 @@ namespace Widgets {
             return RegisterClassExA(&wc) != 0;
             }();
 
-        // 6. ДИНАМИЧЕСКИЙ РАСЧЕТ И СОЗДАНИЕ ЕДИНОГО ОКНА (DPI Aware)
         float scale = GetWidgetScale();
         int scaledWidth = static_cast<int>(g_pickerCtx.BASE_windowWidth * scale);
         int scaledHeight = static_cast<int>(g_pickerCtx.BASE_windowHeight * scale);
         int calculatedWindowY = mousePos.y - scaledHeight - 20;
 
-        // Важно: Теперь мы создаем только ОДНО окно. Переменные hWheelStatic и hValueStatic больше не нужны,
-        // так как логика рендеринга переехала в единый метод WM_PAINT.
         g_pickerCtx.hWindow = CreateWindowExA(
             WS_EX_TOPMOST | WS_EX_TOOLWINDOW, className, NULL, WS_POPUP | WS_VISIBLE,
             mousePos.x - 10, calculatedWindowY, scaledWidth, scaledHeight, NULL, NULL, hInst, NULL

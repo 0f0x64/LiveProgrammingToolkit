@@ -23,7 +23,6 @@ namespace Widgets {
 
         bool isTracking = false;
 
-        // ЭТАЛОННЫЕ БАЗОВЫЕ РАЗМЕРЫ (для 100% масштаба / 96 DPI)
         const int BASE_width = 120;
         const int BASE_height = 120;
         const int BASE_centerX = 60;
@@ -44,7 +43,7 @@ namespace Widgets {
     }
 
     inline void ProcessRadarClick(HWND hwnd, int mouseX, int mouseY) {
-        // Динамически вычисляем центр и масштаб на основе переданного HWND окна
+
         float scale = GetWidgetScale(hwnd);
         int currentCenterX = static_cast<int>(g_angleCtx.BASE_centerX * scale);
         int currentCenterY = static_cast<int>(g_angleCtx.BASE_centerY * scale);
@@ -103,7 +102,6 @@ namespace Widgets {
             FillRect(memDC, &lpDrawItem->rcItem, hBg);
             DeleteObject(hBg);
 
-            // РАСЧЕТ ДИНАМИЧЕСКИХ РАЗМЕРОВ ДЛЯ ОТРИСОВКИ С УЧЕТОМ ТЕКУЩЕГО DPI
             float scale = GetWidgetScale(hwnd);
             int cx = static_cast<int>(g_angleCtx.BASE_centerX * scale);
             int cy = static_cast<int>(g_angleCtx.BASE_centerY * scale);
@@ -114,7 +112,6 @@ namespace Widgets {
             HBRUSH hNull = (HBRUSH)GetStockObject(NULL_BRUSH);
             HBRUSH hOldB = (HBRUSH)SelectObject(memDC, hNull);
 
-            // Отрисовка шкал радара по отмасштабированным координатам
             Ellipse(memDC, cx - r, cy - r, cx + r, cy + r);
             Ellipse(memDC, cx - r / 2, cy - r / 2, cx + r / 2, cy + r / 2);
 
@@ -161,7 +158,6 @@ namespace Widgets {
             int dy = pt.y - cy;
             float dist = std::sqrt(static_cast<float>(dx * dx + dy * dy));
 
-            // Скейлим зону валидного клика (+6 пикселей скейлятся пропорционально)
             if (dist <= r + static_cast<int>(6 * scale)) {
                 g_angleCtx.isTracking = true;
                 SetCapture(hwnd);
@@ -235,12 +231,10 @@ namespace Widgets {
             return RegisterClassExA(&wc) != 0;
             }();
 
-        // ДИНАМИЧЕСКИЙ РАСЧЕТ РАЗМЕРОВ ОКНА ПРИ ИНИЦИАЛИЗАЦИИ
         float scale = GetWidgetScale();
         int scaledWidth = static_cast<int>(g_angleCtx.BASE_width * scale);
         int scaledHeight = static_cast<int>(g_angleCtx.BASE_height * scale);
 
-        // Корректируем смещение окна по Y с учетом скейла
         int calculatedWindowY = mousePos.y - (scaledHeight + static_cast<int>(14 * scale));
 
         g_angleCtx.hWindow = CreateWindowExA(
@@ -256,7 +250,6 @@ namespace Widgets {
 
         if (!g_angleCtx.hWindow) return;
 
-        // Создаем дочерний элемент STATIC с применением масштабированных габаритов
         g_angleCtx.hRadarStatic = CreateWindowExA(
             0, "STATIC", "",
             WS_CHILD | WS_VISIBLE | SS_OWNERDRAW,

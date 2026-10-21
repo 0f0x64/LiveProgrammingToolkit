@@ -152,16 +152,14 @@ namespace LivePT {
     }
 
     inline std::string NormalizeTextEndings(std::string text, const std::wstring& fileFullText) {
-        // Если в тексте вообще нет переносов (одиночные числа), выходим мгновенно за 0 тактов
+
         if (text.find('\n') == std::string::npos) {
             return text;
         }
 
-        // Проверяем конвеншн файла по наличию хотя бы одного \r\n в документе
         bool isFileCRLF = (fileFullText.find(L"\r\n") != std::wstring::npos);
 
         if (isFileCRLF) {
-            // Если файл Windows-стиля (CRLF), гарантируем \r\n без дублирования \r
             size_t pos = 0;
             while ((pos = text.find("\r\n", pos)) != std::string::npos) {
                 text.replace(pos, 2, "\n");
@@ -173,7 +171,6 @@ namespace LivePT {
             }
         }
         else {
-            // Если файл Unix-стиля (LF), принудительно очищаем от любых \r
             text.erase(std::remove(text.begin(), text.end(), '\r'), text.end());
         }
 
@@ -281,7 +278,7 @@ namespace LivePT {
             for (; i < lineText.length(); ++i) {
                 if (currentVisualCol >= static_cast<size_t>(visualStartCol)) break;
 
-                if (lineText[i] == L'\r') continue; // ИГНОРИРУЕМ \r ПРИ РАСЧЕТЕ СТАРТА
+                if (lineText[i] == L'\r') continue; 
 
                 currentVisualCol += (lineText[i] == L'\t') ? (TAB_SIZE - ((currentVisualCol - 1) % TAB_SIZE)) : 1;
             }
@@ -290,13 +287,12 @@ namespace LivePT {
             for (; i < lineText.length(); ++i) {
                 if (currentVisualCol >= static_cast<size_t>(visualEndCol)) break;
 
-                if (lineText[i] == L'\r') continue; // ИГНОРИРУЕМ \r ПРИ РАСЧЕТЕ КОНЦА
+                if (lineText[i] == L'\r') continue; 
 
                 currentVisualCol += (lineText[i] == L'\t') ? (TAB_SIZE - ((currentVisualCol - 1) % TAB_SIZE)) : 1;
             }
             physicalEndCol = static_cast<long>(i) + 1;
 
-            // БЕЗОПАСНАЯ КОНВЕРТАЦИЯ В UTF-16 (Сохраняет русские буквы)
             std::wstring wNewText = ConvertUtf8ToWString(NormalizeTextEndings(newText, fileText));
             std::wstring modifiedLineText = lineText;
 
@@ -313,7 +309,7 @@ namespace LivePT {
                     exactCharacterOffset = static_cast<long>(k) + 1;
                     break;
                 }
-                if (modifiedLineText[k] == L'\r') continue; // ЗАЩИТА ТРАНСЛЯЦИИ КУРСОРA
+                if (modifiedLineText[k] == L'\r') continue; 
 
                 runningVisualCol += (modifiedLineText[k] == L'\t') ? (TAB_SIZE - ((runningVisualCol - 1) % TAB_SIZE)) : 1;
             }
@@ -347,8 +343,6 @@ namespace LivePT {
         }
         return true;
     }
-
-
 
     inline void SaveActiveDocument() {
 
@@ -531,17 +525,15 @@ namespace LivePT {
             g_dragState.oldValue = atoi(g_dragState.pointBefore ? cleanText.substr(dotPos + 1).c_str() : cleanText.substr(0, dotPos).c_str());
         }
 
-        // СТРОГАЯ СИНХРОНИЗАЦИЯ: Предотвращает фальстарт замене текста при клике
         g_dragState.lastValue = g_dragState.oldValue;
         g_dragState.newValue = g_dragState.oldValue;
     }
 
 
     inline void DragProportionalStructValue(const POINT& pt, bool ctrl, bool shift) {
-        // ЧЕСТНАЯ АВТОНОМНОСТЬ: Убираем проверку targetParamId == -1
+
         auto& registry = LivePT::GetCustomDragRegistry();
 
-        // Ищем коллбэк драга по чистому текстовому имени типа, сохраненному при старте
         auto it = registry.find(g_dragState.oldValueStr);
         if (it == registry.end()) return;
 
@@ -553,7 +545,6 @@ namespace LivePT {
         input.ctrl = ctrl;
         input.shift = shift;
 
-        // Вызываем пользовательский коллбэк (например, DrugLogic::pos2Drag или color3Drag)
         std::string updatedArgsText = typeCallback(g_dragState.startTextValue, input);
 
         if (updatedArgsText != g_dragState.startTextValue) {
@@ -567,15 +558,12 @@ namespace LivePT {
                 HRESULT hr = AutoWrap(DISPATCH_METHOD, &pSafeStartPoint, pWidgetStartEditPoint, L"CreateEditPoint", 0);
 
                 if (SUCCEEDED(hr) && pSafeStartPoint.vt == VT_DISPATCH && pSafeStartPoint.pdispVal) {
-                    // Сдвигаемся внутрь открывающей скобки, чтобы не затереть её
+
                     AutoWrap(DISPATCH_METHOD, NULL, pSafeStartPoint.pdispVal, L"CharRight", 1, CComVariant(1L));
-
                     updatedArgsText = LivePT::NormalizeTextEndings(updatedArgsText, g_currentFileFullText);
-
                     std::wstring wText(updatedArgsText.begin(), updatedArgsText.end());
                     CComBSTR bstrText(wText.c_str());
 
-                    // Прямая замена текста в буфере VS через EditPoints
                     AutoWrap(DISPATCH_METHOD, NULL, pSafeStartPoint.pdispVal, L"ReplaceText", 3,
                         CComVariant(pWidgetEndEditPoint),
                         CComVariant(bstrText),
@@ -592,7 +580,6 @@ namespace LivePT {
     inline long AdjustCursorIndexForNumericContext(const std::wstring& lineText, long originalVisualColumn) {
         if (lineText.empty()) return 0;
 
-        // 1. ЧЕСТНЫЙ ПЕРЕВОД: Конвертируем визуальную колонку VS в физический индекс строки wchar_t
         long tabSize = GetVSTabSize();
         size_t currentVisualCol = 1;
         size_t physicalIdx = lineText.length();
@@ -605,7 +592,6 @@ namespace LivePT {
             currentVisualCol += (lineText[i] == L'\t') ? (tabSize - ((currentVisualCol - 1) % tabSize)) : 1;
         }
 
-        // Если кликнули в самый конец строки за пределами текста, берем последний символ
         if (physicalIdx >= lineText.length()) {
             physicalIdx = lineText.length() - 1;
         }
@@ -613,7 +599,6 @@ namespace LivePT {
         long cursorIdx = static_cast<long>(physicalIdx);
         if (cursorIdx < 0) return 0;
 
-        // 2. АДАПТИВНЫЙ СДВИГ: Если стоим на пробеле/запятой, но слева число — подхватываем его
         bool isCurrentNumeric = false;
         if (cursorIdx < static_cast<long>(lineText.length())) {
             wchar_t ch = lineText[cursorIdx];
@@ -623,14 +608,11 @@ namespace LivePT {
         if (!isCurrentNumeric && cursorIdx > 0 && (cursorIdx - 1) < static_cast<long>(lineText.length())) {
             wchar_t leftCh = lineText[cursorIdx - 1];
 
-            // Если символ слева — цифра или точка/минус
             if (iswdigit(leftCh) || leftCh == L'.' || leftCh == L'-' || leftCh == L'f' || leftCh == L'F') {
 
-                // ЗАЩИТА: Проверяем, не является ли эта цифра концом имени типа (как в pos2, color3, size2)
                 if (iswdigit(leftCh) && (cursorIdx - 2) >= 0) {
                     wchar_t preLeftCh = lineText[cursorIdx - 2];
                     if (iswalpha(preLeftCh)) {
-                        // Это буква перед цифрой (например, 's' перед '2'). Игнорируем сдвиг!
                         return cursorIdx;
                     }
                 }
@@ -642,14 +624,10 @@ namespace LivePT {
         return cursorIdx;
     }
 
-
-
-    // === ПОДФУНКЦИЯ 2: Проверка лексических границ числового символа ===
     inline bool IsNumericTokenChar(wchar_t ch) {
         return iswdigit(ch) || ch == L'.' || ch == L'-' || ch == L'f' || ch == L'F';
     }
 
-    // === ПОДФУНКЦИЯ 3: Сканирование физических границ токена числа на строке ===
     inline void ScanNumericTokenBoundaries(const std::wstring& lineText, long startIdx, long& outStartCol, long& outEndCol) {
         outStartCol = startIdx;
         outEndCol = startIdx;
@@ -661,8 +639,7 @@ namespace LivePT {
             outEndCol++;
         }
     }
-
-    // === ПОДФУНКЦИЯ 4: Инициализация и запуск сессии одиночного числового драга ===
+        
     inline bool TryInitSingleNumericDrag(const std::wstring& lineText, long line, long originalColumn, long targetCharIdx, const POINT& pt) {
         long startCol = 0;
         long endCol = 0;
@@ -674,7 +651,7 @@ namespace LivePT {
             if (startCol > 0) {
                 wchar_t charBeforeToken = lineText[startCol - 1];
                 if (iswalpha(charBeforeToken)) {
-                    // Слева стоит буква! Это не изолированное число, а часть имени типа. Отменяем драг.
+
                     return false;
                 }
             }
@@ -689,8 +666,7 @@ namespace LivePT {
             g_dragState.oldMouseY = pt.y;
             g_dragState.lockMousePos = pt;
 
-            // === ИСПРАВЛЕНИЕ: Считаем смещение строго в физических индексах строки ===
-            long physicalCursorIdx = targetCharIdx; // Используем уже переведенный честный индекс!
+            long physicalCursorIdx = targetCharIdx; 
             if (physicalCursorIdx < startCol) physicalCursorIdx = startCol;
             if (physicalCursorIdx > endCol)   physicalCursorIdx = endCol;
 
@@ -732,10 +708,8 @@ namespace LivePT {
         return false;
     }
 
-
-    // === ПОДФУНКЦИЯ 5: Мгновенное переключение булевых значений по даблклику ===
     inline bool TryToggleBooleanDirect(const std::wstring& lineText, long line, long targetCharIdx) {
-        // Выделяем границы слова вокруг курсора
+
         long startCol = targetCharIdx;
         long endCol = targetCharIdx;
 
@@ -748,7 +722,7 @@ namespace LivePT {
         std::string wordA(wordW.begin(), wordW.end());
 
         std::string newValueStr = "";
-        // Реагируем СТРОГО на текстовые литералы true/false
+
         if (wordA == "true" || wordA == "TRUE") {
             newValueStr = "false";
         }
@@ -756,7 +730,6 @@ namespace LivePT {
             newValueStr = "true";
         }
 
-        // Если это булевое слово — мгновенно отправляем замену текста в Visual Studio
         if (!newValueStr.empty()) {
             long visualStart = GetVisualColumn(lineText, startCol);
             long visualEnd = visualStart + static_cast<long>(wordA.length());
@@ -773,11 +746,9 @@ namespace LivePT {
         return false;
     }
 
-    // === ПОДФУНКЦИЯ 6: Полностью автономное открытие меню Энумов по даблклику (БЕЗ paramId) ===
     inline bool TryInitEnumSelectionDirect(const std::wstring& lineText, long line, long column, long targetCharIdx) {
         if (lineText.empty()) return false;
 
-        // 1. Выделяем границы текущего выбранного токена (например, "box")
         long tokenStart = targetCharIdx;
         long tokenEnd = targetCharIdx;
         while (tokenStart > 0 && (iswalnum(lineText[tokenStart - 1]) || lineText[tokenStart - 1] == L'_')) tokenStart--;
@@ -785,7 +756,6 @@ namespace LivePT {
 
         if (tokenStart >= tokenEnd) return false;
 
-        // 2. СВЕРХТОЧНЫЙ ТЕКСТОВЫЙ ПОИСК ПРЕФИКСА ТИПА (Ищем "ptype::" слева от токена)
         std::wstring enumTypeNameW = L"";
         if (tokenStart >= 2 && lineText[tokenStart - 1] == L':' && lineText[tokenStart - 2] == L':') {
             long typeStart = tokenStart - 2;
@@ -797,28 +767,23 @@ namespace LivePT {
             }
         }
 
-        // Если префикс типа "ptype::" в коде не написан, мы не сможем найти его в PDB — выходим
         if (enumTypeNameW.empty()) return false;
 
-        // 3. ПРЯМОЙ ЗАПРОС К БАЗЕ PDB (Мгновенно вытаскиваем метаданные через DbgHelp)
         std::vector<std::string> parsedNames;
         std::vector<int> parsedValues;
 
         if (!LoadEnumMetadataDirect(enumTypeNameW.c_str(), parsedNames, parsedValues)) {
-            return false; // Если в PDB такого энума нет (или это не энум) — тихо выходим
+            return false; 
         }
 
-        // 4. ВЫЗОВ КОНТЕКСТНОГО МЕНЮ WIN32
         int newIndex = showEnum(parsedNames);
 
         if (newIndex >= 0 && newIndex < static_cast<int>(parsedNames.size())) {
             std::string pureName = parsedNames[newIndex];
             std::string typePrefixA(enumTypeNameW.begin(), enumTypeNameW.end());
 
-            // Собираем итоговую строку для вставки в Visual Studio, например "ptype::roundbox"
             std::string newValueStr = typePrefixA + "::" + pureName;
 
-            // Находим точные визуальные координаты всего выражения "ptype::box" для полной замены
             long typeStartCol = tokenStart - 2;
             while (typeStartCol > 0 && (iswalnum(lineText[typeStartCol - 1]) || lineText[typeStartCol - 1] == L'_')) typeStartCol--;
 
@@ -826,7 +791,6 @@ namespace LivePT {
             long visualEnd = GetVisualColumn(lineText, tokenEnd);
             long newCursorCol = visualStart + static_cast<long>(newValueStr.length());
 
-            // Безопасно подменяем текст в буфере Visual Studio
             StartUndoTransaction(L"LiveWheel Change Enum");
             ReplaceTextInActiveVS(line, visualStart, visualEnd, newValueStr, newCursorCol);
             EndUndoTransaction();
@@ -847,8 +811,7 @@ namespace LivePT {
     };
 
     static WidgetPendingBuffer g_widgetBuffer;
-
-    // Эту легкую функцию виджет будет вызывать вместо старого vsUpdater
+        
     inline void PushWidgetTextUpdate(long line, long startCol, const std::string& text) {
         g_widgetBuffer.line = line;
         g_widgetBuffer.startCol = startCol;
@@ -856,7 +819,6 @@ namespace LivePT {
         g_widgetBuffer.hasChanges = true;
     }
     
-
     inline void WidgetBufferUpdate()
     {
         bool isTriggerButtonDown = (GetAsyncKeyState(LivePT_TriggerButton) & 0x8000) != 0;
@@ -953,7 +915,6 @@ namespace LivePT {
     inline bool ExtractStructBoundaries(const std::wstring& fileText, const std::wstring& lineText, long line, long targetCharIdx, std::string& outInnerArgsA, long& outVisualStartCol, std::string& outTypeNameA) {
         if (fileText.empty() || lineText.empty()) return false;
 
-        // 1. Вырезаем имя типа из текущей строки (например, "pos2")
         long tokenStart = targetCharIdx; long tokenEnd = targetCharIdx;
         while (tokenStart > 0 && iswalnum(lineText[tokenStart - 1])) tokenStart--;
         while (tokenEnd < static_cast<long>(lineText.length()) && iswalnum(lineText[tokenEnd])) tokenEnd++;
@@ -962,7 +923,6 @@ namespace LivePT {
         std::wstring typeNameW = lineText.substr(tokenStart, tokenEnd - tokenStart);
         outTypeNameA = std::string(typeNameW.begin(), typeNameW.end());
 
-        // 2. Находим абсолютное смещение начала и конца строки в файле
         size_t lineStartOffset = 0; long currentLineIdx = 1;
         while (currentLineIdx < line && lineStartOffset < fileText.length()) {
             size_t nextNL = fileText.find(L'\n', lineStartOffset);
@@ -971,18 +931,15 @@ namespace LivePT {
         }
         size_t absoluteTokenEndOffset = lineStartOffset + tokenEnd;
 
-        // 3. АВТОНОМНЫЙ ПОИСК СКОБОК СТРУКТУРЫ: сканируем текст вперед от имени типа
         size_t globalOpenIdx = std::wstring::npos;
         wchar_t openChar = L'\0'; wchar_t closeChar = L'\0';
         for (size_t k = absoluteTokenEndOffset; k < fileText.length(); ++k) {
             if (fileText[k] == L'{') { openChar = L'{'; closeChar = L'}'; globalOpenIdx = k; break; }
             if (fileText[k] == L'(') { openChar = L'('; closeChar = L')'; globalOpenIdx = k; break; }
-            // Если встретили не пробельный символ до скобки (например, имя другой функции) — это не наш тип
             if (!iswspace(fileText[k]) && fileText[k] != L'.') break;
         }
         if (globalOpenIdx == std::wstring::npos) return false;
 
-        // Честно считаем баланс вложенности скобок
         size_t globalCloseIdx = std::wstring::npos;
         int bracketCount = 1;
         for (size_t k = globalOpenIdx + 1; k < fileText.length(); ++k) {
@@ -994,7 +951,6 @@ namespace LivePT {
         }
         if (globalCloseIdx == std::wstring::npos) return false;
 
-        // 4. ГЕНЕРАЦИЯ И ЗАЩИТА РОДНЫХ COM EDITPOINTS ДЛЯ VISUAL STUDIO
         long startLine = line; size_t lastNL_start = lineStartOffset;
         size_t scanNL_start = fileText.find(L'\n', lineStartOffset);
         long startCrCount = 0;
@@ -1021,7 +977,6 @@ namespace LivePT {
         }
         long closeOffset = static_cast<long>(globalCloseIdx - lastNL_end) - closeCrCount + 1;
 
-        // Пересоздаем и привязываем глобальные COM-маркеры правок к границам текста внутри скобок
         if (pWidgetStartEditPoint) { pWidgetStartEditPoint->Release(); pWidgetStartEditPoint = nullptr; }
         if (pWidgetEndEditPoint) { pWidgetEndEditPoint->Release(); pWidgetEndEditPoint = nullptr; }
 
@@ -1063,53 +1018,48 @@ namespace LivePT {
         std::string innerArgsA, typeNameA;
         long visualStartCol = 0;
 
-        // Вырезаем границы скобок автономно по тексту
         if (!ExtractStructBoundaries(fileText, lineText, line, targetCharIdx, innerArgsA, visualStartCol, typeNameA)) {
             return false;
         }
 
-        // Фильтр переменных (ваша оригинальная защита кода)
-        {
-            bool hasAlphaVariables = false;
-            for (size_t i = 0; i < innerArgsA.length(); ++i) {
-                char c = innerArgsA[i];
-                if (std::isalpha(static_cast<unsigned char>(c))) {
-                    if (c == 'f' || c == 'F') continue;
-                    bool isDesignatedInitializer = false;
-                    size_t left = i;
-                    while (left > 0) {
-                        left--;
-                        if (innerArgsA[left] == '.') { isDesignatedInitializer = true; break; }
-                        if (!std::isspace(static_cast<unsigned char>(innerArgsA[left]))) break;
-                    }
-                    size_t right = i;
-                    while (right < innerArgsA.length() - 1) {
-                        right++;
-                        if (innerArgsA[right] == '=') { isDesignatedInitializer = true; break; }
-                        if (!std::isspace(static_cast<unsigned char>(innerArgsA[right]))) break;
-                    }
-                    if (!isDesignatedInitializer) { hasAlphaVariables = true; break; }
+        
+        bool hasAlphaVariables = false;
+        for (size_t i = 0; i < innerArgsA.length(); ++i) {
+            char c = innerArgsA[i];
+            if (std::isalpha(static_cast<unsigned char>(c))) {
+                if (c == 'f' || c == 'F') continue;
+                bool isDesignatedInitializer = false;
+                size_t left = i;
+                while (left > 0) {
+                    left--;
+                    if (innerArgsA[left] == '.') { isDesignatedInitializer = true; break; }
+                    if (!std::isspace(static_cast<unsigned char>(innerArgsA[left]))) break;
                 }
+                size_t right = i;
+                while (right < innerArgsA.length() - 1) {
+                    right++;
+                    if (innerArgsA[right] == '=') { isDesignatedInitializer = true; break; }
+                    if (!std::isspace(static_cast<unsigned char>(innerArgsA[right]))) break;
+                }
+                if (!isDesignatedInitializer) { hasAlphaVariables = true; break; }
             }
-            if (hasAlphaVariables) return false;
         }
-
-        // Проверяем наличие обработчика в текстовом реестре драга
+        if (hasAlphaVariables) return false;
+        
         auto& dragRegistry = GetCustomDragRegistry();
         if (dragRegistry.find(typeNameA) == dragRegistry.end()) return false;
 
-        // Заполняем параметры сессии
         g_dragState.dragLine = line;
         g_dragState.dragStartCol = visualStartCol;
         g_dragState.currentTextLength = innerArgsA.length();
-        g_dragState.oldValueStr = typeNameA;  // Имя типа для покадрового поиска коллбэка
+        g_dragState.oldValueStr = typeNameA;  
         g_dragState.startTextValue = innerArgsA;
         g_dragState.oldMouseX = pt.x;
         g_dragState.oldMouseY = pt.y;
         g_dragState.lockMousePos = pt;
 
-        g_dragState.targetParamId = -1; // Полная независимость от Pre-Main базы
-        g_dragState.isDragging = true;  // Активируем оба флага, чтобы удовлетворить оригинальный Update()
+        g_dragState.targetParamId = -1; 
+        g_dragState.isDragging = true;  
         g_dragState.isProportionalStructDrag = true;
 
         StartUndoTransaction(L"LivePT Proportional Struct Drag");
@@ -1122,7 +1072,6 @@ namespace LivePT {
         return true;
     }
 
-
     inline bool TryInitStructWidgetDirect(const std::wstring& fileText, const std::wstring& lineText, long line, long column, long targetCharIdx) {
         std::string innerArgsA, typeNameA;
         long visualStartCol = 0;
@@ -1131,47 +1080,42 @@ namespace LivePT {
             return false;
         }
 
-        // === УМНЫЙ ЛЕКСИЧЕСКИЙ ФИЛЬТР ДЛЯ СМЕШАННОГО СОДЕРЖИМОГО ===
-        {
-            bool hasAlphaVariables = false;
-            // Итерируемся по строке аргументов, чтобы найти изолированные переменные типа 'x'
-            for (size_t i = 0; i < innerArgsA.length(); ++i) {
-                char c = innerArgsA[i];
-                if (std::isalpha(static_cast<unsigned char>(c))) {
-                    // Игнорируем признаки float-констант 'f'/'F'
-                    if (c == 'f' || c == 'F') continue;
+        
+        bool hasAlphaVariables = false;
 
-                    // Проверяем контекст: не является ли это полем C++20 (например, .x = ...)
-                    bool isDesignatedInitializer = false;
+        for (size_t i = 0; i < innerArgsA.length(); ++i) {
+            char c = innerArgsA[i];
+            if (std::isalpha(static_cast<unsigned char>(c))) {
 
-                    // Проверяем налево: нет ли там точки?
-                    size_t left = i;
-                    while (left > 0) {
-                        left--;
-                        if (innerArgsA[left] == '.') { isDesignatedInitializer = true; break; }
-                        if (!std::isspace(static_cast<unsigned char>(innerArgsA[left]))) break;
-                    }
+                if (c == 'f' || c == 'F') continue;
 
-                    // Проверяем направо: нет ли там знака равенства '='?
-                    size_t right = i;
-                    while (right < innerArgsA.length() - 1) {
-                        right++;
-                        if (innerArgsA[right] == '=') { isDesignatedInitializer = true; break; }
-                        if (!std::isspace(static_cast<unsigned char>(innerArgsA[right]))) break;
-                    }
+                bool isDesignatedInitializer = false;
 
-                    if (!isDesignatedInitializer) {
-                        hasAlphaVariables = true; // Нашли чистую переменную типа 'x'!
-                        break;
-                    }
+                size_t left = i;
+                while (left > 0) {
+                    left--;
+                    if (innerArgsA[left] == '.') { isDesignatedInitializer = true; break; }
+                    if (!std::isspace(static_cast<unsigned char>(innerArgsA[left]))) break;
                 }
-            }
 
-            if (hasAlphaVariables) {
-                return false; // Блокируем виджет только для реальных переменных, защищая код от затирания
+                size_t right = i;
+                while (right < innerArgsA.length() - 1) {
+                    right++;
+                    if (innerArgsA[right] == '=') { isDesignatedInitializer = true; break; }
+                    if (!std::isspace(static_cast<unsigned char>(innerArgsA[right]))) break;
+                }
+
+                if (!isDesignatedInitializer) {
+                    hasAlphaVariables = true;
+                    break;
+                }
             }
         }
 
+        if (hasAlphaVariables) {
+            return false; 
+        }
+        
         auto& registry = GetTypeCallbackRegistry();
         if (registry.find(typeNameA) == registry.end()) return false;
 
@@ -1206,11 +1150,9 @@ namespace LivePT {
         std::wstring currentLineText = DownloadCurrentLineText(vtActiveDoc.pdispVal);
         std::string normalizedPath = LivePT::NormalizePath(currentFile.c_str());
 
-        // Гарантируем сброс старого покадрового состояния
         g_dragState.targetParamId = -1;
         g_dragState.isProportionalStructDrag = false;
 
-        // Расчет факта Даблклика
         DWORD currentTime = GetTickCount();
         DWORD doubleClickTime = GetDoubleClickTime();
         bool isDoubleClick = (g_dragState.lastClickTime != 0) &&
@@ -1222,7 +1164,6 @@ namespace LivePT {
         else g_dragState.lastClickTime = currentTime;
         g_dragState.lastClickPt = pt;
 
-        // Применяем адаптивное смещение каретки (клик вплотную справа от числа)
         long targetCharIdx = AdjustCursorIndexForNumericContext(currentLineText, column);
 
         if (targetCharIdx < 0 || targetCharIdx >= static_cast<long>(currentLineText.length())) {
@@ -1230,9 +1171,6 @@ namespace LivePT {
             return false;
         }
 
-        // =========================================================================
-        // [ФУНКЦИОНАЛ ДАБЛКЛИКА]: Открываем тяжелые GUI-окна, палитры и меню
-        // =========================================================================
         if (isDoubleClick) {
             if (TryToggleBooleanDirect(currentLineText, line, targetCharIdx)) { VariantClear(&vtActiveDoc); return false; }
             if (TryInitEnumSelectionDirect(currentLineText, line, column, targetCharIdx)) { VariantClear(&vtActiveDoc); return false; }
@@ -1241,9 +1179,6 @@ namespace LivePT {
             return false;
         }
 
-        // =========================================================================
-        // [ФУНКЦИОНАЛ ОДИНОЧНОГО КЛИКА]: Высокоскоростной драг конкретного числа!
-        // =========================================================================
         wchar_t targetedChar = currentLineText[targetCharIdx];
         bool isNumeric = IsNumericTokenChar(targetedChar);
 
@@ -1259,7 +1194,6 @@ namespace LivePT {
                 return true;
             }
         }
-
 
         VariantClear(&vtActiveDoc);
         return false;
@@ -1362,7 +1296,6 @@ namespace LivePT {
             CreateDragShield(pt);
         }
 
-        // === ВОТ ЭТОТ БЛОК: переключаем покадровую обработку на наш флаг ===
         if (g_dragState.isProportionalStructDrag) {
             DragProportionalStructValue(pt, ctrl, shift);
         }
@@ -1382,7 +1315,6 @@ namespace LivePT {
             pWidgetEndEditPoint = nullptr;
         }
 
-        // Проверяем, что не активен ни один из режимов
         if (!g_dragState.isDragging && !g_dragState.isProportionalStructDrag) {
             if (g_hShieldWnd) {
                 ReleaseCapture();
@@ -1396,7 +1328,6 @@ namespace LivePT {
             return;
         }
 
-        // === ВОЗВРАЩАЕМ КУРСОРУ ВИДИМОСТЬ ===
         if (g_dragState.isCursorHidden) {
             
             SetCursorPos(g_dragState.lockMousePos.x, g_dragState.lockMousePos.y);
@@ -1407,7 +1338,6 @@ namespace LivePT {
         EndUndoTransaction();
         SaveActiveDocument();
 
-        // Сбрасываем оба флага рантайм-состояния
         g_dragState.isDragging = false;
         g_dragState.isProportionalStructDrag = false;
         g_dragState.targetParamId = -1;
@@ -1427,11 +1357,7 @@ namespace LivePT {
             g_vsThreadId = 0;
         }
     }
-
- // namespace LivePT
-
-
-
+     
     inline bool IsCursorOverActiveVSWindow() {
         if (!pDTE) return false;
 

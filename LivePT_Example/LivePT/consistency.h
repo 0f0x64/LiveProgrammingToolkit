@@ -1,6 +1,5 @@
 namespace LivePT {
 
-    // Структура для возврата точных выверенных координат текстового токена
     struct PreciseCoord {
         long line = 0;
         long column = 0;
@@ -11,11 +10,9 @@ namespace LivePT {
         PreciseCoord result;
         if (fileText.empty()) return result;
 
-        // Конвертируем имя макроса/функции из базы данных (std::string) в wstring для работы с текстом
         std::wstring macroName(macroNameStr.begin(), macroNameStr.end());
         long tabSize = GetVSTabSize();
 
-        // 1. Переходим к началу физической строки rawLine
         size_t lineStartOffset = 0;
         long currentLineIdx = 1;
         while (currentLineIdx < rawLine && lineStartOffset < fileText.length()) {
@@ -27,12 +24,10 @@ namespace LivePT {
             else break;
         }
 
-        // 2. Выделяем текст текущей строки
         size_t nextNL = fileText.find(L'\n', lineStartOffset);
         if (nextNL == std::wstring::npos) nextNL = fileText.length();
         std::wstring lineText = fileText.substr(lineStartOffset, nextNL - lineStartOffset);
 
-        // Вычисляем символ в строке, соответствующий rawColumn
         long currentVisualCol = 1;
         size_t paramCharIdx = lineText.length();
         for (size_t i = 0; i < lineText.length(); ++i) {
@@ -57,7 +52,6 @@ namespace LivePT {
             return result;
         }
 
-        // 3. Лексическое сканирование текста НАЗАД в поисках конкретного токена p.macroName
         size_t targetMacroStart = std::wstring::npos;
         while (searchOrigin > 0 && searchOrigin >= minAllowedOffset) {
             size_t rfindPos = fileText.rfind(macroName, searchOrigin);
@@ -80,7 +74,6 @@ namespace LivePT {
             return result;
         }
 
-        // 4. Математический пересчет абсолютного смещения в Line и Column
         long preciseLine = 1;
         size_t preciseLineStartOffset = 0;
         size_t scanOffset = 0;
@@ -111,7 +104,6 @@ namespace LivePT {
         std::ifstream file(filePath, std::ios::in | std::ios::binary);
         if (!file.is_open()) return L"";
 
-        // Читаем весь файл в string
         std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
         file.close();
 
@@ -124,14 +116,12 @@ namespace LivePT {
             MultiByteToWideChar(CP_UTF8, 0, content.c_str(), static_cast<int>(content.size()), wstr.data(), size_needed);
         }
         else {
-            // Если не UTF-8, пробуем текущую ANSI кодировку (например, CP1251 для русских комментариев)
             size_needed = MultiByteToWideChar(CP_ACP, 0, content.c_str(), static_cast<int>(content.size()), NULL, 0);
             if (size_needed <= 0) return L"";
             wstr.resize(size_needed);
             MultiByteToWideChar(CP_ACP, 0, content.c_str(), static_cast<int>(content.size()), wstr.data(), size_needed);
         }
 
-        // ЗАЩИТА ОТ BOM: Удаляем невидимый маркер Unicode в начале файла, чтобы он не сдвигал колонки
         if (!wstr.empty() && wstr[0] == L'\xFEFF') {
             wstr.erase(0, 1);
         }
@@ -160,7 +150,6 @@ namespace LivePT {
                 continue;
             }
 
-            // Вырезаем \r для идеальной синхронности с рантайм-буфером VS
             fileText.erase(std::remove(fileText.begin(), fileText.end(), L'\r'), fileText.end());
 
             for (auto& [staticKey, paramId] : fileMap) {
@@ -169,7 +158,6 @@ namespace LivePT {
                 auto& p = params[paramId];
                 std::wstring wMacroName(p.macroName.begin(), p.macroName.end());
 
-                // 1. Переходим к физической строке, которую передал компилятор (staticKey.line)
                 size_t lineStartOffset = 0;
                 long currentLineIdx = 1;
                 while (currentLineIdx < staticKey.line && lineStartOffset < fileText.length()) {
@@ -185,7 +173,6 @@ namespace LivePT {
                 if (nextNL == std::wstring::npos) nextNL = fileText.length();
                 std::wstring lineText = fileText.substr(lineStartOffset, nextNL - lineStartOffset);
 
-                // 2. Считаем индекс макроса на этой строке среди его соседей
                 int orderIndexOnLine = 0;
                 for (const auto& [subKey, subParamId] : fileMap) {
                     if (subKey.line == staticKey.line && subKey.column < staticKey.column) {
@@ -210,9 +197,6 @@ namespace LivePT {
                     macroPosInLine = lineText.find(wMacroName, macroPosInLine + 1);
                 }
 
-                // 4. СКАНИРУЮЩИЙ НАЗАД ПОИСК ДЛЯ МНОГОСТРОЧНИКОВ:
-                // Если слово "eval" не нашлось на строке закрытия (как у .pos), мы идем по тексту 
-                // строго НАЗАД (вверх по файлу), чтобы найти истинное начало этого макроса!
                 size_t finalAbsoluteOffset = std::wstring::npos;
 
                 if (macroPosInLine != std::wstring::npos) {
@@ -232,7 +216,7 @@ namespace LivePT {
                             if (openBrk != std::wstring::npos) {
                                 size_t closeBrk = FindMacroCloseBracket(fileText, openBrk);
                                 if (closeBrk != std::wstring::npos && closeBrk >= lineStartOffset && closeBrk <= nextNL) {
-                                    finalAbsoluteOffset = rfindPos; // Нашли истинный старт многострочника
+                                    finalAbsoluteOffset = rfindPos; 
                                     break;
                                 }
                             }
@@ -242,7 +226,6 @@ namespace LivePT {
                     }
                 }
 
-                // 5. Пересчет и фиксация координат в params
                 if (finalAbsoluteOffset != std::wstring::npos) {
                     long preciseLine = 1;
                     size_t preciseLineStartOffset = 0;
@@ -261,7 +244,6 @@ namespace LivePT {
                     size_t nextLineEnd = fileText.find(L'\n', preciseLineStartOffset);
                     if (nextLineEnd == std::wstring::npos) nextLineEnd = fileText.length();
 
-                    // ИСПРАВЛЕНО: берем подстроку от правильного точного смещения начала строки
                     std::wstring preciseLineText = fileText.substr(preciseLineStartOffset, nextLineEnd - preciseLineStartOffset);
 
                     size_t localIdx = finalAbsoluteOffset - preciseLineStartOffset;
@@ -285,7 +267,7 @@ namespace LivePT {
 
 
     inline void ShiftDatabaseCoordinates(const std::string& targetFile, long targetLine, long visualStartCol, int lineDelta, int columnDelta) {
-        // Если колоночный дельта пришел нулевым и строки не менялись, делать нечего
+
         if (lineDelta == 0 && columnDelta == 0) return;
 
         auto& params = LivePT::getParamDesc();
@@ -295,7 +277,6 @@ namespace LivePT {
         for (auto& p : params) {
             if (p.fileName != normalizedTarget) continue;
 
-            // 1. Вычисляем потенциальные новые координаты ПОСЛЕ сдвига
             long newParamLine = p.line;
             long newParamColumn = p.column;
 
@@ -305,13 +286,12 @@ namespace LivePT {
             if (affectsLine)   newParamLine += lineDelta;
             if (affectsColumn) newParamColumn += columnDelta;
 
-            // 2. Если элемент попадает под сдвиг, валидируем его БУДУЩЕЕ положение в НОВОМ тексте
             if (affectsLine || affectsColumn) {
 
                 bool validationFailed = true;
 
                 if (!g_currentFileFullText.empty()) {
-                    // Ищем физическое смещение начала целевой строки в новом тексте
+
                     size_t lineStartOffset = 0;
                     long currentLineIdx = 1;
                     while (currentLineIdx < newParamLine && lineStartOffset < g_currentFileFullText.length()) {
@@ -323,12 +303,10 @@ namespace LivePT {
                         else break;
                     }
 
-                    // Вырезаем текст строки
                     size_t nextNL = g_currentFileFullText.find(L'\n', lineStartOffset);
                     if (nextNL == std::wstring::npos) nextNL = g_currentFileFullText.length();
                     std::wstring lineText = g_currentFileFullText.substr(lineStartOffset, nextNL - lineStartOffset);
 
-                    // ПЕРЕВОД: виз. колонка -> физический индекс wchar_t (с учетом динамического размера табов)
                     long currentVisualCol = 1;
                     size_t paramCharIdx = lineText.length();
                     for (size_t i = 0; i < lineText.length(); ++i) {
@@ -336,9 +314,8 @@ namespace LivePT {
                             paramCharIdx = i;
                             break;
                         }
-                        if (lineText[i] == L'\r') continue; // Полное игнорирование CRLF артефактов
+                        if (lineText[i] == L'\r') continue; 
 
-                        // Честный расчет шага табуляции по сетке Visual Studio
                         if (lineText[i] == L'\t') {
                             currentVisualCol += tabSize - ((currentVisualCol - 1) % tabSize);
                         }
@@ -347,27 +324,23 @@ namespace LivePT {
                         }
                     }
 
-                    // [ИСПРАВЛЕНО]: Переводим ANSI-имя из базы данных (p.macroName) в wstring для валидации
                     std::wstring macroName(p.macroName.begin(), p.macroName.end());
 
-                    // Проверяем, действительно ли по вычисленному индексу символа сидит наш макрос/функция
                     if (paramCharIdx + macroName.length() <= lineText.length()) {
                         std::wstring possibleMacro = lineText.substr(paramCharIdx, macroName.length());
                         if (possibleMacro == macroName) {
-                            validationFailed = false; // Проверка пройдена!
+                            validationFailed = false; 
                         }
                     }
                 }
 
-                // 3. Защитный барьер: если сдвиг уводит в мусорный код, изолируем только этот элемент
                 if (validationFailed) {
                     Log("[LivePT Integrity Error] Shift validation failed! Element would move to Line " +
                         std::to_string(newParamLine) + ", Col " + std::to_string(newParamColumn) +
                         " but it doesn't contain '" + p.macroName + "'. Shift skipped for this element.");
-                    continue; // Мягко пропускаем порчу этой координаты, но продолжаем двигать соседние
+                    continue; 
                 }
 
-                // Переносим проверенные координаты в рабочую базу данных параметров
                 p.line = newParamLine;
                 p.column = newParamColumn;
             }
@@ -375,4 +348,4 @@ namespace LivePT {
     }
 
 
-} // namespace LivePT
+} 

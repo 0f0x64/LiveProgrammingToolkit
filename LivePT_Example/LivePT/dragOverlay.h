@@ -11,19 +11,15 @@ namespace LivePT {
     static HWND         s_hOverlayWnd = NULL;
     static std::mutex   s_OverlayMutex;
 
-    // БАЗОВЫЕ размеры для 100% масштаба (DPI = 96)
     const int BASE_OVERLAY_WIDTH = 350;
     const int BASE_OVERLAY_HEIGHT = 105;
     const int BASE_FONT_SIZE = 18;
 
-    // Вспомогательная функция для получения текущего DPI скейла окна
     inline float GetCurrentDPIScale() {
         if (s_hOverlayWnd) {
-            // Современный и самый точный способ в Windows 10/11
             UINT dpi = ::GetDpiForWindow(s_hOverlayWnd);
             if (dpi > 0) return static_cast<float>(dpi) / 96.0f;
         }
-        // Фолбэк на системный DPI, если окно еще не создано
         HDC hdc = GetDC(NULL);
         int dpiY = GetDeviceCaps(hdc, LOGPIXELSY);
         ReleaseDC(NULL, hdc);
@@ -44,7 +40,6 @@ namespace LivePT {
             localText = g_OverlayText;
         }
 
-        // 1. ДИНАМИЧЕСКИЙ РАСЧЕТ СКЕЙЛА
         float scale = GetCurrentDPIScale();
         int currentWidth = static_cast<int>(BASE_OVERLAY_WIDTH * scale);
         int currentHeight = static_cast<int>(BASE_OVERLAY_HEIGHT * scale);
@@ -52,7 +47,7 @@ namespace LivePT {
 
         int hotspotX = 0;
         int hotspotY = 0;
-        int cursorWidth = static_cast<int>(32 * scale); // Базовый размер курсора 32x32
+        int cursorWidth = static_cast<int>(32 * scale); 
 
         if (localCursor) {
             ICONINFO iconInfo = { 0 };
@@ -60,7 +55,6 @@ namespace LivePT {
                 hotspotX = (int)iconInfo.xHotspot;
                 hotspotY = (int)iconInfo.yHotspot;
 
-                // Извлекаем реальные размеры курсора, так как ОС его уже отмасштабировала
                 if (iconInfo.hbmColor) {
                     BITMAP bmp;
                     if (GetObject(iconInfo.hbmColor, sizeof(BITMAP), &bmp)) {
@@ -86,7 +80,6 @@ namespace LivePT {
         HDC hdcScreen = GetDC(NULL);
         HDC hdcMem = CreateCompatibleDC(hdcScreen);
 
-        // Передаем динамические размеры с учетом масштаба
         BITMAPINFO bmi = { 0 };
         bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
         bmi.bmiHeader.biWidth = currentWidth;
@@ -106,7 +99,7 @@ namespace LivePT {
         }
 
         if (!localText.empty()) {
-            // Применяем отмасштабированный fontSize
+
             HFONT hFont = CreateFontA(
                 fontSize, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
                 DEFAULT_CHARSET, OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS,
@@ -117,10 +110,8 @@ namespace LivePT {
             SIZE textSize;
             GetTextExtentPoint32A(hdcMem, localText.c_str(), (int)localText.length(), &textSize);
 
-            // Текст выводится строго под нижней границей смасштабированного курсора
             int textYOffset = cursorWidth;
 
-            // Скейлим отступы плашки (padding)
             int padX = static_cast<int>(6 * scale);
             int padY = static_cast<int>(3 * scale);
 
@@ -152,11 +143,10 @@ namespace LivePT {
             SetTextColor(hdcMem, RGB(241, 241, 241));
             TextOutA(hdcMem, hotspotX, textYOffset, localText.c_str(), (int)localText.length());
 
-            // Прошивка Альфа-канала с учетом динамической ширины и высоты буфера
             DWORD* pixels = (DWORD*)pBits;
             for (int y = rectTop; y < rectBottom; ++y) {
                 for (int x = rectLeft; x < rectRight; ++x) {
-                    // Инвертируем Y для DIB-секции
+
                     int pixelIdx = (currentHeight - 1 - y) * currentWidth + x;
                     if (pixelIdx >= 0 && pixelIdx < currentWidth * currentHeight) {
                         pixels[pixelIdx] |= 0xFC000000;
@@ -169,7 +159,7 @@ namespace LivePT {
         }
 
         POINT ptZero = { 0, 0 };
-        SIZE sizeWnd = { currentWidth, currentHeight }; // Передаем новые размеры в систему
+        SIZE sizeWnd = { currentWidth, currentHeight }; 
         BLENDFUNCTION blend = { 0 };
         blend.BlendOp = AC_SRC_OVER;
         blend.SourceConstantAlpha = 255;
@@ -201,7 +191,6 @@ namespace LivePT {
         wc.hCursor = NULL;
         RegisterClassExA(&wc);
 
-        // Изначально создаем окно с базовыми размерами, UpdateLayeredWindow сам растянет его внутренности
         s_hOverlayWnd = CreateWindowExA(
             WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE | WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
             className, "LPT_Overlay", WS_POPUP,

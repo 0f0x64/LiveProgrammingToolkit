@@ -271,10 +271,6 @@ namespace LivePT {
         return std::wstring::npos;
     }
 
-    // Единый метод безопасного поиска закрывающей скобки макроса.
-// Честно считает баланс круглых (), фигурных {} и угловых <> скобок, 
-// чтобы корректно определять границы многострочных и сложных параметров.
-   // Обновленная безопасная версия в vsEditor.h
     inline size_t FindMacroCloseBracket(const std::wstring& text, size_t openBracketPos) {
         if (openBracketPos == std::wstring::npos || openBracketPos >= text.length()) {
             return std::wstring::npos;
@@ -283,13 +279,11 @@ namespace LivePT {
         int roundCount = 1;
         int curlyCount = 0;
 
-        // Состояния парсера для корректного пропуска нерелевантного кода
         bool inSingleLineComment = false;
         bool inMultiLineComment = false;
         bool inStringLiteral = false;
         bool inCharLiteral = false;
 
-        // Ограничиваем поиск разумным пределом, чтобы гарантированно не повесить UI-поток
         size_t maxScanLength = (std::min)(text.length(), openBracketPos + 5000);
 
         for (size_t k = openBracketPos + 1; k < maxScanLength; ++k) {
@@ -297,37 +291,29 @@ namespace LivePT {
             wchar_t nextCh = (k + 1 < maxScanLength) ? text[k + 1] : L'\0';
             wchar_t prevCh = (k > 0) ? text[k - 1] : L'\0';
 
-            // 1. ОБРАБОТКА ОДНОСТРОЧНЫХ КОММЕНТАРИЕВ (//)
             if (inSingleLineComment) {
                 if (ch == L'\n') inSingleLineComment = false;
                 continue;
             }
 
-            // 2. ОБРАБОТКА МНОГОСТРОЧНЫХ КОММЕНТАРИЕВ (/* */)
             if (inMultiLineComment) {
                 if (ch == L'*' && nextCh == L'/') {
                     inMultiLineComment = false;
-                    k++; // Пропускаем слэш
+                    k++; 
                 }
                 continue;
             }
 
-            // 3. ОБРАБОТКА СТРОКОВЫХ ЛИТЕРАЛОВ ("текст")
             if (inStringLiteral) {
-                // Проверяем на экранирование кавычки вида \"
                 if (ch == L'"' && prevCh != L'\\') inStringLiteral = false;
                 continue;
             }
 
-            // 4. ОБРАБОТКА СИМВОЛЬНЫХ ЛИТЕРАЛОВ ('c')
             if (inCharLiteral) {
                 if (ch == L'\'' && prevCh != L'\\') inCharLiteral = false;
                 continue;
             }
 
-            // --- ТОЧКА СХОЖДЕНИЯ АВТОМАТА: Сюда заходим, только если мы в "чистом" коде ---
-
-            // Проверяем старт комментариев или строк
             if (ch == L'/' && nextCh == L'/') {
                 inSingleLineComment = true;
                 k++; continue;
@@ -345,7 +331,6 @@ namespace LivePT {
                 continue;
             }
 
-            // ЧЕСТНЫЙ ПОДСЧЕТ БАЛАНСА СКОБОК
             if (ch == L'(') {
                 roundCount++;
             }
@@ -353,7 +338,6 @@ namespace LivePT {
                 roundCount--;
                 if (curlyCount < 0) curlyCount = 0;
 
-                // Успешный выход: круглые скобки закрылись на верхнем уровне
                 if (roundCount == 0 && curlyCount == 0) {
                     return k;
                 }
@@ -366,7 +350,6 @@ namespace LivePT {
             }
         }
 
-        // Если баланс нарушен или текст оборвался — аварийно возвращаем npos
         return std::wstring::npos;
     }
 
@@ -461,7 +444,7 @@ namespace LivePT {
 
         for (size_t i = 0; i < charIdx && i < lineText.length(); ++i) {
             if (lineText[i] == L'\r') {
-                continue; // Игнорируем возврат каретки, VS не считает его за колонку
+                continue; 
             }
             if (lineText[i] == L'\t') {
                 visualCol += tabSize - (visualCol % tabSize);
@@ -562,10 +545,7 @@ namespace LivePT {
         return lineText;
     }
 
-//    static std::wstring g_lastLineTextBuffer = L"";
     static std::wstring g_currentFileFullText = L"";
-//    static long g_lastLine = -1;
-//    static long g_lastCol = -1;
 
     inline bool isMouseDragging();
 
@@ -580,8 +560,6 @@ namespace LivePT {
     static std::wstring g_cachedEvalTextHash = L"";
 
     static std::string g_currentActiveFile = "";
-    //static long          g_lastLineCount = -1;
-    //static size_t        g_lastLineLength = 0;
 
     static std::string   g_lastActiveFile = "";
     static long          g_lastLineCount = -1;
@@ -605,9 +583,7 @@ namespace LivePT {
 
             const auto& p = params[paramId];
 
-            // Ищем строго на текущей строке редактирования
             if (p.line == cursorLine) {
-                // Если курсор стоит прямо на начале макроса или внутри него
                 if (p.column <= cursorColumn) {
                     if (p.column > bestPrecedingColumn) {
                         bestPrecedingColumn = p.column;
@@ -617,12 +593,10 @@ namespace LivePT {
             }
         }
 
-        // Если нашли точное совпадение на строке курсора — возвращаем его
         if (exactMatchParamId != -1) {
             return exactMatchParamId;
         }
 
-        // Фолбэк на старую логику (для случаев, когда курсор улетел на пустую строку ниже макроса)
         for (int localId = 0; ; ++localId) {
             std::string vsLookupKey = normalizedFile + ":" + std::to_string(localId);
             int paramId = LivePT::getID(vsLookupKey);
@@ -641,10 +615,8 @@ namespace LivePT {
         return targetParamId;
     }
 
-
     inline void ShiftDatabaseCoordinates(const std::string& targetFile, long targetLine, long visualStartCol, int lineDelta, int columnDelta);
 
-    // === ЕДИНЫЙ ПОЛНОСТЬЮ ОЧИЩЕННЫЙ ДИСПЕТЧЕР LivePT ===
     inline void vsEditor() {
         if (!initVsEditor()) return;
 
@@ -696,8 +668,6 @@ namespace LivePT {
             int columnDelta = static_cast<int>(currentLineLength - g_lastLineLength);
             long visualStartCol = (column < g_lastCol) ? column : g_lastCol;
 
-            // Защита: Если количество строк не менялось (lineDelta == 0), но мы правим текст текущей строки,
-            // сдвиг колонок должен происходить только для элементов, которые находятся ПРАВЕЕ курсора.
             LivePT::ShiftDatabaseCoordinates(currentActiveFile, g_lastLine, visualStartCol, lineDelta, columnDelta);
         }
 
@@ -707,7 +677,6 @@ namespace LivePT {
         g_lastLineCount = currentLineCount;
         g_lastLineLength = currentLineLength;
 
-        // Поиск активного макроса по строгой геометрии
         int finalParamDescId = FindParamIdByStrictGeometry(normalizedPath, line, column);
 
         if (finalParamDescId != -1) {
@@ -716,9 +685,7 @@ namespace LivePT {
 
         VariantClear(&vtActiveDoc);
     }
-
-
-  
+      
     inline void OpenFileAndMoveCursorToLocation(const std::source_location& location) {
         if (!LivePT::initVsEditor() || !LivePT::pDTE) return;
 
@@ -727,7 +694,6 @@ namespace LivePT {
         long staticLine = static_cast<long>(location.line());
         long staticColumn = static_cast<long>(location.column());
 
-        // СТРОГИЙ ЛУКАП: Ищем точное совпадение скомпилированной Live-функции
         auto& fileCompileTree = GetFileCompileTree();
         auto itFile = fileCompileTree.find(normalizedPath);
         if (itFile == fileCompileTree.end()) return; // Незарегана — выходим!
@@ -740,13 +706,11 @@ namespace LivePT {
         auto& params = LivePT::getParamDesc();
         if (baseParamId < 0 || baseParamId >= static_cast<int>(params.size())) return;
 
-        // ВТОРОЙ ЛУКАП: Находим динамический живой ID
         unsigned int counterID = params[baseParamId].counterID;
         std::string vsLookupKey = normalizedPath + ":" + std::to_string(counterID);
         int realParamId = LivePT::getID(vsLookupKey);
         if (realParamId < 0 || realParamId >= static_cast<int>(params.size())) realParamId = baseParamId;
 
-        // БЕРЕМ ИДЕАЛЬНО СДВИГНУТЫЕ КООРДИНАТЫ ИЗ БАЗЫ
         const auto& liveParam = params[realParamId];
         long targetLine = static_cast<long>(liveParam.line);
         long targetCol = static_cast<long>(liveParam.column);
@@ -756,7 +720,6 @@ namespace LivePT {
         GetFullPathNameW(wTargetDocPath.c_str(), MAX_PATH, absoluteBuffer, nullptr);
         wTargetDocPath = absoluteBuffer;
 
-        // --- Фокусировка окна Visual Studio ---
         HWND hVSMainWnd = NULL;
         CComVariant vtMainWindow;
         if (SUCCEEDED(LivePT::AutoWrap(DISPATCH_PROPERTYGET, &vtMainWindow, LivePT::pDTE, L"MainWindow", 0)) && vtMainWindow.pdispVal) {
@@ -776,7 +739,6 @@ namespace LivePT {
             if (gameThreadId != vsThreadId) ::AttachThreadInput(gameThreadId, vsThreadId, FALSE);
         }
 
-        // --- Открытие документа через EnvDTE ---
         CComVariant vtItemOperations;
         if (FAILED(LivePT::AutoWrap(DISPATCH_PROPERTYGET, &vtItemOperations, LivePT::pDTE, L"ItemOperations", 0)) || !vtItemOperations.pdispVal) return;
 
@@ -806,7 +768,6 @@ namespace LivePT {
         }
     }
 
-
     inline bool IsCursorInsideFunctionCall(const std::source_location& location) {
         if (g_currentFileFullText.empty()) return false;
 
@@ -816,20 +777,18 @@ namespace LivePT {
         long staticLine = static_cast<long>(location.line());
         long staticColumn = static_cast<long>(location.column());
 
-        // СТРОГИЙ ЛУКАП ПО БАЗЕ: Ищем точное совпадение скомпилированной Live-функции
         auto& fileCompileTree = GetFileCompileTree();
         auto itFile = fileCompileTree.find(activeFile);
-        if (itFile == fileCompileTree.end()) return false; // Незарегана — игнорируем хайлайт
+        if (itFile == fileCompileTree.end()) return false; 
 
         StaticOrderKey staticKey{ static_cast<int>(staticLine), static_cast<int>(staticColumn) };
         auto itParam = itFile->second.find(staticKey);
-        if (itParam == itFile->second.end()) return false; // Незарегана — игнорируем хайлайт
+        if (itParam == itFile->second.end()) return false; 
 
         int baseParamId = itParam->second;
         auto& params = LivePT::getParamDesc();
         if (baseParamId < 0 || baseParamId >= static_cast<int>(params.size())) return false;
 
-        // ВТОРОЙ ЛУКАП: Находим динамический живой ID из рантайм-реестра VS
         unsigned int counterID = params[baseParamId].counterID;
         std::string vsLookupKey = activeFile + ":" + std::to_string(counterID);
 
@@ -838,12 +797,10 @@ namespace LivePT {
             realParamId = baseParamId;
         }
 
-        // Берем идеально выровненную стартовую строку и имя зарегистрированного токена
         long startLiveLine = static_cast<long>(params[realParamId].line);
         std::string rawMacroName = params[realParamId].macroName;
         std::wstring wMacroName(rawMacroName.begin(), rawMacroName.end());
 
-        // Кэширование кадра для исключения фризов UI-потока при отрисовке
         static std::string cachedActiveFile = "";
         static long cachedVSLine = -1;
         static long cachedRealParamId = -1;
@@ -858,7 +815,6 @@ namespace LivePT {
         cachedRealParamId = realParamId;
         cachedResult = false;
 
-        // Переводим startLiveLine в физическое смещение wchar_t в буфере файла
         size_t lineStartOffset = 0;
         long currentLineIdx = 1;
         while (currentLineIdx < startLiveLine && lineStartOffset < g_currentFileFullText.length()) {
@@ -872,7 +828,6 @@ namespace LivePT {
 
         if (lineStartOffset >= g_currentFileFullText.length()) return false;
 
-        // Ищем токен прямо на выровненной строке
         size_t nextLineNL = g_currentFileFullText.find(L'\n', lineStartOffset);
         size_t scanLimit = (nextLineNL != std::wstring::npos) ? nextLineNL : g_currentFileFullText.length();
 
@@ -885,8 +840,6 @@ namespace LivePT {
             long foundStartLine = startLiveLine;
             size_t endOffset = std::wstring::npos;
 
-            // Разделение логики: если это старый eval (когда вызван напрямую), считаем его скобки.
-            // Для Live-функций — честно ведем подсчет диапазона до закрывающей точки с запятой ';'
             if (rawMacroName == "eval") {
                 size_t openBracket = g_currentFileFullText.find(L'(', macroOffset);
                 if (openBracket != std::wstring::npos) {
@@ -909,7 +862,6 @@ namespace LivePT {
                     else break;
                 }
 
-                // Проверяем, находится ли курсор Visual Studio (g_lastLine) внутри всего многострочного вызова
                 if (g_lastLine >= startLiveLine && g_lastLine <= foundEndLine) {
                     cachedResult = true;
                 }
@@ -919,12 +871,10 @@ namespace LivePT {
         return cachedResult;
     }
 
-
     inline std::atomic<bool> g_IsLptPdbWarmupCompleted{ false };
 
-    // Вспомогательная фоновая функция для рекурсивного парсинга вложенных типов из PDB
     inline void DeepWarmupTypeFromPdb(const std::wstring& wTypeName, std::unordered_map<std::wstring, std::vector<StructMemberDesc>>& cache) {
-        // Защита от бесконечной рекурсии (если тип уже обработан)
+
         if (cache.find(wTypeName) != cache.end()) return;
 
         std::vector<std::string> fNames;
@@ -932,7 +882,6 @@ namespace LivePT {
         std::vector<DWORD> fSizes;
         std::vector<std::string> fTypes;
 
-        // Прямой фоновый запрос к DbgHelp — абсолютно безопасен и не фризит UI-поток
         if (LoadStructMetadataDirect(wTypeName.c_str(), fNames, fOffsets, fSizes, fTypes)) {
             std::vector<StructMemberDesc> loadedMembers;
             loadedMembers.reserve(fOffsets.size());
@@ -941,12 +890,10 @@ namespace LivePT {
                 loadedMembers.push_back({ fNames[k], fOffsets[k], fSizes[k], fTypes[k] });
             }
 
-            // Записываем структуру в локальный кэш потока
             cache[wTypeName] = loadedMembers;
 
-            // РЕКУРСИВНЫЙ АНАЛИЗ ПОЛЕЙ: Ищем скрытые подструктуры
             for (const auto& member : loadedMembers) {
-                // Если тип поля не является базовым примитивом C++ — уходим вглубь
+                
                 if (member.typeName != "float" && member.typeName != "int" &&
                     member.typeName != "bool" && member.typeName != "double" &&
                     member.typeName != "char" && member.typeName != "unsigned char")
@@ -959,7 +906,6 @@ namespace LivePT {
                     std::wstring wNestedName(len, L'\0');
                     MultiByteToWideChar(CP_ACP, 0, cleanNestedName.c_str(), static_cast<int>(len), wNestedName.data(), static_cast<int>(len));
 
-                    // Рекурсивно выкачиваем внутренности (например, pos2, size2, color3)
                     DeepWarmupTypeFromPdb(wNestedName, cache);
                 }
             }
@@ -985,7 +931,6 @@ namespace LivePT {
                 auto& p = localParams[i];
                 if (!p.value.has_value()) continue;
 
-                // [ИСПРАВЛЕНО]: Если это чистый энум — прогреваем его метаданные из PDB прямо сейчас!
                 if (p.enumInfo.isEnum && p.enumInfo.elements.empty()) {
                     std::string rawTypeName = p.value.type().name();
                     const char* typePtr = rawTypeName.c_str();
@@ -1026,7 +971,6 @@ namespace LivePT {
 
                 std::string typeNameAnsi = p.value.type().name();
 
-                // Пропускаем энумы, их элементы мы уже обработали на Шаге 1
                 if (p.enumInfo.isEnum || typeNameAnsi.find("enum ") != std::string::npos) {
                     continue;
                 }
@@ -1046,14 +990,12 @@ namespace LivePT {
                 }
             }
 
-            // Шаг 3: Сохраняем выкачанные типы структур в изолированный глобальный реестр схем
             auto& globalSchemaRegistry = GetGlobalTypeSchemaRegistry();
             for (const auto& [wName, members] : localMetadataCache) {
                 std::string ansiName(wName.begin(), wName.end());
                 globalSchemaRegistry[ansiName] = members;
             }
 
-            // Сигнализируем основному циклу, что вся база данных типов готова к работе
             g_IsLptPdbWarmupCompleted = true;
             Log("[LivePT Deep Warmup] Background recursive PDB parsing completed. Enums and Structs isolated successfully.");
             });

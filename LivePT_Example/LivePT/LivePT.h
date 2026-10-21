@@ -114,7 +114,7 @@ namespace LivePT {
         lastUpdate = currentTick;
 
 #if LivePT_Mouse
-        // 1. Выгружаем обычные мышиные буферы одиночных чисел
+
         InitPassiveOverlay();
         g_OverlayShow = g_dragState.isCursorHidden ? true : false;
         UpdateOverlayPosition(g_dragState.lockMousePos.x, g_dragState.lockMousePos.y);
@@ -148,7 +148,6 @@ namespace LivePT {
         std::string absPath = LivePT::NormalizePath(file); \
         int rId = LivePT::RegisterEvalPreMain(absPath.c_str(), #FuncName, std::any{ raw_r }, line, col, LivePT::EnumTypeDesc{ false }); \
         \
-        /* Инициализируем парсер строк при первом вызове функции */ \
         if (rId >= 0 && rId < static_cast<int>(LivePT::paramDesc.size()) && !LivePT::paramDesc[rId].loaded) { \
             LivePT::paramDesc[rId].value = std::any{ static_cast<StructType>(raw_r) }; \
             LivePT::paramDesc[rId].stringUpdater = [rId](std::any& targetAny, const std::string& textValue) { \
@@ -171,13 +170,11 @@ namespace LivePT {
                 StructType* pStructInstance = std::any_cast<StructType>(&targetAny); \
                 if (!pStructInstance) return; \
                 \
-                /* [НОВАЯ АРХИТЕКТУРА]: Сбрасываем карту смещений перед десериализацией */ \
                 LivePT::paramDesc[rId].parsedFieldsOffsets.clear(); \
                 LivePT::WriteStructBytes(reinterpret_cast<char*>(pStructInstance), typeid(StructType).name(), innerArgs, 0, rId, sizeof(StructType)); \
             }; \
             LivePT::paramDesc[rId].loaded = true; \
         }        \
-        /* Пробрасываем измененные данные из базы LivePT в локальную переменную */ \
         StructType live_r = std::forward<T>(raw_r); \
         if (rId >= 0 && rId < static_cast<int>(LivePT::paramDesc.size())) { \
             int real_id = LivePT::getID(LivePT::paramDesc[rId].stringIdKey); \
@@ -186,7 +183,6 @@ namespace LivePT {
                     char* targetBase = reinterpret_cast<char*>(&live_r); \
                     const char* cacheBase = reinterpret_cast<const char*>(pCachedVal); \
                     \
-                    /* [НОВАЯ АРХИТЕКТУРНЫЙ ПОДХОД]: Наложение байт по PDB-смещениям */ \
                     const auto& offsets = LivePT::paramDesc[real_id].parsedFieldsOffsets; \
                     size_t totalSz = sizeof(StructType); \
                     for (DWORD offset : offsets) { \
