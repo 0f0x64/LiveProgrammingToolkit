@@ -19,6 +19,12 @@
     <Filter Include="Source Files\Widgets">
       <UniqueIdentifier>{815dc008-2452-4a1b-b358-ea08264f232c}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\RHI">
+      <UniqueIdentifier>{642fec56-296f-4779-abf4-c024d42d6ec3}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\RHI\dx11">
+      <UniqueIdentifier>{4099273c-a6a6-4022-8a39-ae9572e62e08}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="framework.h">
@@ -74,6 +80,54 @@
     </ClInclude>
     <ClInclude Include="LivePT\dragOverlay.h">
       <Filter>Source Files\LivePT</Filter>
+    </ClInclude>
+    <ClInclude Include="RHI\dx11\audio.h">
+      <Filter>Source Files\RHI\dx11</Filter>
+    </ClInclude>
+    <ClInclude Include="RHI\dx11\blend.h">
+      <Filter>Source Files\RHI\dx11</Filter>
+    </ClInclude>
+    <ClInclude Include="RHI\dx11\camera.h">
+      <Filter>Source Files\RHI\dx11</Filter>
+    </ClInclude>
+    <ClInclude Include="RHI\dx11\cgltf.h">
+      <Filter>Source Files\RHI\dx11</Filter>
+    </ClInclude>
+    <ClInclude Include="RHI\dx11\constBuf.h">
+      <Filter>Source Files\RHI\dx11</Filter>
+    </ClInclude>
+    <ClInclude Include="RHI\dx11\depth.h">
+      <Filter>Source Files\RHI\dx11</Filter>
+    </ClInclude>
+    <ClInclude Include="RHI\dx11\device.h">
+      <Filter>Source Files\RHI\dx11</Filter>
+    </ClInclude>
+    <ClInclude Include="RHI\dx11\draw.h">
+      <Filter>Source Files\RHI\dx11</Filter>
+    </ClInclude>
+    <ClInclude Include="RHI\dx11\dx.h">
+      <Filter>Source Files\RHI\dx11</Filter>
+    </ClInclude>
+    <ClInclude Include="RHI\dx11\gltfAnimation.h">
+      <Filter>Source Files\RHI\dx11</Filter>
+    </ClInclude>
+    <ClInclude Include="RHI\dx11\IA.h">
+      <Filter>Source Files\RHI\dx11</Filter>
+    </ClInclude>
+    <ClInclude Include="RHI\dx11\rasterizer.h">
+      <Filter>Source Files\RHI\dx11</Filter>
+    </ClInclude>
+    <ClInclude Include="RHI\dx11\sampler.h">
+      <Filter>Source Files\RHI\dx11</Filter>
+    </ClInclude>
+    <ClInclude Include="RHI\dx11\shaders.h">
+      <Filter>Source Files\RHI\dx11</Filter>
+    </ClInclude>
+    <ClInclude Include="RHI\dx11\shadersReflection.h">
+      <Filter>Source Files\RHI\dx11</Filter>
+    </ClInclude>
+    <ClInclude Include="RHI\dx11\textures.h">
+      <Filter>Source Files\RHI\dx11</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

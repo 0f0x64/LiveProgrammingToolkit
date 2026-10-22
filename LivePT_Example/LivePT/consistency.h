@@ -140,13 +140,13 @@ namespace LivePT {
         auto& params = LivePT::getParamDesc();
 
         #if LivePT_ShowEditPointsInLog
-            Log("[LivePT] Editable points:");
+            Log("Editable points:");
         #endif  
 
         for (auto& [filePath, fileMap] : fileCompileTree) {
             std::wstring fileText = ReadFileFromDisk(filePath);
             if (fileText.empty()) {
-                Log("[LivePT Disk Init] File read error or file is empty: " + filePath);
+                Log("File read error or file is empty: " + filePath);
                 continue;
             }
 
@@ -258,7 +258,7 @@ namespace LivePT {
                 }
 
                 #if LivePT_ShowEditPointsInLog
-                    Log(filePath + "(" + std::to_string(p.line) + ")");
+                    Log(filePath + "(" + std::to_string(p.line) + ")", "");
                 #endif
 
             }
@@ -335,7 +335,7 @@ namespace LivePT {
                 }
 
                 if (validationFailed) {
-                    Log("[LivePT Integrity Error] Shift validation failed! Element would move to Line " +
+                    Log("Shift validation failed! Element would move to Line " +
                         std::to_string(newParamLine) + ", Col " + std::to_string(newParamColumn) +
                         " but it doesn't contain '" + p.macroName + "'. Shift skipped for this element.");
                     continue; 

@@ -3,11 +3,15 @@
 #include <source_location>
 #include <string>
 #include <cmath>
-#include <initializer_list>
+
 
 // ---------------- LivePT integration section ----------------
 #define LivePT_EditMode true // true for activate
 #include "LivePT/LivePT.h" // incude it for using lib
+
+// ---------------------- d3d renderer ------------------------
+#define EditMode true
+#include "RHI/dx11/dx.h"
 // ------------------------------------------------------------
 
 #define TIMER_ID 1
@@ -55,7 +59,7 @@ struct Primitive {
     size2 size;
     angle Angle;
     color3 color;
-    ptype type = ptype::circle;
+    ptype type;
     bool show;
 };
 
@@ -81,10 +85,6 @@ bool IsPrimitiveSelected(int posX, int posY, HWND hwnd) {
 
     if ((GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0) {
 
-        //while (GetAsyncKeyState(VK_LBUTTON))
-        {
-            //  Sleep(16);
-        }
         curSel = drawCounter;
         return true;
     }
@@ -166,7 +166,7 @@ struct TestRect {
     pos2 pos;        // 8 байт (offset 0)
     size2 size;      // 8 байт (offset 8)
     angle Angle;     // 4 байта (offset 16) -> float/angle встает на идеальную границу 4 байт!
-    ptype type = ptype::circle;      // 4 байта (offset 20) -> enum встает на границу 4 байт!
+    ptype type;      // 4 байта (offset 20) -> enum встает на границу 4 байт!
     bool show;       // 1 байт  (offset 27)
     color3 color;    // 3 байта (offset 24) -> ложится в хвост структуры
     bool fill;       // 1 байт  (offset 28)
@@ -175,8 +175,8 @@ struct TestRect {
 
 LPT_LIVE_FUNCTION(void, DrawTestRect, TestRect, in) {
 
-    int posX = (gc.w / 2) + in.pos.x;
-    int posY = (gc.h / 2) + in.pos.y;
+    int posX = (gc.w / 2) + (int)in.pos.x;
+    int posY = (gc.h / 2) + (int)in.pos.y;
     if (IsPrimitiveSelected(posX, posY, gc.hWnd)) {
         LivePT::OpenFileAndMoveCursorToLocation(location);
     }
@@ -207,19 +207,19 @@ LPT_LIVE_FUNCTION(void, DrawTestRect, TestRect, in) {
     if (in.show) switch (in.type)
     {
     case ptype::box:
-        Rectangle(gc.memDC, -in.size.w, -in.size.h, in.size.w, in.size.h);
+        Rectangle(gc.memDC, -(int)in.size.w, -(int)in.size.h, (int)in.size.w, (int)in.size.h);
         break;
 
     case ptype::circle:
-        Ellipse(gc.memDC, -in.size.w, -in.size.h, in.size.w, in.size.h);
+        Ellipse(gc.memDC, -(int)in.size.w, -(int)in.size.h, (int)in.size.w, (int)in.size.h);
         break;
 
     case ptype::roundbox:
-        RoundRect(gc.memDC, -in.size.w, -in.size.h, in.size.w, in.size.h, 40, 40);
+        RoundRect(gc.memDC, -(int)in.size.w, -(int)in.size.h, (int)in.size.w, (int)in.size.h, 40, 40);
         break;
 
     default:
-        Rectangle(gc.memDC, -in.size.w, -in.size.h, in.size.w, in.size.h);
+        Rectangle(gc.memDC, -(int)in.size.w, -(int)in.size.h, (int)in.size.w, (int)in.size.h);
         break;
     }
 
@@ -246,8 +246,8 @@ LPT_LIVE_FUNCTION(void, DrawTestRect, TestRect, in) {
 
 void Draw(Primitive p, std::source_location location = std::source_location::current()) {
 
-    int posX = (gc.w / 2) + p.pos.x;
-    int posY = (gc.h / 2) + p.pos.y;
+    int posX = (gc.w / 2) + (int)p.pos.x;
+    int posY = (gc.h / 2) + (int)p.pos.y;
 
     auto sel = IsPrimitiveSelected(posX, posY, gc.hWnd);
 
@@ -279,9 +279,9 @@ void Draw(Primitive p, std::source_location location = std::source_location::cur
     if (p.show)
     {
         switch (p.type) {
-        case ptype::circle:   Ellipse(gc.memDC, -p.size.w, -p.size.h, p.size.w, p.size.h); break;
-        case ptype::box:      Rectangle(gc.memDC, -p.size.w, -p.size.h, p.size.w, p.size.h); break;
-        case ptype::roundbox: RoundRect(gc.memDC, -p.size.w, -p.size.h, p.size.w, p.size.h, 40, 40); break;
+        case ptype::circle:   Ellipse(gc.memDC,   -(int)p.size.w, -(int)p.size.h, (int)p.size.w, (int)p.size.h); break;
+        case ptype::box:      Rectangle(gc.memDC, -(int)p.size.w, -(int)p.size.h, (int)p.size.w, (int)p.size.h); break;
+        case ptype::roundbox: RoundRect(gc.memDC, -(int)p.size.w, -(int)p.size.h, (int)p.size.w, (int)p.size.h, 40, 40); break;
         }
     }
 
@@ -345,11 +345,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         float x = eval(296.0f);
         float y = eval(-1.0f);
 
-        float rr = (rand() % 100) * eval(0) + eval(31);
-
-
-
-
+        float rr = (float) ((rand() % 100) * (int)eval(0) + (int)eval(31));
 
 
 
@@ -375,33 +371,33 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
                     { true, pos2{188.40f, 310.20f}, 19, 956, color3{73, 56, 158} },
                     { true, pos2{281.40f, 495.20f}, 15, 956, color3{103, 82, 183} },
                     { true, pos2{402.40f, 408.20f}, 15, 956, color3{103, 82, 183} },
-                        { true, pos2{452.40f, 259.20f}, 15, 956, color3{103, 82, 183} },    
+                    { true, pos2{452.40f, 259.20f}, 15, 956, color3{103, 82, 183} },    
                 })
             });
 
-        DrawTestRect(TestRect{
-        .pos = pos2{
-            .x = 157.58f,
-            .y = -371.13f
-            },
-        .size = size2{183.64f, 160.27f},
-        .Angle = angle(95.9f),
-        .type = ptype::box,
-        .show = true,
-        .color = color3{40, 131, 70},
-        .fill = true
+        DrawTestRect({
+                .pos = pos2{
+                    .x = 155.48f,
+                    .y = -351.13f
+                    },
+                .size = size2{183.64f, 160.27f},
+                .Angle = angle(95.9f),
+                .type = ptype::circle,
+                .show = true,
+                .color = color3{40, 131, 70},
+                .fill = true
             });
 
-        DrawTestRect(TestRect{
+        DrawTestRect({
                 .pos = pos2{
-                    .x = -308.42f,
-                    .y = -143.13f
+                    .x = -309.42f,
+                    .y = -225.13f
                     },
                 .size = size2{122.53f, 152.05f},
                 .Angle = angle(-36.0f),
                 .type = ptype::roundbox,
                 .show = true,
-                .color = color3{35, 28, 136},
+                .color = color3{77, 114, 136},
                 .fill = true
             });
 

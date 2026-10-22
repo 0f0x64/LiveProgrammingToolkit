@@ -41,10 +41,11 @@
 
 namespace LivePT {
 
-    inline void Log(const std::string& text, bool nl = true) {
-        OutputDebugStringA(text.c_str());
+    inline void Log(const std::string& text, const std::string& prefix = "[LivePT] ",  bool nl = true) {
+        OutputDebugStringA((prefix + text).c_str());
         if (nl) OutputDebugStringA("\n");
     }
+
 }
 
     #include "DbgHelpRef.h"

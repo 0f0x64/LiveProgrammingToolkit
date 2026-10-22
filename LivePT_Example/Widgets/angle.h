@@ -58,7 +58,7 @@ namespace Widgets {
 
         if (GetAsyncKeyState(VK_CONTROL) & 0x8000) {
             float step = 15;
-            g_angleCtx.currentAngle = floor(targetDeg / step + .5) * step;
+            g_angleCtx.currentAngle = floor(targetDeg / step + .5f) * step;
         }
         else {
             g_angleCtx.currentAngle = targetDeg;

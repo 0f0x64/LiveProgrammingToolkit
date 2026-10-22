@@ -63,7 +63,7 @@ namespace LivePT {
             else if (ch == L'>') templateCount--;
             else if (ch == L',' && bracketCount == 0 && templateCount == 0) {
                 std::wstring argW = lineText.substr(currentArgStart, i - currentArgStart);
-                std::string argA(argW.begin(), argW.end());
+                std::string argA = ConvertWStringToUtf8(argW); // Было: std::string argA(argW.begin(), argW.end());
                 args.push_back({ argA, static_cast<long>(currentArgStart + 1), static_cast<long>(i + 1) });
                 currentArgStart = i + 1;
             }
@@ -656,8 +656,11 @@ namespace LivePT {
                 }
             }
 
-            std::wstring numW = lineText.substr(startCol, endCol - startCol);
-            std::string cleanText(numW.begin(), numW.end());
+            std::string cleanText;
+            cleanText.reserve(endCol - startCol);
+            for (long k = startCol; k < endCol; ++k) {
+                cleanText.push_back(static_cast<char>(lineText[k]));
+            }
 
             g_dragState.dragLine = line;
             g_dragState.dragStartCol = GetVisualColumn(lineText, startCol);
@@ -718,8 +721,11 @@ namespace LivePT {
 
         if (startCol >= endCol) return false;
 
-        std::wstring wordW = lineText.substr(startCol, endCol - startCol);
-        std::string wordA(wordW.begin(), wordW.end());
+        std::string wordA;
+        wordA.reserve(endCol - startCol);
+        for (long k = startCol; k < endCol; ++k) {
+            wordA.push_back(static_cast<char>(lineText[k]));
+        }
 
         std::string newValueStr = "";
 
@@ -780,7 +786,11 @@ namespace LivePT {
 
         if (newIndex >= 0 && newIndex < static_cast<int>(parsedNames.size())) {
             std::string pureName = parsedNames[newIndex];
-            std::string typePrefixA(enumTypeNameW.begin(), enumTypeNameW.end());
+            std::string typePrefixA;
+            typePrefixA.reserve(enumTypeNameW.length());
+            for (wchar_t wc : enumTypeNameW) {
+                typePrefixA.push_back(static_cast<char>(wc));
+            }
 
             std::string newValueStr = typePrefixA + "::" + pureName;
 
@@ -921,8 +931,12 @@ namespace LivePT {
         if (tokenStart >= tokenEnd) return false;
 
         std::wstring typeNameW = lineText.substr(tokenStart, tokenEnd - tokenStart);
-        outTypeNameA = std::string(typeNameW.begin(), typeNameW.end());
 
+        outTypeNameA.clear(); // На всякий случай очищаем, если строка передана по ссылке
+        outTypeNameA.reserve(typeNameW.length());
+        for (wchar_t wc : typeNameW) {
+            outTypeNameA.push_back(static_cast<char>(wc));
+        }
         size_t lineStartOffset = 0; long currentLineIdx = 1;
         while (currentLineIdx < line && lineStartOffset < fileText.length()) {
             size_t nextNL = fileText.find(L'\n', lineStartOffset);

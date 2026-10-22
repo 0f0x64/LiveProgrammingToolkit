@@ -181,7 +181,7 @@ namespace LivePT {
         if (pDTE) {
             pDTE->Release();
             pDTE = nullptr;
-            Log("[EnvDTE] Connection lost. pDTE reset.");
+            Log("EnvDTE connection lost. pDTE reset.");
         }
     }
 
@@ -992,12 +992,16 @@ namespace LivePT {
 
             auto& globalSchemaRegistry = GetGlobalTypeSchemaRegistry();
             for (const auto& [wName, members] : localMetadataCache) {
-                std::string ansiName(wName.begin(), wName.end());
+                std::string ansiName;
+                ansiName.reserve(wName.length());
+                for (wchar_t wc : wName) {
+                    ansiName.push_back(static_cast<char>(wc));
+                }
                 globalSchemaRegistry[ansiName] = members;
             }
 
             g_IsLptPdbWarmupCompleted = true;
-            Log("[LivePT Deep Warmup] Background recursive PDB parsing completed. Enums and Structs isolated successfully.");
+            Log("Background recursive PDB parsing completed. Enums and Structs isolated successfully.");
             });
 
         warmupThread.detach();
@@ -1015,7 +1019,7 @@ namespace LivePT {
             auto durationMicro = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime).count();
             double durationMilli = durationMicro / 1000.0;
 
-            LivePT::Log("[LivePT External Profile] Warmup execution time: " +
+            LivePT::Log("Warmup execution time: " +
                 std::to_string(durationMilli) + " ms (" + std::to_string(durationMicro) + " us).");
 
             isFirstFrame = false;
