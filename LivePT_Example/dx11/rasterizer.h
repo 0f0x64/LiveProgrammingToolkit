@@ -42,7 +42,7 @@ namespace Rasterizer
 		device->CreateRasterizerState(&rasterizerState, &rasterState[3]);
 
 		context->RSSetState(rasterState[0]);
-		Scissors(float4{ 0, 0, (float)width, (float)height });
+		Scissors(float4{ 0, 0, (float)screen.width, (float)screen.height });
 	}
 
 }

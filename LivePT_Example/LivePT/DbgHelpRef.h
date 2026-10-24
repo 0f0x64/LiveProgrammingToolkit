@@ -138,14 +138,14 @@ namespace LivePT {
         DWORD64 moduleBase = g_DbgHelpGlobalModuleBase;
 
         std::wstring cleanEnumName(targetEnumName);
-        size_t lastColon = cleanEnumName.rfind(L"::");
+        /*size_t lastColon = cleanEnumName.rfind(L"::");
         if (lastColon != std::wstring::npos) {
             cleanEnumName = cleanEnumName.substr(lastColon + 2);
         }
 
         cleanEnumName.erase(0, cleanEnumName.find_first_not_of(L" \t\r\n"));
         cleanEnumName.erase(cleanEnumName.find_last_not_of(L" \t\r\n") + 1);
-
+        */
         LptEnumContext ctx = { hProcess, moduleBase, cleanEnumName.c_str(), &outNames, &outValues };
         SymEnumTypesW(hProcess, moduleBase, LptEnumTypesCallback, &ctx);
 

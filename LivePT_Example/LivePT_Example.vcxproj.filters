@@ -19,11 +19,8 @@
     <Filter Include="Source Files\Widgets">
       <UniqueIdentifier>{815dc008-2452-4a1b-b358-ea08264f232c}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Source Files\RHI">
-      <UniqueIdentifier>{642fec56-296f-4779-abf4-c024d42d6ec3}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\RHI\dx11">
-      <UniqueIdentifier>{4099273c-a6a6-4022-8a39-ae9572e62e08}</UniqueIdentifier>
+    <Filter Include="Source Files\dx11">
+      <UniqueIdentifier>{cc715870-566d-40c5-96e1-f33f66134dbf}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -81,53 +78,56 @@
     <ClInclude Include="LivePT\dragOverlay.h">
       <Filter>Source Files\LivePT</Filter>
     </ClInclude>
-    <ClInclude Include="RHI\dx11\audio.h">
-      <Filter>Source Files\RHI\dx11</Filter>
+    <ClInclude Include="dx11\audio.h">
+      <Filter>Source Files\dx11</Filter>
     </ClInclude>
-    <ClInclude Include="RHI\dx11\blend.h">
-      <Filter>Source Files\RHI\dx11</Filter>
+    <ClInclude Include="dx11\blend.h">
+      <Filter>Source Files\dx11</Filter>
     </ClInclude>
-    <ClInclude Include="RHI\dx11\camera.h">
-      <Filter>Source Files\RHI\dx11</Filter>
+    <ClInclude Include="dx11\camera.h">
+      <Filter>Source Files\dx11</Filter>
     </ClInclude>
-    <ClInclude Include="RHI\dx11\cgltf.h">
-      <Filter>Source Files\RHI\dx11</Filter>
+    <ClInclude Include="dx11\cgltf.h">
+      <Filter>Source Files\dx11</Filter>
     </ClInclude>
-    <ClInclude Include="RHI\dx11\constBuf.h">
-      <Filter>Source Files\RHI\dx11</Filter>
+    <ClInclude Include="dx11\constBuf.h">
+      <Filter>Source Files\dx11</Filter>
     </ClInclude>
-    <ClInclude Include="RHI\dx11\depth.h">
-      <Filter>Source Files\RHI\dx11</Filter>
+    <ClInclude Include="dx11\depth.h">
+      <Filter>Source Files\dx11</Filter>
     </ClInclude>
-    <ClInclude Include="RHI\dx11\device.h">
-      <Filter>Source Files\RHI\dx11</Filter>
+    <ClInclude Include="dx11\device.h">
+      <Filter>Source Files\dx11</Filter>
     </ClInclude>
-    <ClInclude Include="RHI\dx11\draw.h">
-      <Filter>Source Files\RHI\dx11</Filter>
+    <ClInclude Include="dx11\draw.h">
+      <Filter>Source Files\dx11</Filter>
     </ClInclude>
-    <ClInclude Include="RHI\dx11\dx.h">
-      <Filter>Source Files\RHI\dx11</Filter>
+    <ClInclude Include="dx11\dx.h">
+      <Filter>Source Files\dx11</Filter>
     </ClInclude>
-    <ClInclude Include="RHI\dx11\gltfAnimation.h">
-      <Filter>Source Files\RHI\dx11</Filter>
+    <ClInclude Include="dx11\gltfAnimation.h">
+      <Filter>Source Files\dx11</Filter>
     </ClInclude>
-    <ClInclude Include="RHI\dx11\IA.h">
-      <Filter>Source Files\RHI\dx11</Filter>
+    <ClInclude Include="dx11\IA.h">
+      <Filter>Source Files\dx11</Filter>
     </ClInclude>
-    <ClInclude Include="RHI\dx11\rasterizer.h">
-      <Filter>Source Files\RHI\dx11</Filter>
+    <ClInclude Include="dx11\rasterizer.h">
+      <Filter>Source Files\dx11</Filter>
     </ClInclude>
-    <ClInclude Include="RHI\dx11\sampler.h">
-      <Filter>Source Files\RHI\dx11</Filter>
+    <ClInclude Include="dx11\sampler.h">
+      <Filter>Source Files\dx11</Filter>
     </ClInclude>
-    <ClInclude Include="RHI\dx11\shaders.h">
-      <Filter>Source Files\RHI\dx11</Filter>
+    <ClInclude Include="dx11\shaders.h">
+      <Filter>Source Files\dx11</Filter>
     </ClInclude>
-    <ClInclude Include="RHI\dx11\shadersReflection.h">
-      <Filter>Source Files\RHI\dx11</Filter>
+    <ClInclude Include="dx11\shadersReflection.h">
+      <Filter>Source Files\dx11</Filter>
     </ClInclude>
-    <ClInclude Include="RHI\dx11\textures.h">
-      <Filter>Source Files\RHI\dx11</Filter>
+    <ClInclude Include="dx11\textures.h">
+      <Filter>Source Files\dx11</Filter>
+    </ClInclude>
+    <ClInclude Include="textures.h">
+      <Filter>Source Files</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -147,10 +147,5 @@
     <Image Include="LivePT_Example.ico">
       <Filter>Resource Files</Filter>
     </Image>
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="..\README.md">
-      <Filter>Source Files</Filter>
-    </None>
   </ItemGroup>
 </Project>

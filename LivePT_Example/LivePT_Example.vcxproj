@@ -146,6 +146,22 @@
     </Manifest>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="dx11\audio.h" />
+    <ClInclude Include="dx11\blend.h" />
+    <ClInclude Include="dx11\camera.h" />
+    <ClInclude Include="dx11\cgltf.h" />
+    <ClInclude Include="dx11\constBuf.h" />
+    <ClInclude Include="dx11\depth.h" />
+    <ClInclude Include="dx11\device.h" />
+    <ClInclude Include="dx11\draw.h" />
+    <ClInclude Include="dx11\dx.h" />
+    <ClInclude Include="dx11\gltfAnimation.h" />
+    <ClInclude Include="dx11\IA.h" />
+    <ClInclude Include="dx11\rasterizer.h" />
+    <ClInclude Include="dx11\sampler.h" />
+    <ClInclude Include="dx11\shaders.h" />
+    <ClInclude Include="dx11\shadersReflection.h" />
+    <ClInclude Include="dx11\textures.h" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="LivePT\consistency.h" />
     <ClInclude Include="LivePT\DbgHelpRef.h" />
@@ -160,23 +176,8 @@
     <ClInclude Include="LivePT\windowManagement.h" />
     <ClInclude Include="LivePT_Example.h" />
     <ClInclude Include="Resource.h" />
-    <ClInclude Include="RHI\dx11\audio.h" />
-    <ClInclude Include="RHI\dx11\blend.h" />
-    <ClInclude Include="RHI\dx11\camera.h" />
-    <ClInclude Include="RHI\dx11\cgltf.h" />
-    <ClInclude Include="RHI\dx11\constBuf.h" />
-    <ClInclude Include="RHI\dx11\depth.h" />
-    <ClInclude Include="RHI\dx11\device.h" />
-    <ClInclude Include="RHI\dx11\draw.h" />
-    <ClInclude Include="RHI\dx11\dx.h" />
-    <ClInclude Include="RHI\dx11\gltfAnimation.h" />
-    <ClInclude Include="RHI\dx11\IA.h" />
-    <ClInclude Include="RHI\dx11\rasterizer.h" />
-    <ClInclude Include="RHI\dx11\sampler.h" />
-    <ClInclude Include="RHI\dx11\shaders.h" />
-    <ClInclude Include="RHI\dx11\shadersReflection.h" />
-    <ClInclude Include="RHI\dx11\textures.h" />
     <ClInclude Include="targetver.h" />
+    <ClInclude Include="textures.h" />
     <ClInclude Include="Widgets\angle.h" />
     <ClInclude Include="Widgets\color3.h" />
     <ClInclude Include="Widgets\pos2.h" />
@@ -190,9 +191,6 @@
   <ItemGroup>
     <Image Include="LivePT_Example.ico" />
     <Image Include="small.ico" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="..\README.md" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

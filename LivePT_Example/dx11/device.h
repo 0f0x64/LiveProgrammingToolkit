@@ -8,7 +8,7 @@ namespace Device
 
 	D3D_DRIVER_TYPE	driverType = D3D_DRIVER_TYPE_NULL;
 
-	void Init()
+	void Init(HWND  hwnd)
 	{
 		HRESULT hr;
 
@@ -35,14 +35,14 @@ namespace Device
 		pFactory->Release();
 #endif
 
-		aspect = float(height) / float(width);
-		iaspect = float(width) / float(height);
+		screen.aspect = float(screen.height) / float(screen.width);
+		screen.iaspect = float(screen.width) / float(screen.height);
 
 		DXGI_SWAP_CHAIN_DESC sd= {
 
 				.BufferDesc = {
-					.Width = (UINT)width,
-					.Height = (UINT)height,
+					.Width = (UINT)screen.width,
+					.Height = (UINT)screen.height,
 					.RefreshRate = {
 						.Numerator = FRAMES_PER_SECOND,
 						.Denominator = 1
@@ -59,7 +59,7 @@ namespace Device
 
 				.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT,
 				.BufferCount = 2,
-				.OutputWindow = hWnd,
+				.OutputWindow = hwnd,
 				.Windowed = true,//EditMode,
 				.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD,
 				//.Flags = 0

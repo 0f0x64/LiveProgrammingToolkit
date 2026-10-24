@@ -751,7 +751,7 @@ namespace LivePT {
 
         return false;
     }
-
+    /*
     inline bool TryInitEnumSelectionDirect(const std::wstring& lineText, long line, long column, long targetCharIdx) {
         if (lineText.empty()) return false;
 
@@ -809,6 +809,79 @@ namespace LivePT {
             return true;
         }
 
+        return false;
+    }
+    */
+    inline bool TryInitEnumSelectionDirect(const std::wstring& lineText, long line, long column, long targetCharIdx) {
+        if (lineText.empty()) return false;
+
+        long tokenStart = targetCharIdx;
+        long tokenEnd = targetCharIdx;
+
+        while (tokenStart > 0 && (iswalnum(lineText[tokenStart - 1]) || lineText[tokenStart - 1] == L'_')) tokenStart--;
+        while (tokenEnd < static_cast<long>(lineText.length()) && (iswalnum(lineText[tokenEnd]) || lineText[tokenEnd] == L'_')) tokenEnd++;
+
+        if (tokenStart >= tokenEnd) return false;
+
+        std::wstring enumTypeNameW = L"";
+        long typeStartCol = tokenStart;
+
+        // Идем влево и собираем всю цепочку: Идентификаторы и двоеточия (::)
+        if (tokenStart >= 2 && lineText[tokenStart - 1] == L':' && lineText[tokenStart - 2] == L':') {
+            long currentPos = tokenStart - 2;
+
+            while (currentPos > 0) {
+                // Пропускаем буквы, цифры и нижнее подчеркивание (часть имени неймспейса/типа)
+                if (iswalnum(lineText[currentPos - 1]) || lineText[currentPos - 1] == L'_') {
+                    currentPos--;
+                }
+                // Или если перед нами еще одно двоеточие '::', и перед ним тоже идет валидный символ
+                else if (currentPos >= 2 && lineText[currentPos - 1] == L':' && lineText[currentPos - 2] == L':' &&
+                    (iswalnum(lineText[currentPos - 3]) || lineText[currentPos - 3] == L'_')) {
+                    currentPos -= 2;
+                }
+                else {
+                    break;
+                }
+            }
+
+            if (currentPos < tokenStart - 2) {
+                enumTypeNameW = lineText.substr(currentPos, (tokenStart - 2) - currentPos);
+                typeStartCol = currentPos; // Запоминаем точную позицию начала всей цепочки для замены текста
+            }
+        }
+
+        if (enumTypeNameW.empty()) return false;
+
+        std::vector<std::string> parsedNames;
+        std::vector<int> parsedValues;
+
+        if (!LoadEnumMetadataDirect(enumTypeNameW.c_str(), parsedNames, parsedValues)) {
+            return false;
+        }
+
+        int newIndex = showEnum(parsedNames);
+        if (newIndex >= 0 && newIndex < static_cast<int>(parsedNames.size())) {
+            std::string pureName = parsedNames[newIndex];
+            std::string typePrefixA;
+            typePrefixA.reserve(enumTypeNameW.length());
+            for (wchar_t wc : enumTypeNameW) {
+                typePrefixA.push_back(static_cast<char>(wc));
+            }
+
+            std::string newValueStr = typePrefixA + "::" + pureName;
+
+            // Используем вычисленный ранее typeStartCol вместо старого цикла
+            long visualStart = GetVisualColumn(lineText, typeStartCol);
+            long visualEnd = GetVisualColumn(lineText, tokenEnd);
+            long newCursorCol = visualStart + static_cast<long>(newValueStr.length());
+
+            StartUndoTransaction(L"LiveWheel Change Enum");
+            ReplaceTextInActiveVS(line, visualStart, visualEnd, newValueStr, newCursorCol);
+            EndUndoTransaction();
+            SaveActiveDocument();
+            return true;
+        }
         return false;
     }
 

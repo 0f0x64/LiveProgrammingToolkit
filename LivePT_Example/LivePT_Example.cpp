@@ -11,8 +11,10 @@
 
 // ---------------------- d3d renderer ------------------------
 #define EditMode true
-#include "RHI/dx11/dx.h"
+#include "dx11/dx.h"
 // ------------------------------------------------------------
+#include "textures.h"
+
 
 #define TIMER_ID 1
 
@@ -92,324 +94,9 @@ bool IsPrimitiveSelected(int posX, int posY, HWND hwnd) {
     return false;
 }
 
-
-
-// Новая структура параметров, принимающая список инициализации точек
-struct HeavyPoint {
-    bool isVisible;          // 1 байт (+ 3 байта padding)
-    pos2 coordinates;        // 8 байт (float x, float y)
-    unsigned char thickness; // 1 байт (+ 3 байта padding)
-    int customUid;           // 4 байта
-    color3 segmentColor;     // 3 байта (r, g, b) -> Тяжелый тест вложенности структур!
-};                           // Общий размер будет выровнен компилятором до ~28-32 байт
-
-struct LinePrimitive {
-    std::vector<HeavyPoint> points;
-};
-
-// main.cpp
-
-// Полностью исправленная функция DrawLine в main.cpp
-// Полностью исправленная, рабочая отрисовка в main.cpp
-void DrawLine(LinePrimitive lp, std::source_location location = std::source_location::current()) {
-    BOOL highlight = LivePT::IsCursorInsideFunctionCall(location);
-    if (lp.points.size() < 2) return;
-
-    int centerX = gc.w / 2;
-    int centerY = gc.h / 2;
-
-    // Храним указатель на предыдущую валидную (видимую) точку
-    const HeavyPoint* pPrevPoint = nullptr;
-
-    for (const auto& pt : lp.points) {
-        // Выводим текст координат и UID ВСЕГДА, чтобы видеть реальные числа в рантайме
-        int targetX = centerX + (int)pt.coordinates.x;
-        int targetY = centerY + (int)pt.coordinates.y;
-
-        std::string infoStr = "#" + std::to_string(pt.customUid) + " (" + std::to_string((int)pt.coordinates.x) + "," + std::to_string((int)pt.coordinates.y) + ")";
-        SetTextColor(gc.memDC, RGB(pt.segmentColor.r, pt.segmentColor.g, pt.segmentColor.b));
-        SetBkMode(gc.memDC, TRANSPARENT);
-        TextOutA(gc.memDC, targetX + 8, targetY - 12, infoStr.c_str(), (int)infoStr.length());
-
-        // Если точка невидима — линию через нее не ведем, но кэш плоттера не ломаем
-        if (!pt.isVisible) continue;
-
-        if (pPrevPoint == nullptr) {
-            // Это первая видимая точка — просто запоминаем её как стартовую
-            pPrevPoint = &pt;
-        }
-        else {
-            // Рисуем линию от предыдущей видимой точки к текущей
-            int startX = centerX + (int)pPrevPoint->coordinates.x;
-            int startY = centerY + (int)pPrevPoint->coordinates.y;
-
-            int currentThickness = highlight ? (pt.thickness + 2) : pt.thickness;
-            HPEN hPen = CreatePen(PS_SOLID, currentThickness, RGB(pt.segmentColor.r, pt.segmentColor.g, pt.segmentColor.b));
-            HPEN hOldPen = (HPEN)SelectObject(gc.memDC, hPen);
-
-            // Чертим строго между двумя конкретными точками
-            MoveToEx(gc.memDC, startX, startY, NULL);
-            LineTo(gc.memDC, targetX, targetY);
-
-            SelectObject(gc.memDC, hOldPen);
-            DeleteObject(hPen);
-
-            // Переставляем указатель на текущую точку
-            pPrevPoint = &pt;
-        }
-    }
-}
-
-
-
-struct TestRect {
-    pos2 pos;        // 8 байт (offset 0)
-    size2 size;      // 8 байт (offset 8)
-    angle Angle;     // 4 байта (offset 16) -> float/angle встает на идеальную границу 4 байт!
-    ptype type;      // 4 байта (offset 20) -> enum встает на границу 4 байт!
-    bool show;       // 1 байт  (offset 27)
-    color3 color;    // 3 байта (offset 24) -> ложится в хвост структуры
-    bool fill;       // 1 байт  (offset 28)
-};
-
-
-LPT_LIVE_FUNCTION(void, DrawTestRect, TestRect, in) {
-
-    int posX = (gc.w / 2) + (int)in.pos.x;
-    int posY = (gc.h / 2) + (int)in.pos.y;
-    if (IsPrimitiveSelected(posX, posY, gc.hWnd)) {
-        LivePT::OpenFileAndMoveCursorToLocation(location);
-    }
-
-    BOOL highlight = LivePT::IsCursorInsideFunctionCall(location);
-
-    // 1. Создаем уникальные хэндлы для тела примитива
-    HBRUSH hBodyBrush = in.fill ? CreateSolidBrush(RGB(in.color.r, in.color.g, in.color.b)) : (HBRUSH)GetStockObject(NULL_BRUSH);
-    HPEN hBodyPen = CreatePen(PS_SOLID, highlight ? 4 : 2, RGB(in.color.r, in.color.g, in.color.b));
-
-    HBRUSH hOldBrush = (HBRUSH)SelectObject(gc.memDC, hBodyBrush);
-    HPEN hOldPen = (HPEN)SelectObject(gc.memDC, hBodyPen);
-
-    float radians = in.Angle * (3.14159265f / 180.0f);
-    float cosA = std::cos(radians);
-    float sinA = std::sin(radians);
-
-    XFORM xForm;
-    xForm.eM11 = cosA;  xForm.eM12 = sinA;
-    xForm.eM21 = -sinA; xForm.eM22 = cosA;
-    xForm.eDx = (float)posX;
-    xForm.eDy = (float)posY;
-
-    XFORM oldForm;
-    GetWorldTransform(gc.memDC, &oldForm);
-    SetWorldTransform(gc.memDC, &xForm);
-
-    if (in.show) switch (in.type)
-    {
-    case ptype::box:
-        Rectangle(gc.memDC, -(int)in.size.w, -(int)in.size.h, (int)in.size.w, (int)in.size.h);
-        break;
-
-    case ptype::circle:
-        Ellipse(gc.memDC, -(int)in.size.w, -(int)in.size.h, (int)in.size.w, (int)in.size.h);
-        break;
-
-    case ptype::roundbox:
-        RoundRect(gc.memDC, -(int)in.size.w, -(int)in.size.h, (int)in.size.w, (int)in.size.h, 40, 40);
-        break;
-
-    default:
-        Rectangle(gc.memDC, -(int)in.size.w, -(int)in.size.h, (int)in.size.w, (int)in.size.h);
-        break;
-    }
-
-    // Восстанавливаем исходные объекты отрисовки
-    SelectObject(gc.memDC, hOldBrush);
-    SelectObject(gc.memDC, hOldPen);
-
-    // Удаляем созданные объекты тела (защита от утечки GDI)
-    DeleteObject(hBodyPen);
-    if (in.fill) DeleteObject(hBodyBrush);
-
-    // 2. Создаем СОВЕРШЕННО ОТДЕЛЬНУЮ кисть для центрального маркера подсветки
-    HBRUSH hMarkerBrush = highlight ? CreateSolidBrush(RGB(255, 255, 255)) : CreateSolidBrush(RGB(122, 122, 122));
-    HBRUSH hOldMarkerBrush = (HBRUSH)SelectObject(gc.memDC, hMarkerBrush);
-
-    Ellipse(gc.memDC, -12, -12, 12, 12);
-
-    SelectObject(gc.memDC, hOldMarkerBrush);
-    DeleteObject(hMarkerBrush); // Безопасно удаляем только маркер
-
-    SetWorldTransform(gc.memDC, &oldForm);
-    drawCounter++;
-}
-
-void Draw(Primitive p, std::source_location location = std::source_location::current()) {
-
-    int posX = (gc.w / 2) + (int)p.pos.x;
-    int posY = (gc.h / 2) + (int)p.pos.y;
-
-    auto sel = IsPrimitiveSelected(posX, posY, gc.hWnd);
-
-    if (sel) {
-        LivePT::OpenFileAndMoveCursorToLocation(location);
-    }
-
-    BOOL highlight = LivePT::IsCursorInsideFunctionCall(location);
-
-    // 1. Создаем уникальную кисть для тела примитива
-    HBRUSH hBodyBrush = CreateSolidBrush(RGB(p.color.r, p.color.g, p.color.b));
-    HBRUSH hOldBrush = (HBRUSH)SelectObject(gc.memDC, hBodyBrush);
-
-    float angleVal = p.Angle;
-    float radians = angleVal * (3.14159265f / 180.0f);
-    float cosA = std::cos(radians);
-    float sinA = std::sin(radians);
-
-    XFORM xForm;
-    xForm.eM11 = cosA;  xForm.eM12 = sinA;
-    xForm.eM21 = -sinA; xForm.eM22 = cosA;
-    xForm.eDx = (float)posX;
-    xForm.eDy = (float)posY;
-
-    XFORM oldForm;
-    GetWorldTransform(gc.memDC, &oldForm);
-    SetWorldTransform(gc.memDC, &xForm);
-
-    if (p.show)
-    {
-        switch (p.type) {
-        case ptype::circle:   Ellipse(gc.memDC,   -(int)p.size.w, -(int)p.size.h, (int)p.size.w, (int)p.size.h); break;
-        case ptype::box:      Rectangle(gc.memDC, -(int)p.size.w, -(int)p.size.h, (int)p.size.w, (int)p.size.h); break;
-        case ptype::roundbox: RoundRect(gc.memDC, -(int)p.size.w, -(int)p.size.h, (int)p.size.w, (int)p.size.h, 40, 40); break;
-        }
-    }
-
-    // Восстанавливаем исходную системную кисть и удаляем кисть тела
-    SelectObject(gc.memDC, hOldBrush);
-    DeleteObject(hBodyBrush);
-
-    // 2. Создаем изолированную кисть для центрального маркера подсветки
-    HBRUSH hMarkerBrush = highlight ? CreateSolidBrush(RGB(255, 255, 255)) : CreateSolidBrush(RGB(122, 122, 122));
-    HBRUSH hOldMarkerBrush = (HBRUSH)SelectObject(gc.memDC, hMarkerBrush);
-
-    Ellipse(gc.memDC, -12, -12, 12, 12);
-
-    // Восстанавливаем контекст устройства и удаляем только маркер
-    SelectObject(gc.memDC, hOldMarkerBrush);
-    DeleteObject(hMarkerBrush);
-
-    SetWorldTransform(gc.memDC, &oldForm);
-
-    drawCounter++;
-}
-
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     switch (uMsg) {
-    case WM_CREATE:
-        SetTimer(hwnd, TIMER_ID, 16, NULL);
-        return 0;
 
-    case WM_TIMER:
-        RECT clientRect;
-        GetClientRect(hwnd, &clientRect);
-        InvalidateRect(hwnd, NULL, FALSE);
-        return 0;
-
-    case WM_ERASEBKGND:
-        return 1;
-
-    case WM_PAINT: {
-
-        PAINTSTRUCT ps;
-        HDC hdc = BeginPaint(hwnd, &ps);
-
-        RECT r;
-        GetClientRect(hwnd, &r);
-        int w = r.right - r.left, h = r.bottom - r.top;
-
-        HDC memDC = CreateCompatibleDC(hdc);
-        HBITMAP memBM = CreateCompatibleBitmap(hdc, w, h);
-        HBITMAP oldBM = (HBITMAP)SelectObject(memDC, memBM);
-
-        gc = { hwnd, memDC, w, h };
-
-        SetGraphicsMode(memDC, GM_ADVANCED);
-
-        HBRUSH hDarkBrush = CreateSolidBrush(RGB(30, 30, 32));
-        FillRect(memDC, &r, hDarkBrush);
-        DeleteObject(hDarkBrush);
-
-        drawCounter = 0;
-
-        float x = eval(296.0f);
-        float y = eval(-1.0f);
-
-        float rr = (float) ((rand() % 100) * (int)eval(0) + (int)eval(31));
-
-
-
-        Draw(eval(Primitive{
-            .pos = pos2{
-				.x = 339.31f,
-				.y = 32.76f
-				},
-            .size = size2{104.79f, 99.63f},
-            .Angle = angle(236.9f),
-            .color = color3{87, 200, 157},
-            .type = ptype::circle,
-            .show = true,
-            }));
-
-  
-
-        DrawLine({
-            .points = eval(std::vector<HeavyPoint>{
-                    { true, pos2{-458.70f, 267.70f}, 82, 944, color3{11, 61, 125} },
-                    { true, pos2{-246.80f, 317.80f}, 42, 956, color3{61, 35, 59} },
-                    { true, pos2{-9.40f, 142.80f}, 21, 956, color3{144, 34, 99} },
-                    { true, pos2{188.40f, 310.20f}, 19, 956, color3{73, 56, 158} },
-                    { true, pos2{281.40f, 495.20f}, 15, 956, color3{103, 82, 183} },
-                    { true, pos2{402.40f, 408.20f}, 15, 956, color3{103, 82, 183} },
-                    { true, pos2{452.40f, 259.20f}, 15, 956, color3{103, 82, 183} },    
-                })
-            });
-
-        DrawTestRect({
-                .pos = pos2{
-                    .x = 155.48f,
-                    .y = -351.13f
-                    },
-                .size = size2{183.64f, 160.27f},
-                .Angle = angle(95.9f),
-                .type = ptype::circle,
-                .show = true,
-                .color = color3{40, 131, 70},
-                .fill = true
-            });
-
-        DrawTestRect({
-                .pos = pos2{
-                    .x = -309.42f,
-                    .y = -225.13f
-                    },
-                .size = size2{122.53f, 152.05f},
-                .Angle = angle(-36.0f),
-                .type = ptype::roundbox,
-                .show = true,
-                .color = color3{77, 114, 136},
-                .fill = true
-            });
-
-
-        BitBlt(hdc, 0, 0, w, h, memDC, 0, 0, SRCCOPY);
-        SelectObject(memDC, oldBM);
-        DeleteObject(memBM);
-        DeleteDC(memDC);
-
-        EndPaint(hwnd, &ps);
-        return 0;
-    }
     case WM_DESTROY:
         KillTimer(hwnd, TIMER_ID);
         PostQuitMessage(0);
@@ -449,21 +136,53 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
     if (hwnd == NULL) return 0;
 
+    dx11::Init(hwnd);
+    Textures::CreateAllTextures();
+
     ShowWindow(hwnd, nCmdShow);
 
-    MSG msg = {};
+    MSG msg = { 0 };
 
-    while (true) {
+    while (msg.message != WM_QUIT)
+    {
 
-        if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
-            if (msg.message == WM_QUIT) break;
+#if EditMode
+
+        while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
+        {
+            if (msg.message == WM_QUIT)
+            {
+                break;
+            }
+
             TranslateMessage(&msg);
             DispatchMessage(&msg);
         }
-        else {
-            LivePT::ProcessEdit();// don't forget this call
+
+#else
+
+        // Проверяем сообщения Windows
+        if (PeekMessage(&msg, NULL, 0U, 0U, PM_REMOVE)) {
+            TranslateMessage(&msg);
+            DispatchMessage(&msg);
+            continue;
         }
+
+        //PeekMessageA(&msg, NULL, 0, 0, PM_REMOVE);
+        //if (GetAsyncKeyState(VK_ESCAPE) || timer::frameBeginTime / 1000. > DEMO_DURATION) { break; }
+
+#endif
+
+        //UpdateFrame(timer::GetCounter());
+
+        dx11::Textures::RenderTarget(eval(Textures::rt::mainRT),0);
+        dx11::Draw::Clear(eval(color4{ 0.23,0.29,-0.02,0 }));
+        dx11::Draw::Present();
+
+        LivePT::ProcessEdit();// don't forget this call
+
     }
 
     return 0;
 }
+

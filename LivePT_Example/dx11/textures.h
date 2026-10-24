@@ -168,7 +168,7 @@ namespace Textures
 		LogIfError("CreateShaderResourceView for Depth error\n");
 	}
 
-	void Create(int i, tType type, tFormat format, XMFLOAT2 size, bool mipMaps, bool depth)
+	void Create(int i, tType type, tFormat format, int width, int height, bool mipMaps, bool depth)
 	{
 		ZeroMemory(&tdesc, sizeof(tdesc));
 		ZeroMemory(&svDesc, sizeof(svDesc));
@@ -177,7 +177,7 @@ namespace Textures
 
 		Texture[i].type = type;
 		Texture[i].format = format;
-		Texture[i].size = size;
+		Texture[i].size = XMFLOAT2{ (float)width, (float)height };
 		Texture[i].mipMaps = mipMaps;
 		Texture[i].depth = depth;
 
@@ -202,9 +202,9 @@ namespace Textures
 		context->PSSetShaderResources(0, 128, null);
 	}
 
-	void SetViewport(texture texId, int level = 0)
+	void SetViewport(int texId, int level = 0)
 	{
-		XMFLOAT2 size = Texture[(int)texId].size;
+		XMFLOAT2 size = Texture[texId].size;
 		float denom = powf(2, level);
 
 		D3D11_VIEWPORT vp = {
@@ -223,17 +223,17 @@ namespace Textures
 		Rasterizer::Scissors(r);
 	}
 
-	void CopyColor(texture dst, texture src)
+	void CopyColor(int dst, int src)
 	{
 		context->CopyResource(Texture[(int)dst].pTexture, Texture[(int)src].pTexture);
 	}
 
-	void CopyDepth(texture dst, texture src)
+	void CopyDepth(int dst, int src)
 	{
 		context->CopyResource(Texture[(int)dst].pDepth, Texture[(int)src].pDepth);
 	}
 
-	void TextureToShader(texture tex, unsigned int slot, targetshader tA = targetshader::both)
+	void TextureToShader(int tex, unsigned int slot, targetshader tA = targetshader::both)
 	{
 		if (tA == targetshader::both || tA == targetshader::vertex)
 		{
@@ -252,7 +252,7 @@ namespace Textures
 	}
 
 
-	void RenderTarget(texture target, unsigned int level = 0)
+	void RenderTarget(auto target, unsigned int level = 0)
 	{
 		currentRT = (int)target;
 		
@@ -268,23 +268,7 @@ namespace Textures
 			context->OMSetRenderTargets(6, &Texture[(int)target].RenderTargetView[0][0], 0);
 		}
 
-		SetViewport(target, level);
-	}
-
-	#undef CreateTexture
-	#define CreateTexture(name,type,format,width,height,mip,depth) name,
-	enum list {
-		#include "..\projectFiles\texList.h"
-	};
-
-	int count;
-
-	void Init()
-	{
-		count = 0;
-		#undef CreateTexture
-		#define CreateTexture(name,type,format,width,height,mip,depth) Textures::Create(list::name, Textures::tType::type,Textures::tFormat::format, XMFLOAT2((float)width,(float)height),mip,depth); count++;
-		#include "..\projectFiles\texList.h"
+		SetViewport((int)target, level);
 	}
 
 } 
