@@ -8,7 +8,7 @@ namespace Rasterizer
 		context->RSSetState(rasterState[(int)mode]);
 	}
 
-	void Scissors(float4 r)
+	void Scissors(int4 r)
 	{
 		D3D11_RECT rect = { r.x,r.y,r.z,r.w };
 		context->RSSetScissorRects(1, &rect);
@@ -42,7 +42,7 @@ namespace Rasterizer
 		device->CreateRasterizerState(&rasterizerState, &rasterState[3]);
 
 		context->RSSetState(rasterState[0]);
-		Scissors(float4{ 0, 0, (float)screen.width, (float)screen.height });
+		Scissors(int4{ 0, 0, screen.width, screen.height });
 	}
 
 }

@@ -1,3 +1,8 @@
+#include <d3d11.h>
+#include <d3dcompiler.h>
+#include "DirectXMath.h"
+#include <DirectXPackedVector.h>
+
 #pragma comment(lib, "d3d10.lib")
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "dxgi.lib")
@@ -5,49 +10,24 @@
 #pragma comment(lib, "dxguid.lib")
 #pragma comment(lib, "winmm.lib")
 
-typedef unsigned long uint32;
-typedef long int32;
-
-static inline int32 _log2(float x)
-{
-	uint32 ix = (uint32&)x;
-	uint32 exp = (ix >> 23) & 0xFF;
-	int32 log2 = int32(exp) - 127;
-
-	return log2;
-}
-
 #define FRAMES_PER_SECOND 60
 #define DirectXDebugMode true
-
-struct float4 {
-	float x; float y; float z; float w;
-};
-
-struct color4 {
-	float r; float g; float b; float a;
-};
-
-
-enum class blendmode { off, on, alpha };
-enum class blendop { add, sub, revsub, min, max };
-enum class depthmode {off, on, readonly, writeonly};
-enum class filter {linear, point, minPoint_magLinear};
-enum class addr { clamp, wrap};
-enum class cullmode { off, front, back, wireframe};
-enum class topology { triList, lineList, lineStrip, triStrip};
-enum class targetshader { vertex, pixel, both};
-
-
-#include <d3d11.h>
-#include <d3dcompiler.h>
-#include "DirectXMath.h"
-#include <DirectXPackedVector.h>
 
 using namespace DirectX;
 
 namespace dx11
 {
+	typedef unsigned long uint32;
+	typedef long int32;
+
+	static inline int32 _log2(float x)
+	{
+		uint32 ix = (uint32&)x;
+		uint32 exp = (ix >> 23) & 0xFF;
+		int32 log2 = int32(exp) - 127;
+
+		return log2;
+	}
 
 	#if DebugMode | EditMode
 
@@ -81,30 +61,32 @@ namespace dx11
 		float iaspect;
 	} screen;
 
+	#include "types.h"
 	#include "constBuf.h"
 //	#include "camera.h"
 	#include "blend.h"
 	#include "rasterizer.h"
-/*	#include "depth.h"
-	#include "sampler.h"*/
+	#include "depth.h"
+	#include "sampler.h"
 	#include "textures.h"
 	#include "device.h"
-//	#include "shaders.h"
+	#include "shaders.h"
 	#include "draw.h"
-//	#include "IA.h"*/
+	#include "IA.h"
 	//#include "audio.h"
+	#include "TexturesResBP.h"
 
 	void Init(HWND hwnd)
 	{
 //		Audio::Init();
 		Device::Init(hwnd);
-/*		Rasterizer::Init();
+		Rasterizer::Init();
 		Depth::Init();
 		Blend::Init();
 		ConstBuf::Init();
 		Sampler::Init();
 		Shaders::Init();
-		Textures::Init();*/
+  	    TexList::CreateAllTextures();
 	}
 
 #if EditMode
@@ -133,3 +115,4 @@ namespace dx11
 #endif
 
 }
+

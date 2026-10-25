@@ -72,16 +72,14 @@ namespace ConstBuf
 		context->UpdateSubresource(buf, 0, NULL, &data, 0, 0);
 	}
 
-	enum class target {vertex,pixel,both};
-
-	void Set(cBuffer i, target shader)
+	void Set(cBuffer i, targetshader shader)
 	{
-		if (shader == target::vertex || shader == target::both)
+		if (shader == targetshader::vertex || shader == targetshader::both)
 		{
 			context->VSSetConstantBuffers((int)i, 1, &buffer[(int)i]);
 		}
 
-		if (shader == target::pixel || shader == target::both)
+		if (shader == targetshader::pixel || shader == targetshader::both)
 		{
 			context->PSSetConstantBuffers((int)i, 1, &buffer[(int)i]);
 		}

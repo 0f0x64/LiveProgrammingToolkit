@@ -4,9 +4,6 @@ namespace Textures
 	#define max_tex 255
 	#define mainRTIndex 0
 
-	enum tType { flat, cube };
-	enum tFormat { u8, s8, s16, s32 };
-
 	DXGI_FORMAT dxTFormat[] = { 
 		DXGI_FORMAT_R8G8B8A8_UNORM,
 		DXGI_FORMAT_R8G8B8A8_SNORM,
@@ -41,14 +38,14 @@ namespace Textures
 
 	byte currentRT = 0;
 
-	void fill_tdesc(auto &cTex)
+	void FillTDesc(auto &cTex)
 	{
 		tdesc = {
 			.Width = (UINT)cTex.size.x,
 			.Height = (UINT)cTex.size.y,
 			.MipLevels = cTex.mipMaps ? (UINT)(_log2(max(cTex.size.x, cTex.size.y))) : 0,
 			.ArraySize = 1,
-			.Format = dxTFormat[cTex.format],
+			.Format = dxTFormat[(int)cTex.format],
 			.SampleDesc = {
 				.Count = 1,
 				.Quality = 0,
@@ -64,10 +61,9 @@ namespace Textures
 	{
 		auto cTex = Texture[i];
 
-		fill_tdesc(cTex);
+		FillTDesc(cTex);
 		
-
-		if (cTex.type == cube)
+		if (cTex.type == tType::cube)
 		{
 			tdesc.MiscFlags = D3D11_RESOURCE_MISC_TEXTURECUBE | tdesc.MiscFlags;
 			tdesc.ArraySize = 6;
@@ -78,12 +74,12 @@ namespace Textures
 		LogIfError("CreateTexture2D error");
 	}
 
-	void ShaderRes(int i)
+	void CreateShaderRes(int i)
 	{
 		svDesc.Format = tdesc.Format;
 		svDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
 
-		if (Texture[i].type == cube)
+		if (Texture[i].type == tType::cube)
 		{
 			svDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURECUBE;
 			svDesc.TextureCube.MostDetailedMip = 0;
@@ -101,13 +97,13 @@ namespace Textures
 	}
 
 
-	void rtView(int i)
+	void CreateRTView(int i)
 	{
 		renderTargetViewDesc.Format = tdesc.Format;
 		renderTargetViewDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
 		renderTargetViewDesc.Texture2D.MipSlice = 0;
 
-		if (Texture[i].type == cube)
+		if (Texture[i].type == tType::cube)
 		{
 			renderTargetViewDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2DARRAY;
 			renderTargetViewDesc.Texture2DArray.ArraySize = 1;
@@ -131,11 +127,11 @@ namespace Textures
 		}
 	}
 
-	void Depth(int i)
+	void CreateDepth(int i)
 	{
 		auto cTex = Texture[i];
 
-		fill_tdesc(cTex);
+		FillTDesc(cTex);
 
 		tdesc.BindFlags = D3D11_BIND_DEPTH_STENCIL | D3D11_BIND_SHADER_RESOURCE;
 		tdesc.Format = DXGI_FORMAT_R32_TYPELESS;
@@ -157,7 +153,7 @@ namespace Textures
 		}
 	}
 
-	void shaderResDepth(int i)
+	void CreateShaderResDepth(int i)
 	{
 		svDesc.Format = DXGI_FORMAT_R32_FLOAT;
 		svDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
@@ -184,14 +180,14 @@ namespace Textures
 		if (i > 0)// main rt skipped, init in device init
 		{
 			CreateTex(i);
-			ShaderRes(i);
-			rtView(i);
+			CreateShaderRes(i);
+			CreateRTView(i);
 		}
 
 		if (depth)
 		{
-			Depth(i);
-			shaderResDepth(i);
+			CreateDepth(i);
+			CreateShaderResDepth(i);
 		}
 	}
 
@@ -202,26 +198,7 @@ namespace Textures
 		context->PSSetShaderResources(0, 128, null);
 	}
 
-	void SetViewport(int texId, int level = 0)
-	{
-		XMFLOAT2 size = Texture[texId].size;
-		float denom = powf(2, level);
 
-		D3D11_VIEWPORT vp = {
-			.TopLeftX = 0,
-			.TopLeftY = 0,
-			.Width = (FLOAT)size.x / denom,
-			.Height = (FLOAT)size.y / denom,
-			.MinDepth = 0.0f,
-			.MaxDepth = 1.0f
-		};
-
-
-		context->RSSetViewports(1, &vp);
-
-		float4 r = float4{ 0,0,vp.Width ,vp.Height };
-		Rasterizer::Scissors(r);
-	}
 
 	void CopyColor(int dst, int src)
 	{
@@ -252,23 +229,7 @@ namespace Textures
 	}
 
 
-	void RenderTarget(auto target, unsigned int level = 0)
-	{
-		currentRT = (int)target;
-		
-		auto depthStencil = Texture[(int)target].depth ? Texture[(int)target].DepthStencilView[0] : 0;
-
-		if (Texture[(int)target].type == tType::flat)
-		{
-			context->OMSetRenderTargets(1, &Texture[(int)target].RenderTargetView[0][0], depthStencil);
-		}
-
-		if (Texture[(int)target].type == tType::cube)
-		{
-			context->OMSetRenderTargets(6, &Texture[(int)target].RenderTargetView[0][0], 0);
-		}
-
-		SetViewport((int)target, level);
-	}
+	
 
 } 
+

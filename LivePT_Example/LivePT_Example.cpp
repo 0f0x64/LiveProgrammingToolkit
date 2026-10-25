@@ -11,10 +11,9 @@
 
 // ---------------------- d3d renderer ------------------------
 #define EditMode true
+#define DebugMode true
 #include "dx11/dx.h"
 // ------------------------------------------------------------
-#include "textures.h"
-
 
 #define TIMER_ID 1
 
@@ -109,6 +108,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
     const char CLASS_NAME[] = "WindowClass";
 
+    dx11::screen.width = GetSystemMetrics(SM_CXSCREEN);
+    dx11::screen.height = GetSystemMetrics(SM_CYSCREEN);
+
     auto hUser32 = GetModuleHandleA("user32.dll");
     typedef BOOL(WINAPI* PfnSetProcessDpiAwarenessContext)(DPI_AWARENESS_CONTEXT);
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
@@ -137,7 +139,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     if (hwnd == NULL) return 0;
 
     dx11::Init(hwnd);
-    Textures::CreateAllTextures();
+   
 
     ShowWindow(hwnd, nCmdShow);
 
@@ -174,10 +176,19 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 #endif
 
         //UpdateFrame(timer::GetCounter());
+        using namespace dx11;
 
-        dx11::Textures::RenderTarget(eval(Textures::rt::mainRT),0);
-        dx11::Draw::Clear(eval(color4{ 0.23,0.29,-0.02,0 }));
-        dx11::Draw::Present();
+        InputAssembler::IA(topology::triList);
+        Blend::Set(blendmode::on, blendop::add);
+        Depth::Depth(depthmode::off);
+        Rasterizer::Cull(cullmode::back);
+
+        Draw::SetRenderTarget(eval(TexList::rt::mainRT), 0);
+        Draw::Clear(eval(color4{ 0.51,0.09,0.14,0 }));
+        Shaders::pShader(0);
+        Shaders::vShader(0);
+        Draw::NullDrawer(1, 1);
+        Draw::Present();
 
         LivePT::ProcessEdit();// don't forget this call
 

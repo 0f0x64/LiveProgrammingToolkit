@@ -1,18 +1,29 @@
 namespace Shaders {
 
-#if EditMode
-	#include "generated\uiShaderMargin.h"
-#endif
+	#define shadersPath "../LivePT_Example/shaders"
 
-	#include "dx11\shadersReflection.h"
+//#if EditMode
+//	#include "generated\uiShaderMargin.h"
+//#endif
+
+//	#include "dx11\shadersReflection.h"
 
 	const char VertexShaderModel[] = "vs_4_1";
 	const char PixelShaderModel[] = "ps_4_1";
 
+	const char* vsList[] = {
+		"sprite"
+	};
+	const char* psList[] = {
+		"sprite"
+	};
+
+
 	#if !EditMode
 
-	#include "..\generated\processedShaders.h"
-	#include "..\generated\libList.h"
+//	#include "..\generated\processedShaders.h"
+//	#include "..\generated\libList.h"
+
 
 	#endif
 
@@ -82,19 +93,9 @@ namespace Shaders {
 		LPCWSTR nameToPatchLPCWSTR(const char* name, int i, stype type)
 		{
 			char path[MAX_PATH];
-			strcpy(path, shadersPath);
+			strcpy_s(path, sizeof(path), shadersPath);
 
-			if (type == stype::vertex)
-			{
-				if (i >= UIvShadersStart) strcat(path, "/ui");
-			}
-			if (type == stype::pixel)
-			{
-				if (i >= UIpShadersStart) strcat(path, "/ui");
-			}
-
-
-			strcat(path, name);
+			strcat_s(path, sizeof(path), name);
 
 			int len = MultiByteToWideChar(CP_ACP, 0, path, -1, NULL, 0);
 			MultiByteToWideChar(CP_ACP, 0, path, -1, shaderPathW, len);
@@ -136,8 +137,11 @@ namespace Shaders {
 
 		void Init()
 		{
-			vsCount = sizeof(vsList) / sizeof(const char*);
-			psCount = sizeof(psList) / sizeof(const char*);
+//			vsCount = sizeof(vsList) / sizeof(const char*);
+//			psCount = sizeof(psList) / sizeof(const char*);
+
+			vsCount = 1;
+			psCount = 1;
 
 		#if shaderCompileOnDemand
 			firstRun = false;
@@ -148,9 +152,9 @@ namespace Shaders {
 			while (i < vsCount)
 			{
 				char fileName[255];
-				strcpy(fileName, "/vs/");
-				strcat(fileName, vsList[i]);
-				strcat(fileName, shaderExtension);
+				strcpy_s(fileName,255, "/vs/");
+				strcat_s(fileName,255, vsList[i]);
+				strcat_s(fileName,255, shaderExtension);
 				CreateVS(i, fileName);
 				i++;
 
@@ -160,9 +164,9 @@ namespace Shaders {
 			while (i < psCount)
 			{
 				char fileName[255];
-				strcpy(fileName, "/ps/");
-				strcat(fileName, psList[i]);
-				strcat(fileName, shaderExtension);
+				strcpy_s(fileName,255, "/ps/");
+				strcat_s(fileName,255, psList[i]);
+				strcat_s(fileName,255, shaderExtension);
 				CreatePS(i, fileName);
 				i++;
 			}
@@ -174,11 +178,12 @@ namespace Shaders {
 
 
 
-		int getPtrIndex(const char* shaderName)
+/*		int getPtrIndex(const char* shaderName)
 		{
 			int j = 0; while (strcmp(libName[j], shaderName)) j++;
 			return j;
 		}
+		*/
 
 		char* outText;
 
@@ -214,43 +219,6 @@ namespace Shaders {
 
 			return outText;
 		}
-
-		/*
-		#include <windows.h>
-		#include <cstring>
-
-		bool CopyToClipboardANSI(const char* text) {
-			if (text == nullptr) return false;
-
-			// 1. Calculate length and allocate global memory
-			size_t len = strlen(text) + 1;
-			HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, len);
-			if (!hMem) return false;
-
-			// 2. Lock memory and copy the C-string
-			void* pLock = GlobalLock(hMem);
-			if (pLock) {
-				memcpy(pLock, text, len);
-				GlobalUnlock(hMem);
-			}
-			else {
-				GlobalFree(hMem);
-				return false;
-			}
-
-			// 3. Open clipboard and set data
-			if (OpenClipboard(NULL)) {
-				EmptyClipboard();
-				if (SetClipboardData(CF_TEXT, hMem) == NULL) {
-					GlobalFree(hMem); // Free only if SetClipboardData fails
-				}
-				CloseClipboard();
-				return true;
-			}
-
-			GlobalFree(hMem);
-			return false;
-		}*/
 
 		void CreateVS(int n, const char* shaderText)
 		{
@@ -298,7 +266,7 @@ namespace Shaders {
 			}
 		}
 
-		#include "..\generated\processedShadersCompile.h"
+		//#include "..\generated\processedShadersCompile.h"
 
 	#endif
 
@@ -308,9 +276,9 @@ namespace Shaders {
 		if (!VS[n].pShader)
 		{
 			char fileName[255];
-			strcpy(fileName, "/vs/");
-			strcat(fileName, vsList[n]);
-			strcat(fileName, shaderExtension);
+			strcpy_s(fileName,255, "/vs/");
+			strcat_s(fileName,255, vsList[n]);
+			strcat_s(fileName,255, shaderExtension);
 			CreateVS(n, fileName);
 		}
 	#endif	
@@ -323,9 +291,9 @@ namespace Shaders {
 			if (!PS[n].pShader)
 			{
 				char fileName[255];
-				strcpy(fileName, "/ps/");
-				strcat(fileName, psList[n]);
-				strcat(fileName, shaderExtension);
+				strcpy_s(fileName,255, "/ps/");
+				strcat_s(fileName,255, psList[n]);
+				strcat_s(fileName,255, shaderExtension);
 				CreatePS(n, fileName);
 			}
 	#endif
@@ -340,9 +308,9 @@ namespace Shaders {
 }
 
 
-#include "generated\constBufReflect.h"
+//#include "generated\constBufReflect.h"
 
-
+/*
 void paramConstBufInit()
 {
 	int i = 0;
@@ -355,3 +323,4 @@ void paramConstBufInit()
 }
 
 #undef Shader
+*/
