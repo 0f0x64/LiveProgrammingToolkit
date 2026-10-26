@@ -14,6 +14,7 @@ namespace Shaders {
 	const char* vsList[] = {
 		"sprite"
 	};
+
 	const char* psList[] = {
 		"sprite"
 	};
