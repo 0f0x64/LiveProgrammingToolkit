@@ -95,7 +95,6 @@ namespace Shaders {
 		{
 			char path[MAX_PATH];
 			strcpy_s(path, sizeof(path), shadersPath);
-
 			strcat_s(path, sizeof(path), name);
 
 			int len = MultiByteToWideChar(CP_ACP, 0, path, -1, NULL, 0);

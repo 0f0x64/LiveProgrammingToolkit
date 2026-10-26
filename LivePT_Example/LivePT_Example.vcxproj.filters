@@ -126,8 +126,14 @@
     <ClInclude Include="dx11\textures.h">
       <Filter>Source Files\dx11</Filter>
     </ClInclude>
-    <ClInclude Include="textures.h">
+    <ClInclude Include="texturesList.h">
       <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="dx11\TexturesResBP.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="dx11\types.h">
+      <Filter>Source Files\dx11</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -147,5 +153,9 @@
     <Image Include="LivePT_Example.ico">
       <Filter>Resource Files</Filter>
     </Image>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="shaders\ps\sprite.shader" />
+    <None Include="shaders\vs\sprite.shader" />
   </ItemGroup>
 </Project>

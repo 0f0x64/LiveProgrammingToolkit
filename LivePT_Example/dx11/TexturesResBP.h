@@ -1,13 +1,13 @@
 using namespace dx11::Textures;
 
 #ifdef reg
-#undef Tex
-#undef List
-#define Tex(name, type, format, width,height, mipMaps, depth) Create(count++, type, format, width, height, mipMaps, depth);
-#define List(name) 
+    #undef Tex
+    #undef List
+    #define Tex(name, type, format, width,height, mipMaps, depth) Create(count++, type, format, width, height, mipMaps, depth);
+    #define List(name) 
 #else
-#define Tex(name, type, format, width,height, mipMaps, depth) name = __COUNTER__,
-#define List(name) enum class name
+    #define Tex(name, type, format, width,height, mipMaps, depth) name = __COUNTER__,
+    #define List(name) enum class name
 #endif
 
 namespace TexList {
