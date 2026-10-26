@@ -64,7 +64,7 @@ namespace Shaders {
 		#if DebugMode
 			if (FAILED(hr))
 			{
-				Log((char*)pErrorBlob->GetBufferPointer());
+				Log((char*)pErrorBlob->GetBufferPointer(),"",false);
 				if (firstRun) ExitProcess(0);
 			}
 			else
@@ -74,14 +74,15 @@ namespace Shaders {
 				char shaderName[1024];
 				WideCharToMultiByte(CP_ACP, NULL, source, -1, shaderName, sizeof(shaderName), NULL, NULL);
 
-				Log(message);
-				char* shortShaderName = shaderName;
-				for (int i = 0; i < 4; i++)
-				{
-					shortShaderName = strstr(shortShaderName, "/") + 1;
-				}
-				Log((char*)shortShaderName);
-				Log("\n");
+				char* shortName = strrchr(shaderName, '/');
+				if (!shortName) shortName = strrchr(shaderName, '\\');
+				shortName = shortName ? shortName + 1 : shaderName;
+
+				char msg[2048];
+				strcpy_s(msg, sizeof(msg), message);
+				strcat_s(msg, sizeof(msg), shortName);
+
+				Log(msg, "");
 			}
 		#endif
 		}

@@ -616,6 +616,7 @@ namespace LivePT {
     }
 
     inline void ShiftDatabaseCoordinates(const std::string& targetFile, long targetLine, long visualStartCol, int lineDelta, int columnDelta);
+    inline void SaveActiveDocument();
 
     inline void vsEditor() {
         if (!initVsEditor()) return;
@@ -669,6 +670,11 @@ namespace LivePT {
             long visualStartCol = (column < g_lastCol) ? column : g_lastCol;
 
             LivePT::ShiftDatabaseCoordinates(currentActiveFile, g_lastLine, visualStartCol, lineDelta, columnDelta);
+        }
+
+        if (currentLineText != g_lastLineTextBuffer)
+        {
+            LivePT::SaveActiveDocument();
         }
 
         g_lastLineTextBuffer = currentLineText;

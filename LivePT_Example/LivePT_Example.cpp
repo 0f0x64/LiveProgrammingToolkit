@@ -4,7 +4,8 @@
 #include <string>
 #include <cmath>
 
-
+#define LPT_SHADER_COMPILE_FUNC recompileShader()
+void recompileShader();
 // ---------------- LivePT integration section ----------------
 #define LivePT_EditMode true // true for activate
 #include "LivePT/LivePT.h" // incude it for using lib
@@ -47,6 +48,63 @@ LPT_REGISTER_DRAG("size2", DrugLogic::size2Drag);
 typedef float angle;
 #include "Widgets\angle.h"
 LPT_REGISTER_TYPE("angle", Widgets::angleCallback);
+
+#include <filesystem>
+namespace fs = ::std::filesystem;
+
+void getPathParts(const ::std::string& fullPath, ::std::string& nameOnly, ::std::string& parentFolder) {
+    fs::path p(fullPath);
+
+    // 1. Имя файла без расширения (stem)
+    nameOnly = p.stem().string();
+
+    // 2. Название папки на один уровень выше
+    // p.parent_path() возвращает полный путь к папке, 
+    // .filename() извлекает только последнее имя в этом пути
+    parentFolder = p.parent_path().filename().string();
+}
+
+void recompileShader()
+{
+    ::std::string name, folder;
+    
+    getPathParts(LivePT::g_currentActiveFile, name, folder);
+
+    ::std::string rPath = "\/" + folder + "\/" + name + dx11::Shaders::shaderExtension;
+
+    // detect vertex/pixel shader and slot
+    if (folder[0] == 'v')
+    {
+        int i = 0;
+        while (i < dx11::Shaders::vsCount)
+        {
+            if (!strcmp(dx11::Shaders::vsList[i], name.c_str()))
+            {
+                dx11::Shaders::CreateVS(i, rPath.c_str(), true);
+                break;
+            }
+            i++;
+        }
+
+    }
+
+    if (folder[0] == 'p')
+    {
+        int i = 0;
+        while (i < dx11::Shaders::psCount)
+        {
+            if (!strcmp(dx11::Shaders::psList[i], name.c_str()))
+            {
+                dx11::Shaders::CreatePS(i, rPath.c_str(), true);
+                break;
+            }
+            i++;
+        }
+
+    }
+}
+
+
 
 struct {
     HWND hWnd;

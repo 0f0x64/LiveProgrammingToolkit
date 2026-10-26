@@ -144,7 +144,6 @@ namespace LivePT {
             );
 
             EndUndoTransaction();
-            SaveActiveDocument();
 
             g_dragState.currentTextLength = g_pendingWrite.codeText.length();
             g_pendingWrite.hasPending = false;
@@ -367,6 +366,7 @@ namespace LivePT {
 
                 if (isShader) {
                     AutoWrap(DISPATCH_METHOD, NULL, vtActiveDoc.pdispVal, L"Save", 0);
+                    LPT_SHADER_COMPILE_FUNC;
                 }
             }
         }
@@ -464,8 +464,6 @@ namespace LivePT {
 
             paramDesc[id].value = std::any(targetEnumValue);
             
-
-            SaveActiveDocument();
             g_dragState.targetParamId = -1;
 
             return;
@@ -496,8 +494,6 @@ namespace LivePT {
 
             paramDesc[id].value = std::any(targetEnumValue);
 
-
-            SaveActiveDocument();
         }
 
         g_dragState.targetParamId = -1;
@@ -599,30 +595,36 @@ namespace LivePT {
         long cursorIdx = static_cast<long>(physicalIdx);
         if (cursorIdx < 0) return 0;
 
-        bool isCurrentNumeric = false;
+        // Проверяем текущий символ под курсором
         if (cursorIdx < static_cast<long>(lineText.length())) {
             wchar_t ch = lineText[cursorIdx];
-            isCurrentNumeric = (iswdigit(ch) || ch == L'.' || ch == L'-' || ch == L'f' || ch == L'F');
+            if (iswdigit(ch) || ch == L'-' || ch == L'f' || ch == L'F') return cursorIdx;
+
+            // Кейс без ведущего нуля: кликнули на '.', а справа цифра (например, .5)
+            if (ch == L'.') {
+                if (cursorIdx + 1 < static_cast<long>(lineText.length()) && iswdigit(lineText[cursorIdx + 1])) {
+                    return cursorIdx;
+                }
+            }
         }
 
-        if (!isCurrentNumeric && cursorIdx > 0 && (cursorIdx - 1) < static_cast<long>(lineText.length())) {
+        // Если под курсором не число, проверяем символ слева
+        if (cursorIdx > 0 && (cursorIdx - 1) < static_cast<long>(lineText.length())) {
             wchar_t leftCh = lineText[cursorIdx - 1];
 
             if (iswdigit(leftCh) || leftCh == L'.' || leftCh == L'-' || leftCh == L'f' || leftCh == L'F') {
-
+                // Исключаем склеивание с именами переменных/функций (например, myFloat2)
                 if (iswdigit(leftCh) && (cursorIdx - 2) >= 0) {
                     wchar_t preLeftCh = lineText[cursorIdx - 2];
-                    if (iswalpha(preLeftCh)) {
-                        return cursorIdx;
-                    }
+                    if (iswalpha(preLeftCh)) return cursorIdx;
                 }
-
                 return cursorIdx - 1;
             }
         }
 
         return cursorIdx;
     }
+
 
     inline bool IsNumericTokenChar(wchar_t ch) {
         return iswdigit(ch) || ch == L'.' || ch == L'-' || ch == L'f' || ch == L'F';
@@ -632,13 +634,49 @@ namespace LivePT {
         outStartCol = startIdx;
         outEndCol = startIdx;
 
-        while (outStartCol > 0 && IsNumericTokenChar(lineText[outStartCol - 1])) {
-            outStartCol--;
+        // 1. Расширяем границу влево
+        while (outStartCol > 0) {
+            wchar_t prevCh = lineText[outStartCol - 1];
+
+            if (iswdigit(prevCh) || prevCh == L'.' || prevCh == L'f' || prevCh == L'F') {
+                outStartCol--;
+            }
+            // Минус берем только если он унарный
+            else if (prevCh == L'-') {
+                if (outStartCol - 1 == 0) {
+                    outStartCol--;
+                }
+                else {
+                    wchar_t prePrevCh = lineText[outStartCol - 2];
+                    if (prePrevCh == L'(' || prePrevCh == L'[' || prePrevCh == L'{' ||
+                        prePrevCh == L',' || prePrevCh == L'=' || prePrevCh == L'+' ||
+                        prePrevCh == L'-' || prePrevCh == L'*' || prePrevCh == L'/' ||
+                        iswspace(prePrevCh)) {
+                        outStartCol--;
+                    }
+                    else {
+                        break; // Бинарный минус (вычитание), стоп
+                    }
+                }
+            }
+            else {
+                break;
+            }
         }
-        while (outEndCol < static_cast<long>(lineText.length()) && IsNumericTokenChar(lineText[outEndCol])) {
-            outEndCol++;
+
+        // 2. Расширяем границу вправо
+        while (outEndCol < static_cast<long>(lineText.length())) {
+            wchar_t nextCh = lineText[outEndCol];
+
+            if (iswdigit(nextCh) || nextCh == L'.' || nextCh == L'f' || nextCh == L'F') {
+                outEndCol++;
+            }
+            else {
+                break; // Знаки операций, скобки и прочее справа полностью игнорируем
+            }
         }
     }
+
         
     inline bool TryInitSingleNumericDrag(const std::wstring& lineText, long line, long originalColumn, long targetCharIdx, const POINT& pt) {
         long startCol = 0;
@@ -745,7 +783,6 @@ namespace LivePT {
             ReplaceTextInActiveVS(line, visualStart, visualEnd, newValueStr, newCursorCol);
             EndUndoTransaction();
 
-            SaveActiveDocument();
             return true;
         }
 
@@ -879,7 +916,7 @@ namespace LivePT {
             StartUndoTransaction(L"LiveWheel Change Enum");
             ReplaceTextInActiveVS(line, visualStart, visualEnd, newValueStr, newCursorCol);
             EndUndoTransaction();
-            SaveActiveDocument();
+
             return true;
         }
         return false;
@@ -990,7 +1027,6 @@ namespace LivePT {
 
         if (!isTriggerButtonDown && s_WidgetTransactionActive) {
             EndUndoTransaction();
-            SaveActiveDocument();
             s_WidgetTransactionActive = false;
         }
     }
@@ -1288,7 +1324,6 @@ namespace LivePT {
 
 
     inline void DragNumericValue(const POINT& pt, bool ctrl, bool shift) {
-
         static HCURSOR hSizeNS = LoadCursor(NULL, IDC_SIZENS);
 
         ::LivePT::g_OverlayCursor = hSizeNS;
@@ -1308,51 +1343,99 @@ namespace LivePT {
             std::string newValueStr;
 
             if (dotPos == std::string::npos) {
+                // Целое число
                 char modified[100];
                 _itoa_s(g_dragState.newValue, modified, sizeof(modified), 10);
                 newValueStr = modified;
             }
             else {
+                // Число с плавающей точкой
                 std::string intPartStr = g_dragState.oldValueStr.substr(0, dotPos);
                 std::string fracPartStr = g_dragState.oldValueStr.substr(dotPos + 1);
+
                 std::string suffix = "";
                 if (!fracPartStr.empty() && (fracPartStr.back() == 'f' || fracPartStr.back() == 'F')) {
                     suffix = fracPartStr.back();
                     fracPartStr.pop_back();
                 }
+
                 size_t precision = fracPartStr.length();
+
                 if (g_dragState.pointBefore) {
+                    // Крутим дробную часть (.5)
                     long long fracLimit = 1;
                     for (size_t i = 0; i < precision; ++i) fracLimit *= 10;
-                    long long currentIntVal = std::stoll(intPartStr);
+
+                    // Безопасный парсинг целой части (если пустая или только минус, то это 0)
+                    long long currentIntVal = 0;
+                    bool isNegative = false;
+                    if (!intPartStr.empty()) {
+                        if (intPartStr == "-") isNegative = true;
+                        else {
+                            currentIntVal = std::stoll(intPartStr);
+                            if (currentIntVal < 0 || intPartStr[0] == '-') isNegative = true;
+                        }
+                    }
+
                     long long currentFracVal = fracPartStr.empty() ? 0 : std::stoll(fracPartStr);
-                    long long totalUnits = currentIntVal * fracLimit;
-                    if (currentIntVal < 0 || intPartStr[0] == '-') totalUnits -= currentFracVal;
-                    else totalUnits += currentFracVal;
+                    long long totalUnits = std::abs(currentIntVal) * fracLimit + currentFracVal;
+                    if (isNegative) totalUnits = -totalUnits;
 
                     int currentDelta = g_dragState.newValue - g_dragState.lastValue;
                     totalUnits += currentDelta;
 
                     long long newIntVal = totalUnits / fracLimit;
                     long long newFracVal = std::abs(totalUnits % fracLimit);
+
                     std::string newIntStr = std::to_string(newIntVal);
-                    if (totalUnits < 0 && newIntVal == 0) newIntStr = "-" + newIntStr;
+                    // Сохраняем знак минус, если целая часть стала нулевой, но число отрицательное
+                    if (totalUnits < 0 && newIntVal == 0) {
+                        newIntStr = "-" + newIntStr;
+                    }
+
                     std::string newFracStr = std::to_string(newFracVal);
-                    if (newFracStr.length() < precision) newFracStr.insert(0, precision - newFracStr.length(), '0');
-                    newValueStr = newIntStr + "." + newFracStr + suffix;
+                    if (newFracStr.length() < precision) {
+                        newFracStr.insert(0, precision - newFracStr.length(), '0');
+                    }
+
+                    // Если изначально не было ведущего нуля (строка начиналась с '.' или '-.'), сохраняем этот стиль
+                    if (intPartStr.empty() && newIntVal == 0 && totalUnits >= 0) {
+                        newValueStr = "." + newFracStr + suffix;
+                    }
+                    else if (intPartStr == "-" && newIntVal == 0 && totalUnits < 0) {
+                        newValueStr = "-." + newFracStr + suffix;
+                    }
+                    else {
+                        newValueStr = newIntStr + "." + newFracStr + suffix;
+                    }
                 }
                 else {
+                    // Крутим целую часть (2.)
                     char modified[100];
                     _itoa_s(g_dragState.newValue, modified, sizeof(modified), 10);
-                    newValueStr = std::string(modified) + "." + fracPartStr + suffix;
+
+                    // Если целая часть обнулилась, а ведущего нуля не было, сохраняем исходный формат
+                    if (g_dragState.newValue == 0 && intPartStr.empty()) {
+                        newValueStr = "." + fracPartStr + suffix;
+                    }
+                    else {
+                        newValueStr = std::string(modified) + "." + fracPartStr + suffix;
+                    }
                 }
             }
 
+            // Корректируем позицию курсора
             size_t newDotPos = newValueStr.find('.');
             long newCursorRelPos = 0;
             if (newDotPos != std::string::npos) {
-                if (g_dragState.pointBefore) newCursorRelPos = static_cast<long>(newDotPos) + g_dragState.initialCursorAnchorOffset;
-                else newCursorRelPos = static_cast<long>(newDotPos) - g_dragState.initialCursorAnchorOffset;
+                if (g_dragState.pointBefore) {
+                    newCursorRelPos = static_cast<long>(newDotPos) + g_dragState.initialCursorAnchorOffset;
+                }
+                else {
+                    // Защита: если целой части не было, позиция точки смещается на 0
+                    long baseOffset = (newValueStr[0] == '.') ? 0 : static_cast<long>(newDotPos);
+                    newCursorRelPos = baseOffset - g_dragState.initialCursorAnchorOffset;
+                }
             }
             else {
                 newCursorRelPos = static_cast<long>(newValueStr.length()) - g_dragState.initialCursorAnchorOffset;
@@ -1373,7 +1456,6 @@ namespace LivePT {
             g_dragState.lastValue = g_dragState.newValue;
         }
     }
-
 
 
     inline void HandleMouseDrag(const POINT& pt, bool ctrl, bool shift) {
@@ -1423,7 +1505,6 @@ namespace LivePT {
         }
 
         EndUndoTransaction();
-        SaveActiveDocument();
 
         g_dragState.isDragging = false;
         g_dragState.isProportionalStructDrag = false;
