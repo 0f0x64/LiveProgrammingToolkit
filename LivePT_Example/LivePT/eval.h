@@ -212,6 +212,7 @@ namespace LivePT {
     };
     
     inline std::vector<StructMemberDesc> LookupStructMembersFromParams(const std::string& typeNameStr) {
+        // 1. Очищаем имя искомого типа
         std::string cleanName = typeNameStr;
         cleanName.erase(0, cleanName.find_first_not_of(" \t\r\n."));
         cleanName.erase(cleanName.find_last_not_of(" \t\r\n") + 1);
@@ -219,22 +220,31 @@ namespace LivePT {
         if (cleanName.rfind("struct ", 0) == 0) cleanName.erase(0, 7);
         if (cleanName.rfind("class ", 0) == 0) cleanName.erase(0, 6);
 
+        // 2. Ищем в глобальном реестре схем (точный поиск по map)
         auto& schemaRegistry = GetGlobalTypeSchemaRegistry();
         auto itSchema = schemaRegistry.find(cleanName);
         if (itSchema != schemaRegistry.end()) {
             return itSchema->second;
         }
 
+        // 3. Ищем в зарегистрированных параметрах рантайма
         for (const auto& p : paramDesc) {
             if (p.structInfo.isStruct) {
                 std::string pTypeName = p.value.type().name();
-                if (pTypeName.find(cleanName) != std::string::npos) {
+
+                // Очищаем префиксы рантайм-типа для честного сравнения
+                if (pTypeName.rfind("struct ", 0) == 0) pTypeName.erase(0, 7);
+                if (pTypeName.rfind("class ", 0) == 0) pTypeName.erase(0, 6);
+
+                // ИСПРАВЛЕНИЕ: строгое равенство вместо .find()
+                if (pTypeName == cleanName) {
                     return p.structInfo.members;
                 }
             }
         }
         return std::vector<StructMemberDesc>();
     }
+
 
     inline std::vector<std::string> SplitByOuterCommas(const std::string& input) {
         std::vector<std::string> resTokens;
@@ -384,20 +394,10 @@ namespace LivePT {
             char* fieldAddress = byteBase + member->offset;
             DWORD currentAbsoluteFieldOffset = absoluteBaseOffset + member->offset;
 
-            std::string cleanTypeName = member->typeName;
-            // Очищаем от лишних пробелов, если они есть
-            cleanTypeName.erase(0, cleanTypeName.find_first_not_of(" \t\r\n"));
-            cleanTypeName.erase(cleanTypeName.find_last_not_of(" \t\r\n") + 1);
-
-            bool isPrimitive = (cleanTypeName == "float" || cleanTypeName == "int" ||
-                cleanTypeName == "bool" || cleanTypeName == "double" ||
-                cleanTypeName == "char" || cleanTypeName == "unsigned char" ||
-                cleanTypeName == "long" || cleanTypeName == "unsigned int");
-
             bool isPureEnumField = (valueStr.find("::") != std::string::npos) && (valueStr.find('{') == std::string::npos);
 
             // ДОБАВЛЯЕМ ПРОВЕРКУ !isPrimitive
-            if (!isPureEnumField && !isPrimitive && !LivePT::LookupStructMembersFromParams(member->typeName).empty()) {
+            if (!isPureEnumField && !LivePT::LookupStructMembersFromParams(member->typeName).empty()) {
                 size_t openB = valueStr.find('{');
                 size_t closeB = valueStr.rfind('}');
                 if (openB == std::string::npos) openB = valueStr.find('(');

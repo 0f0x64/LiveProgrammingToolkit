@@ -244,7 +244,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         Draw::SetRenderTarget((TexList::rt::mainRT), 0);
         Draw::Clear(eval(color4{ 0.0f,0.0f,0.0f,1.0f }));
         
-        Shaders::ps::sprite::params = { eval(float4{ 0.,0.70,0.1,1.0 }) };
+        Shaders::ps::sprite::params = { eval(float4{ 0.5,0.0,0.1,1.0 }) };
         if (Shaders::PS[0].params == NULL)
         {
             ConstBuf::Create(Shaders::PS[0].params, sizeof(Shaders::ps::sprite::params));
