@@ -384,9 +384,20 @@ namespace LivePT {
             char* fieldAddress = byteBase + member->offset;
             DWORD currentAbsoluteFieldOffset = absoluteBaseOffset + member->offset;
 
+            std::string cleanTypeName = member->typeName;
+            // Очищаем от лишних пробелов, если они есть
+            cleanTypeName.erase(0, cleanTypeName.find_first_not_of(" \t\r\n"));
+            cleanTypeName.erase(cleanTypeName.find_last_not_of(" \t\r\n") + 1);
+
+            bool isPrimitive = (cleanTypeName == "float" || cleanTypeName == "int" ||
+                cleanTypeName == "bool" || cleanTypeName == "double" ||
+                cleanTypeName == "char" || cleanTypeName == "unsigned char" ||
+                cleanTypeName == "long" || cleanTypeName == "unsigned int");
+
             bool isPureEnumField = (valueStr.find("::") != std::string::npos) && (valueStr.find('{') == std::string::npos);
 
-            if (!isPureEnumField && !LivePT::LookupStructMembersFromParams(member->typeName).empty()) {
+            // ДОБАВЛЯЕМ ПРОВЕРКУ !isPrimitive
+            if (!isPureEnumField && !isPrimitive && !LivePT::LookupStructMembersFromParams(member->typeName).empty()) {
                 size_t openB = valueStr.find('{');
                 size_t closeB = valueStr.rfind('}');
                 if (openB == std::string::npos) openB = valueStr.find('(');
