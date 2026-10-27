@@ -2,6 +2,8 @@ namespace Shaders {
 
 	#define shadersPath "../LivePT_Example/shaders"
 
+	#include "../LivePT_Example/shaders/shadersList.h"
+
 //#if EditMode
 //	#include "generated\uiShaderMargin.h"
 //#endif
@@ -11,13 +13,7 @@ namespace Shaders {
 	const char VertexShaderModel[] = "vs_4_1";
 	const char PixelShaderModel[] = "ps_4_1";
 
-	const char* vsList[] = {
-		"sprite"
-	};
 
-	const char* psList[] = {
-		"sprite"
-	};
 
 
 	//#include "shaderStructWrapMacro.h"

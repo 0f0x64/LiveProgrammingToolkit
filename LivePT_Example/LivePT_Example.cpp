@@ -242,10 +242,20 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         Rasterizer::Cull(cullmode::back);
 
         Draw::SetRenderTarget(eval(TexList::rt::mainRT), 0);
-        Draw::Clear(eval(color4{ 0.51,0.09,0.14,0 }));
+        Draw::Clear(eval(color4{ 0.4,0.5,0.5,1.0 }));
+        
+        Shaders::ps::sprite::params = { eval(float4{ 0.1,0.1,0.1,1.0 }) };
+        if (Shaders::PS[0].params == NULL)
+        {
+            ConstBuf::Create(Shaders::PS[0].params, sizeof(Shaders::ps::sprite::params));
+        }
+        context->UpdateSubresource(dx11::Shaders::PS[0].params, 0, NULL, &Shaders::ps::sprite::params, 0, 0);
+        context->PSSetConstantBuffers(0, 1, &dx11::Shaders::PS[0].params);
+
         Shaders::pShader(0);
         Shaders::vShader(0);
         Draw::NullDrawer(1, 1);
+
         Draw::Present();
 
         LivePT::ProcessEdit();// don't forget this call
@@ -254,45 +264,3 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
     return 0;
 }
-
-// 1. Превращаем типы ресурсов в анонимный union, где переменная станет битовым полем
-#define Texture2D             struct _dummy_t { int : 0; } _dummy_inst; int
-#define SamplerState          struct _dummy_s { int : 0; } _dummy_inst; int
-
-// 2. Универсальный макрос register, который превращает двоеточие в тернарный оператор.
-// Для текстур: "int screen = 1 ? 0 : 0;" — идеальный C++ код.
-#define register(x)           = 1 ? 0 : 0
-
-// 3. Чтобы макрос register со знаком '=' не сломал cbuffer, 
-// мы переопределяем cbuffer как макрос с аргументом params.
-// Он сам "съедает" двоеточие, слово register и регистр, оставляя ЧИСТУЮ структуру!
-#define cbuffer(name)         struct alignas(16) name _buf_dummy
-
-
-Texture2D screen : register(t0);
-//SamplerState sam1 : register(s0);
-
-cbuffer params : register(b0)
-{
-    float hilight;
-};
-
-void c()
-{
-    params p;
-    p.hilight = 0;
-}
-
-/*struct VS_OUTPUT_POS_UV
-{
-    float4 pos : SV_POSITION;
-    float2 uv : TEXCOORD0;
-};
-
-float4 PS(VS_OUTPUT_POS_UV input, bool isFrontFace : SV_IsFrontFace) : SV_Target
-{
-    //float4 c = screen.SampleLevel(sam1,input.uv,0);
-    //return float4(c.rgb,1);
-    return float4(1 - 3.95 * length(input.uv - .5),0,0,3);
-
-}*/
