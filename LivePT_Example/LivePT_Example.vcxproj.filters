@@ -22,6 +22,15 @@
     <Filter Include="Source Files\dx11">
       <UniqueIdentifier>{cc715870-566d-40c5-96e1-f33f66134dbf}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\shaders">
+      <UniqueIdentifier>{48f3a578-92f2-4ce5-a6ba-ffc838012967}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\shaders\vs">
+      <UniqueIdentifier>{cb35afad-4aae-4347-94c4-164ab6d44c40}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\shaders\ps">
+      <UniqueIdentifier>{23e347ac-06ea-4c1e-b751-f0418f96041d}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="framework.h">
@@ -129,10 +138,13 @@
     <ClInclude Include="texturesList.h">
       <Filter>Source Files</Filter>
     </ClInclude>
-    <ClInclude Include="dx11\TexturesResBP.h">
-      <Filter>Source Files</Filter>
-    </ClInclude>
     <ClInclude Include="dx11\types.h">
+      <Filter>Source Files\dx11</Filter>
+    </ClInclude>
+    <ClInclude Include="dx11\TexturesResBP.h">
+      <Filter>Source Files\dx11</Filter>
+    </ClInclude>
+    <ClInclude Include="dx11\shaderStructWrapMacro.h">
       <Filter>Source Files\dx11</Filter>
     </ClInclude>
   </ItemGroup>
@@ -155,7 +167,11 @@
     </Image>
   </ItemGroup>
   <ItemGroup>
-    <None Include="shaders\ps\sprite.shader" />
-    <None Include="shaders\vs\sprite.shader" />
+    <None Include="shaders\ps\sprite.shader">
+      <Filter>Source Files\shaders\ps</Filter>
+    </None>
+    <None Include="shaders\vs\sprite.shader">
+      <Filter>Source Files\shaders\vs</Filter>
+    </None>
   </ItemGroup>
 </Project>

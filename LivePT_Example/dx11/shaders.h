@@ -20,6 +20,9 @@ namespace Shaders {
 	};
 
 
+	//#include "shaderStructWrapMacro.h"
+	//#include "../shaders/vs/sprite.shader"
+
 	#if !EditMode
 
 //	#include "..\generated\processedShaders.h"

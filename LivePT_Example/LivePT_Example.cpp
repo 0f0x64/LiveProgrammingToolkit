@@ -255,3 +255,44 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     return 0;
 }
 
+// 1. Превращаем типы ресурсов в анонимный union, где переменная станет битовым полем
+#define Texture2D             struct _dummy_t { int : 0; } _dummy_inst; int
+#define SamplerState          struct _dummy_s { int : 0; } _dummy_inst; int
+
+// 2. Универсальный макрос register, который превращает двоеточие в тернарный оператор.
+// Для текстур: "int screen = 1 ? 0 : 0;" — идеальный C++ код.
+#define register(x)           = 1 ? 0 : 0
+
+// 3. Чтобы макрос register со знаком '=' не сломал cbuffer, 
+// мы переопределяем cbuffer как макрос с аргументом params.
+// Он сам "съедает" двоеточие, слово register и регистр, оставляя ЧИСТУЮ структуру!
+#define cbuffer(name)         struct alignas(16) name _buf_dummy
+
+
+Texture2D screen : register(t0);
+//SamplerState sam1 : register(s0);
+
+cbuffer params : register(b0)
+{
+    float hilight;
+};
+
+void c()
+{
+    params p;
+    p.hilight = 0;
+}
+
+/*struct VS_OUTPUT_POS_UV
+{
+    float4 pos : SV_POSITION;
+    float2 uv : TEXCOORD0;
+};
+
+float4 PS(VS_OUTPUT_POS_UV input, bool isFrontFace : SV_IsFrontFace) : SV_Target
+{
+    //float4 c = screen.SampleLevel(sam1,input.uv,0);
+    //return float4(c.rgb,1);
+    return float4(1 - 3.95 * length(input.uv - .5),0,0,3);
+
+}*/

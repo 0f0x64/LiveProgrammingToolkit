@@ -156,6 +156,7 @@
     <ClInclude Include="dx11\draw.h" />
     <ClInclude Include="dx11\dx.h" />
     <ClInclude Include="dx11\gltfAnimation.h" />
+    <ClInclude Include="dx11\shaderStructWrapMacro.h" />
     <ClInclude Include="dx11\types.h" />
     <ClInclude Include="dx11\IA.h" />
     <ClInclude Include="dx11\rasterizer.h" />
