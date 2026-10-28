@@ -147,6 +147,12 @@
     <ClInclude Include="shaders\shadersList.h">
       <Filter>Source Files\shaders</Filter>
     </ClInclude>
+    <ClInclude Include="shaders\psList.h">
+      <Filter>Source Files\shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="shaders\vsList.h">
+      <Filter>Source Files\shaders</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="LivePT_Example.cpp">
@@ -175,6 +181,12 @@
     </None>
     <None Include="dx11\createShaderList.js">
       <Filter>Source Files\dx11</Filter>
+    </None>
+    <None Include="shaders\ps\spriteTex.shader">
+      <Filter>Source Files\shaders\ps</Filter>
+    </None>
+    <None Include="shaders\vs\spriteTex.shader">
+      <Filter>Source Files\shaders\vs</Filter>
     </None>
   </ItemGroup>
 </Project>

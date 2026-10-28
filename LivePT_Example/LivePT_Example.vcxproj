@@ -94,6 +94,9 @@
     <Manifest>
       <EnableSegmentHeap>true</EnableSegmentHeap>
     </Manifest>
+    <PreBuildEvent>
+      <Command>%SystemRoot%\System32\cscript.exe //NoLogo "$(ProjectDir)dx11/createShaderList.js"</Command>
+    </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
@@ -113,6 +116,9 @@
     <Manifest>
       <EnableSegmentHeap>true</EnableSegmentHeap>
     </Manifest>
+    <PreBuildEvent>
+      <Command>%SystemRoot%\System32\cscript.exe //NoLogo "$(ProjectDir)dx11/createShaderList.js"</Command>
+    </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
@@ -132,7 +138,7 @@
       <EnableSegmentHeap>true</EnableSegmentHeap>
     </Manifest>
     <PreBuildEvent>
-      <Command>cscript //NoLogo "$(ProjectDir)dx11/createShaderList.js"</Command>
+      <Command>%SystemRoot%\System32\cscript.exe //NoLogo "$(ProjectDir)dx11/createShaderList.js"</Command>
     </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -154,7 +160,7 @@
       <EnableSegmentHeap>true</EnableSegmentHeap>
     </Manifest>
     <PreBuildEvent>
-      <Command>cscript //NoLogo "$(ProjectDir)dx11/createShaderList.js"</Command>
+      <Command>%SystemRoot%\System32\cscript.exe //NoLogo "$(ProjectDir)dx11/createShaderList.js"</Command>
     </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -190,7 +196,9 @@
     <ClInclude Include="LivePT\windowManagement.h" />
     <ClInclude Include="LivePT_Example.h" />
     <ClInclude Include="Resource.h" />
+    <ClInclude Include="shaders\psList.h" />
     <ClInclude Include="shaders\shadersList.h" />
+    <ClInclude Include="shaders\vsList.h" />
     <ClInclude Include="targetver.h" />
     <ClInclude Include="texturesList.h" />
     <ClInclude Include="Widgets\angle.h" />
@@ -210,7 +218,9 @@
   <ItemGroup>
     <None Include="dx11\createShaderList.js" />
     <None Include="shaders\ps\sprite.shader" />
+    <None Include="shaders\ps\spriteTex.shader" />
     <None Include="shaders\vs\sprite.shader" />
+    <None Include="shaders\vs\spriteTex.shader" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

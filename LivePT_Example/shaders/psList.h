@@ -1,0 +1,2 @@
+shader(sprite)
+shader(spriteTex)

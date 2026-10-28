@@ -245,16 +245,16 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         Draw::SetRenderTarget(eval(TexList::rt::mainRT), 0);
         Draw::Clear(eval(color4{ 0.0f,0.0f,0.0f,1.0f }));
         
-        Shaders::ps::sprite::params = { eval(float4{ 1.8,0.0,0.1,1.0 }) };
-        if (Shaders::PS[0].params == NULL)
+        Shaders::ps::sprite::params = { eval(float4{ 1.2,0.0,0.1,1.0 }) };
+        if (Shaders::PS[(int)Shaders::pixel::sprite].params == NULL)
         {
-            ConstBuf::Create(Shaders::PS[0].params, sizeof(Shaders::ps::sprite::params));
+            ConstBuf::Create(Shaders::PS[(int)Shaders::pixel::sprite].params, sizeof(Shaders::ps::sprite::params));
         }
-        context->UpdateSubresource(dx11::Shaders::PS[0].params, 0, NULL, &Shaders::ps::sprite::params, 0, 0);
-        context->PSSetConstantBuffers(0, 1, &dx11::Shaders::PS[0].params);
+        context->UpdateSubresource(dx11::Shaders::PS[(int)Shaders::pixel::sprite].params, 0, NULL, &Shaders::ps::sprite::params, 0, 0);
+        context->PSSetConstantBuffers(0, 1, &dx11::Shaders::PS[(int)Shaders::pixel::sprite].params);
 
-        Shaders::pShader(0);
-        Shaders::vShader(0);
+        Shaders::vShader((int)Shaders::vertex::sprite);
+        Shaders::pShader((int)Shaders::pixel::sprite);
         Draw::NullDrawer(1, 1);
 
         Draw::Present();

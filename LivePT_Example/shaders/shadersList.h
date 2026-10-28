@@ -23,12 +23,3 @@ namespace ps {
 	}
 
 }
-
-
-const char* vsList[] = {
-	"sprite"
-};
-
-const char* psList[] = {
-	"sprite"
-};

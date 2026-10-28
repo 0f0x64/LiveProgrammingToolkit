@@ -8,7 +8,7 @@ namespace Shaders {
 //	#include "generated\uiShaderMargin.h"
 //#endif
 
-//	#include "dx11\shadersReflection.h"
+	#include "shadersReflection.h"
 
 	const char VertexShaderModel[] = "vs_4_1";
 	const char PixelShaderModel[] = "ps_4_1";

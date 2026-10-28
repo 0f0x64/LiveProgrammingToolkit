@@ -1,22 +1,24 @@
-	#define Shader(VariableName) VariableName,
+	#define shader(VariableName) VariableName,
 
-	enum vertex {
-		#include "generated\vsList.h"
+	enum class vertex {
+		#include "..\shaders\vsList.h"
 	};
-	enum pixel {
-		#include "generated\psList.h"
+	enum class pixel {
+		#include "..\shaders\psList.h"
 	};
-
+	
 
 	#if EditMode
 
-		#undef Shader
-		#define Shader(VariableName) #VariableName ,
+		#undef shader
+		#define shader(VariableName) #VariableName ,
 		const char* vsList[] = {
-			#include "generated\vsList.h"
+			#include "..\shaders\vsList.h"
 		};
 		const char* psList[] = {
-			#include "generated\psList.h"
+			#include "..\shaders\psList.h"
 		};
+
+		#undef shader
 
 	#endif
