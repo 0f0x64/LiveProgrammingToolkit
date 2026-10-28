@@ -145,7 +145,7 @@
       <Filter>Source Files\dx11</Filter>
     </ClInclude>
     <ClInclude Include="shaders\shadersList.h">
-      <Filter>Header Files</Filter>
+      <Filter>Source Files\shaders</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -172,6 +172,9 @@
     </None>
     <None Include="shaders\vs\sprite.shader">
       <Filter>Source Files\shaders\vs</Filter>
+    </None>
+    <None Include="dx11\createShaderList.js">
+      <Filter>Source Files\dx11</Filter>
     </None>
   </ItemGroup>
 </Project>

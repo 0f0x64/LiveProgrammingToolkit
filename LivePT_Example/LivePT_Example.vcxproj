@@ -131,6 +131,9 @@
     <Manifest>
       <EnableSegmentHeap>true</EnableSegmentHeap>
     </Manifest>
+    <PreBuildEvent>
+      <Command>cscript //NoLogo "$(ProjectDir)dx11/createShaderList.js"</Command>
+    </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -150,6 +153,9 @@
     <Manifest>
       <EnableSegmentHeap>true</EnableSegmentHeap>
     </Manifest>
+    <PreBuildEvent>
+      <Command>cscript //NoLogo "$(ProjectDir)dx11/createShaderList.js"</Command>
+    </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="dx11\audio.h" />
@@ -202,6 +208,7 @@
     <Image Include="small.ico" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="dx11\createShaderList.js" />
     <None Include="shaders\ps\sprite.shader" />
     <None Include="shaders\vs\sprite.shader" />
   </ItemGroup>

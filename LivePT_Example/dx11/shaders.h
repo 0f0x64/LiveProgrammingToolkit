@@ -2,7 +2,7 @@ namespace Shaders {
 
 	#define shadersPath "../LivePT_Example/shaders"
 
-	#include "../LivePT_Example/shaders/shadersList.h"
+	#include "../shaders/shadersList.h"
 
 //#if EditMode
 //	#include "generated\uiShaderMargin.h"
