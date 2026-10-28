@@ -65,79 +65,47 @@ namespace LivePT {
         return true;
     }
 
-    struct LptEnumContext {
+  
+    
+    // Добавим структуру для контекста поиска по суффиксу
+    struct LptEnumSuffixContext {
         HANDLE hProcess;
         DWORD64 moduleBase;
-        const wchar_t* targetEnumName;
-        std::vector<std::string>* outNames;
-        std::vector<int>* outValues;
+        std::wstring targetSuffix;       // Что ищем (например, L"MyEnum")
+        std::wstring bestMatchedFullName;// Лучшее найденное полное имя
+        DWORD bestTypeIndex = 0;         // Индекс лучшего типа
     };
 
-    static BOOL CALLBACK LptEnumTypesCallback(PSYMBOL_INFOW pSymInfo, ULONG SymbolSize, PVOID UserContext) {
+    static BOOL CALLBACK LptEnumSuffixCallback(PSYMBOL_INFOW pSymInfo, ULONG SymbolSize, PVOID UserContext) {
         if (!pSymInfo || !UserContext) return TRUE;
+        LptEnumSuffixContext* ctx = reinterpret_cast<LptEnumSuffixContext*>(UserContext);
 
-        LptEnumContext* ctx = reinterpret_cast<LptEnumContext*>(UserContext);
-        std::wstring pSymNameW(pSymInfo->Name);
+        std::wstring currentName(pSymInfo->Name);
+        if (currentName.find(L"lambda") != std::wstring::npos) return TRUE;
 
-        if (pSymNameW.find(L"lambda") != std::wstring::npos || pSymNameW.find(L"anonymous-namespace") != std::wstring::npos) {
-            return TRUE;
-        }
-        if (pSymNameW.rfind(L"enum ", 0) == 0)  pSymNameW.erase(0, 5);
-        if (pSymNameW.rfind(L"class ", 0) == 0) pSymNameW.erase(0, 6);
+        // Очищаем префиксы PDB
+        if (currentName.rfind(L"enum ", 0) == 0)  currentName.erase(0, 5);
+        if (currentName.rfind(L"class ", 0) == 0) currentName.erase(0, 6);
 
-        // Чистим пробелы в имени из PDB
-        pSymNameW.erase(0, pSymNameW.find_first_not_of(L" \t\r\n"));
-        pSymNameW.erase(pSymNameW.find_last_not_of(L" \t\r\n") + 1);
+        // Проверяем, совпадает ли имя полностью или заканчивается ли на ::MyEnum
+        bool isExact = (currentName == ctx->targetSuffix);
+        std::wstring suffixToCheck = L"::" + ctx->targetSuffix;
+        bool isSuffix = (currentName.length() >= suffixToCheck.length() &&
+            currentName.compare(currentName.length() - suffixToCheck.length(), suffixToCheck.length(), suffixToCheck) == 0);
 
-        if (pSymNameW == ctx->targetEnumName) {
-            DWORD childrenCount = 0;
-            if (SymGetTypeInfo(ctx->hProcess, ctx->moduleBase, pSymInfo->TypeIndex, TI_GET_CHILDRENCOUNT, &childrenCount) && childrenCount > 0) {
-
-                ULONG mallocSize = sizeof(TI_FINDCHILDREN_PARAMS) + (childrenCount * sizeof(ULONG));
-                TI_FINDCHILDREN_PARAMS* pChildren = (TI_FINDCHILDREN_PARAMS*)malloc(mallocSize);
-                if (pChildren) {
-                    memset(pChildren, 0, mallocSize);
-                    pChildren->Count = childrenCount;
-
-                    if (SymGetTypeInfo(ctx->hProcess, ctx->moduleBase, pSymInfo->TypeIndex, TI_FINDCHILDREN, pChildren)) {
-                        for (DWORD i = 0; i < pChildren->Count; i++) {
-                            ULONG childIndex = pChildren->ChildId[i];
-
-                            wchar_t* pChildName = nullptr;
-                            SymGetTypeInfo(ctx->hProcess, ctx->moduleBase, childIndex, TI_GET_SYMNAME, &pChildName);
-
-                            VARIANT varValue;
-                            VariantInit(&varValue);
-                            SymGetTypeInfo(ctx->hProcess, ctx->moduleBase, childIndex, TI_GET_VALUE, &varValue);
-
-                            int extractedValue = 0;
-                            if (varValue.vt == VT_I4 || varValue.vt == VT_INT) {
-                                extractedValue = varValue.lVal;
-                            }
-                            else if (varValue.vt == VT_UI4 || varValue.vt == VT_UINT) {
-                                extractedValue = static_cast<int>(varValue.ulVal);
-                            }
-                            else {
-                                int* rawDataPtr = reinterpret_cast<int*>(&varValue.lVal);
-                                extractedValue = *rawDataPtr;
-                            }
-
-                            if (pChildName) {
-                                ctx->outNames->push_back(DbgHelpWideToUtf8(pChildName));
-                                LocalFree(pChildName);
-                            }
-                            ctx->outValues->push_back(extractedValue);
-                            VariantClear(&varValue);
-                        }
-                    }
-                    free(pChildren);
-                }
+        if (isExact || isSuffix) {
+            // Выбираем имя с наименьшей длиной (наименьшее смещение / самый близкий namespace)
+            if (ctx->bestTypeIndex == 0 || currentName.length() < ctx->bestMatchedFullName.length()) {
+                ctx->bestMatchedFullName = currentName;
+                ctx->bestTypeIndex = pSymInfo->TypeIndex;
             }
-            return FALSE;
+            // Если нашли абсолютно точное совпадение без namespace, можно тормозить перебор
+            if (isExact) return FALSE;
         }
         return TRUE;
     }
 
+    // Теперь обновляем сам метод LoadEnumMetadataDirect
     inline bool LoadEnumMetadataDirect(const wchar_t* targetEnumName, std::vector<std::string>& outNames, std::vector<int>& outValues) {
         if (!EnsureDbgHelpInitialized()) return false;
 
@@ -145,70 +113,71 @@ namespace LivePT {
         DWORD64 moduleBase = g_DbgHelpGlobalModuleBase;
 
         std::wstring cleanEnumName(targetEnumName);
-
-        // 1. Очищаем имя от мусора typeid
+        // (Ваш код очистки префиксов enum/class оставляем без изменений...)
         size_t enumWord = cleanEnumName.find(L"enum ");
         if (enumWord != std::wstring::npos) cleanEnumName.erase(enumWord, 5);
         size_t classWord = cleanEnumName.find(L"class ");
         if (classWord != std::wstring::npos) cleanEnumName.erase(classWord, 6);
-
         cleanEnumName.erase(0, cleanEnumName.find_first_not_of(L" \t\r\n"));
         cleanEnumName.erase(cleanEnumName.find_last_not_of(L" \t\r\n") + 1);
 
-        // 2. СТРАТЕГИЯ А: Прямой поиск скрытого типа через SymFromNameW
-        // Выделяем буфер под структуру SYMBOL_INFOW + место для широкого имени символа
+        DWORD targetTypeIndex = 0;
+
+        // 1. СТРАТЕГИЯ А: Быстрый точный поиск
         ULONG64 buffer[(sizeof(SYMBOL_INFOW) + MAX_SYM_NAME * sizeof(WCHAR) + sizeof(ULONG64) - 1) / sizeof(ULONG64)];
         PSYMBOL_INFOW pSymbol = (PSYMBOL_INFOW)buffer;
         pSymbol->SizeOfStruct = sizeof(SYMBOL_INFOW);
         pSymbol->MaxNameLen = MAX_SYM_NAME;
 
-        // ИСПРАВЛЕНИЕ: Вызываем явно SymFromNameW и передаем cleanEnumName.c_str() напрямую без конвертации в ANSI
         if (SymFromNameW(hProcess, cleanEnumName.c_str(), pSymbol)) {
-            DWORD childrenCount = 0;
-
-            if (SymGetTypeInfo(hProcess, moduleBase, pSymbol->TypeIndex, TI_GET_CHILDRENCOUNT, &childrenCount) && childrenCount > 0) {
-                ULONG mallocSize = sizeof(TI_FINDCHILDREN_PARAMS) + (childrenCount * sizeof(ULONG));
-                TI_FINDCHILDREN_PARAMS* pChildren = (TI_FINDCHILDREN_PARAMS*)malloc(mallocSize);
-                if (pChildren) {
-                    memset(pChildren, 0, mallocSize);
-                    pChildren->Count = childrenCount;
-
-                    if (SymGetTypeInfo(hProcess, moduleBase, pSymbol->TypeIndex, TI_FINDCHILDREN, pChildren)) {
-                        for (DWORD i = 0; i < pChildren->Count; i++) {
-                            ULONG childIndex = pChildren->ChildId[i];
-                            wchar_t* pChildName = nullptr;
-                            SymGetTypeInfo(hProcess, moduleBase, childIndex, TI_GET_SYMNAME, &pChildName);
-
-                            VARIANT varValue;
-                            VariantInit(&varValue);
-                            SymGetTypeInfo(hProcess, moduleBase, childIndex, TI_GET_VALUE, &varValue);
-
-                            int extractedValue = 0;
-                            if (varValue.vt == VT_I4 || varValue.vt == VT_INT) extractedValue = varValue.lVal;
-                            else if (varValue.vt == VT_UI4 || varValue.vt == VT_UINT) extractedValue = static_cast<int>(varValue.ulVal);
-                            else extractedValue = *reinterpret_cast<int*>(&varValue.lVal);
-
-                            if (pChildName) {
-                                outNames.push_back(DbgHelpWideToUtf8(pChildName));
-                                LocalFree(pChildName);
-                            }
-                            outValues.push_back(extractedValue);
-                            VariantClear(&varValue);
-                        }
-                    }
-                    free(pChildren);
-                    if (!outNames.empty()) return true; // Если элементы найдены — выходим!
-                }
+            targetTypeIndex = pSymbol->TypeIndex;
+        }
+        // 2. СТРАТЕГИЯ Б: Фолбек на поиск по суффиксу с наименьшей длиной (работает при using namespace)
+        else {
+            LptEnumSuffixContext suffixCtx = { hProcess, moduleBase, cleanEnumName, L"", 0 };
+            SymEnumTypesW(hProcess, moduleBase, LptEnumSuffixCallback, &suffixCtx);
+            if (suffixCtx.bestTypeIndex != 0) {
+                targetTypeIndex = suffixCtx.bestTypeIndex;
             }
         }
 
-        // 3. СТРАТЕГИЯ Б: Откат к глобальному перебору, если макросный тип спрятан слишком глубоко
-        LptEnumContext ctx = { hProcess, moduleBase, cleanEnumName.c_str(), &outNames, &outValues };
-        SymEnumTypesW(hProcess, moduleBase, LptEnumTypesCallback, &ctx);
+        if (targetTypeIndex == 0) return false;
 
+        // 3. Вытаскиваем дочерние элементы (Extract Children)
+        DWORD childrenCount = 0;
+        if (SymGetTypeInfo(hProcess, moduleBase, targetTypeIndex, TI_GET_CHILDRENCOUNT, &childrenCount) && childrenCount > 0) {
+            ULONG mallocSize = sizeof(TI_FINDCHILDREN_PARAMS) + (childrenCount * sizeof(ULONG));
+            TI_FINDCHILDREN_PARAMS* pChildren = (TI_FINDCHILDREN_PARAMS*)malloc(mallocSize);
+            if (pChildren) {
+                memset(pChildren, 0, mallocSize);
+                pChildren->Count = childrenCount;
+                if (SymGetTypeInfo(hProcess, moduleBase, targetTypeIndex, TI_FINDCHILDREN, pChildren)) {
+                    for (DWORD i = 0; i < pChildren->Count; i++) {
+                        ULONG childIndex = pChildren->ChildId[i];
+                        wchar_t* pChildName = nullptr;
+                        SymGetTypeInfo(hProcess, moduleBase, childIndex, TI_GET_SYMNAME, &pChildName);
+
+                        VARIANT varValue; VariantInit(&varValue);
+                        SymGetTypeInfo(hProcess, moduleBase, childIndex, TI_GET_VALUE, &varValue);
+
+                        int extractedValue = 0;
+                        if (varValue.vt == VT_I4 || varValue.vt == VT_INT) extractedValue = varValue.lVal;
+                        else if (varValue.vt == VT_UI4 || varValue.vt == VT_UINT) extractedValue = static_cast<int>(varValue.ulVal);
+                        else extractedValue = *reinterpret_cast<int*>(&varValue.lVal);
+
+                        if (pChildName) {
+                            outNames.push_back(DbgHelpWideToUtf8(pChildName));
+                            LocalFree(pChildName);
+                        }
+                        outValues.push_back(extractedValue);
+                        VariantClear(&varValue);
+                    }
+                }
+                free(pChildren);
+            }
+        }
         return !outNames.empty();
     }
-
 
 
 

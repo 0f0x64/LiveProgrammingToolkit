@@ -144,8 +144,8 @@
     <ClInclude Include="dx11\TexturesResBP.h">
       <Filter>Source Files\dx11</Filter>
     </ClInclude>
-    <ClInclude Include="dx11\shaderStructWrapMacro.h">
-      <Filter>Source Files\dx11</Filter>
+    <ClInclude Include="shaders\shadersList.h">
+      <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

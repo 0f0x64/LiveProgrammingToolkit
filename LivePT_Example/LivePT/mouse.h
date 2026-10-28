@@ -693,28 +693,37 @@ namespace LivePT {
         std::wstring enumTypeNameW = L"";
         long typeStartCol = tokenStart;
 
-        // Идем влево и собираем всю цепочку: Идентификаторы и двоеточия (::)
+        // Сценарий 1: Указан явный квалификатор типа (MyEnum::Value или Namespace::MyEnum::Value)
         if (tokenStart >= 2 && lineText[tokenStart - 1] == L':' && lineText[tokenStart - 2] == L':') {
             long currentPos = tokenStart - 2;
-
             while (currentPos > 0) {
-                // Пропускаем буквы, цифры и нижнее подчеркивание (часть имени неймспейса/типа)
                 if (iswalnum(lineText[currentPos - 1]) || lineText[currentPos - 1] == L'_') {
                     currentPos--;
                 }
-                // Или если перед нами еще одно двоеточие '::', и перед ним тоже идет валидный символ
                 else if (currentPos >= 2 && lineText[currentPos - 1] == L':' && lineText[currentPos - 2] == L':' &&
                     (iswalnum(lineText[currentPos - 3]) || lineText[currentPos - 3] == L'_')) {
                     currentPos -= 2;
                 }
-                else {
-                    break;
-                }
+                else break;
             }
 
             if (currentPos < tokenStart - 2) {
                 enumTypeNameW = lineText.substr(currentPos, (tokenStart - 2) - currentPos);
-                typeStartCol = currentPos; // Запоминаем точную позицию начала всей цепочки для замены текста
+                typeStartCol = currentPos;
+            }
+        }
+        // Сценарий 2: Квалификатора нет (просто "Value"). Используем геометрию рантайма!
+        else {
+            std::string normalizedPath = LivePT::NormalizePath(g_currentActiveFile.c_str());
+            int paramId = FindParamIdByStrictGeometry(normalizedPath, line, column);
+            if (paramId != -1 && paramDesc[paramId].enumInfo.isEnum) {
+                std::string rttiName = paramDesc[paramId].value.type().name();
+                // Очищаем RTTI префиксы
+                if (rttiName.rfind("enum ", 0) == 0) rttiName.erase(0, 5);
+                if (rttiName.rfind("class ", 0) == 0) rttiName.erase(0, 6);
+
+                enumTypeNameW = std::wstring(rttiName.begin(), rttiName.end());
+                typeStartCol = tokenStart; // Заменять будем только само значение "Value", не трогая левую часть
             }
         }
 
@@ -730,15 +739,24 @@ namespace LivePT {
         int newIndex = showEnum(parsedNames);
         if (newIndex >= 0 && newIndex < static_cast<int>(parsedNames.size())) {
             std::string pureName = parsedNames[newIndex];
-            std::string typePrefixA;
-            typePrefixA.reserve(enumTypeNameW.length());
-            for (wchar_t wc : enumTypeNameW) {
-                typePrefixA.push_back(static_cast<char>(wc));
+
+            // Удаляем из pureName пространства имен (если PDB вернул их внутри имени константы)
+            size_t lastColon = pureName.rfind("::");
+            if (lastColon != std::string::npos) {
+                pureName = pureName.substr(lastColon + 2);
             }
 
-            std::string newValueStr = typePrefixA + "::" + pureName;
+            std::string newValueStr;
+            // Если изначально был префикс типа в коде, сохраняем его стиль
+            if (typeStartCol < tokenStart) {
+                std::string typePrefixA = ConvertWStringToUtf8(enumTypeNameW);
+                newValueStr = typePrefixA + "::" + pureName;
+            }
+            else {
+                // Иначе пишем просто имя константы (так как активен using namespace)
+                newValueStr = pureName;
+            }
 
-            // Используем вычисленный ранее typeStartCol вместо старого цикла
             long visualStart = GetVisualColumn(lineText, typeStartCol);
             long visualEnd = GetVisualColumn(lineText, tokenEnd);
             long newCursorCol = visualStart + static_cast<long>(newValueStr.length());

@@ -241,7 +241,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         Depth::Depth(depthmode::off);
         Rasterizer::Cull(cullmode::back);
 
-        Draw::SetRenderTarget(eval(dx11::TexList::sprites::body), 0);
+        Draw::SetRenderTarget(eval(TexList::sprites::body), 0);
         Draw::SetRenderTarget(eval(TexList::rt::mainRT), 0);
         Draw::Clear(eval(color4{ 0.0f,0.0f,0.0f,1.0f }));
         
