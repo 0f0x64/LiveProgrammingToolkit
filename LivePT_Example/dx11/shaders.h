@@ -137,11 +137,9 @@ namespace Shaders {
 
 		void Init()
 		{
-//			vsCount = sizeof(vsList) / sizeof(const char*);
-//			psCount = sizeof(psList) / sizeof(const char*);
+			vsCount = sizeof(vsList) / sizeof(const char*);
+			psCount = sizeof(psList) / sizeof(const char*);
 
-			vsCount = 1;
-			psCount = 1;
 
 		#if shaderCompileOnDemand
 			firstRun = false;
@@ -270,34 +268,34 @@ namespace Shaders {
 
 	#endif
 
-	void vShader(unsigned int n)
+	void vShader(vertex n)
 	{
 	#if EditMode
-		if (!VS[n].pShader)
+		if (!VS[(int)n].pShader)
 		{
 			char fileName[255];
 			strcpy_s(fileName,255, "/vs/");
-			strcat_s(fileName,255, vsList[n]);
+			strcat_s(fileName,255, vsList[(int)n]);
 			strcat_s(fileName,255, shaderExtension);
-			CreateVS(n, fileName);
+			CreateVS((int)n, fileName);
 		}
 	#endif	
-		context->VSSetShader(VS[n].pShader, NULL, 0);
+		context->VSSetShader(VS[(int)n].pShader, NULL, 0);
 	}
 
-	void pShader(unsigned int n)
+	void pShader(pixel n)
 	{
 	#if EditMode
-			if (!PS[n].pShader)
+			if (!PS[(int)n].pShader)
 			{
 				char fileName[255];
 				strcpy_s(fileName,255, "/ps/");
-				strcat_s(fileName,255, psList[n]);
+				strcat_s(fileName,255, psList[(int)n]);
 				strcat_s(fileName,255, shaderExtension);
-				CreatePS(n, fileName);
+				CreatePS((int)n, fileName);
 			}
 	#endif
-		context->PSSetShader(PS[n].pShader, NULL, 0);
+		context->PSSetShader(PS[(int)n].pShader, NULL, 0);
 	}
 
 	void resetShader(unsigned int n)
@@ -310,17 +308,18 @@ namespace Shaders {
 
 //#include "generated\constBufReflect.h"
 
-/*
+
 void paramConstBufInit()
 {
+	#undef shader
 	int i = 0;
-	#define Shader(name) dx11::ConstBuf::Create(dx11::Shaders::VS[i].params, sizeof(dx11::vs::##name.params));i++;
-	#include "../generated/vsList.h"
+	#define shader(name) dx11::ConstBuf::Create(dx11::Shaders::VS[i].params, sizeof(dx11::Shaders::vs::name::params));i++;
+	#include "../shaders/vsList.h"
 
+	#undef shader
 	i = 0;
-	#define Shader(name) dx11::ConstBuf::Create(dx11::Shaders::PS[i].params, sizeof(dx11::ps::##name.params));i++;
-	#include "../generated/psList.h"
+	#define shader(name) dx11::ConstBuf::Create(Shaders::PS[i].params, sizeof(Shaders::ps::name::params));i++;
+	#include "../shaders/psList.h"
 }
 
 #undef Shader
-*/

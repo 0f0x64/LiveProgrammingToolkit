@@ -5,7 +5,5 @@ List(rt) {
 };
 
 List(sprites) {
-    Tex(head, tType::flat, tFormat::u8, 256, 256, false, false)
-    Tex(body, tType::flat, tFormat::u8, 256, 256, false, false)
-    Tex(body2, tType::flat, tFormat::u8, 256, 256, false, false)
+    Tex(spr1, tType::flat, tFormat::u8, 512, 512, false, false, "sprite.png")
 };

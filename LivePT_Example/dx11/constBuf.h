@@ -54,7 +54,7 @@ namespace ConstBuf
 
 	void Init()
 	{
-		//paramConstBufInit();
+		paramConstBufInit();
 
 		Create(buffer[(int)cBuffer::camera], sizeof(camera));
 		Create(buffer[(int)cBuffer::frame], sizeof(frame));

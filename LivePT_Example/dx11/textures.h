@@ -1,3 +1,8 @@
+#ifdef ExternalResourcesMode
+	#define STB_IMAGE_IMPLEMENTATION
+	#include "stb_image.h"
+#endif
+
 namespace Textures
 {
 
@@ -59,6 +64,7 @@ namespace Textures
 
 	void CreateTex(int i)
 	{
+
 		auto cTex = Texture[i];
 
 		FillTDesc(cTex);
@@ -69,7 +75,7 @@ namespace Textures
 			tdesc.ArraySize = 6;
 		}
 
-		HRESULT hr = device->CreateTexture2D(&tdesc, NULL, &Texture[i].pTexture);
+		HRESULT hr = device->CreateTexture2D(&tdesc, nullptr, &Texture[i].pTexture);
 
 		LogIfError("CreateTexture2D error");
 	}
@@ -164,7 +170,7 @@ namespace Textures
 		LogIfError("CreateShaderResourceView for Depth error\n");
 	}
 
-	void Create(int i, tType type, tFormat format, int width, int height, bool mipMaps, bool depth)
+	void Create(int i, tType type, tFormat format, int width, int height, bool mipMaps, bool depth, const char* fileName = NULL)
 	{
 		ZeroMemory(&tdesc, sizeof(tdesc));
 		ZeroMemory(&svDesc, sizeof(svDesc));
@@ -181,6 +187,55 @@ namespace Textures
 		{
 			CreateTex(i);
 			CreateShaderRes(i);
+
+			D3D11_SUBRESOURCE_DATA initData{};
+			D3D11_SUBRESOURCE_DATA* pInitData = nullptr;
+			unsigned char* imgData = nullptr;
+
+			auto cTex = Texture[i];
+			// Предполагаем, что у cTex есть поле filePath (например, std::string или std::wstring)
+			// и текстура не является кубической (для кубических карт логика загрузки сложнее)
+			if (fileName && cTex.type != tType::cube) {
+				int width = 0, height = 0, channels = 0;
+
+				// Загружаем PNG и принудительно приводим к 4 байтам на пиксель (RGBA)
+				stbi_set_flip_vertically_on_load(true);
+				imgData = stbi_load(fileName, &width, &height, &channels, 4);
+
+				if (imgData) {
+					// Корректируем описание текстуры под размеры файла
+					tdesc.Width = width;
+					tdesc.Height = height;
+					tdesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM; // Стандартный формат для PNG
+
+					tdesc.MipLevels = cTex.mipMaps ? (UINT)(_log2(max(width, height))) : 1;
+					// Настраиваем данные для передачи в GPU
+					initData.pSysMem = imgData;
+					initData.SysMemPitch = width * 4; // Ширина строки в байтах
+					initData.SysMemSlicePitch = 0;
+
+					pInitData = &initData;
+
+					context->UpdateSubresource(Texture[i].pTexture, 0, nullptr, imgData, tdesc.Width * 4, 0);
+
+					// 2. Генерируем остальные мип-уровни автоматически
+					// (Предполагается, что у вас есть ShaderResourceView для этой текстуры)
+					if (tdesc.MiscFlags & D3D11_RESOURCE_MISC_GENERATE_MIPS) {
+						context->GenerateMips(Texture[i].TextureResView);
+					}
+
+					stbi_image_free(imgData);
+				}
+				else {
+					Log("Failed to load PNG file from disk");
+				}
+			}
+
+			if (imgData) {
+
+			}
+
+
 			CreateRTView(i);
 		}
 
@@ -210,7 +265,7 @@ namespace Textures
 		context->CopyResource(Texture[(int)dst].pDepth, Texture[(int)src].pDepth);
 	}
 
-	void TextureToShader(int tex, unsigned int slot, targetshader tA = targetshader::both)
+	void TextureToShader(auto tex, unsigned int slot, targetshader tA = targetshader::both)
 	{
 		if (tA == targetshader::both || tA == targetshader::vertex)
 		{

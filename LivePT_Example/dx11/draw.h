@@ -3,7 +3,7 @@ namespace Draw
 	void SetViewport(int texId, int level = 0)
 	{
 		XMFLOAT2 size = Textures::Texture[texId].size;
-		float denom = powf(2, level);
+		float denom = powf(2, (float)level);
 
 		D3D11_VIEWPORT vp = {
 			.TopLeftX = 0,

@@ -153,6 +153,9 @@
     <ClInclude Include="shaders\vsList.h">
       <Filter>Source Files\shaders</Filter>
     </ClInclude>
+    <ClInclude Include="gAPI.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="LivePT_Example.cpp">

@@ -1,25 +1,42 @@
 namespace vs {
 
-	namespace sprite {
+    namespace sprite {
 
-		struct
-		{
-			float4 base_color;
-		} params;
+        struct
+        {
+        } params;
 
-	}
+    }
+
+    namespace spriteTex {
+
+        struct
+        {
+        } params;
+
+    }
 
 }
 
 namespace ps {
 
-	namespace sprite {
+    namespace sprite {
 
-		struct
-		{
-			float4 base_color;
-		} params;
+        struct
+        {
+            float4 base_color;
+        } params;
 
-	}
+    }
+
+    namespace spriteTex {
+
+        struct
+        {
+            float4 base_color;
+        } params;
+
+    }
 
 }
+

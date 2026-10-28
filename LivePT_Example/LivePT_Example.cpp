@@ -13,6 +13,7 @@ void recompileShader();
 // ---------------------- d3d renderer ------------------------
 #define EditMode true
 #define DebugMode true
+#define ExternalResourcesMode true
 #include "dx11/dx.h"
 // ------------------------------------------------------------
 
@@ -70,7 +71,7 @@ void recompileShader()
     
     getPathParts(LivePT::g_currentActiveFile, name, folder);
 
-    ::std::string rPath = "\/" + folder + "\/" + name + dx11::Shaders::shaderExtension;
+    ::std::string rPath = "/" + folder + "/" + name + dx11::Shaders::shaderExtension;
 
     // detect vertex/pixel shader and slot
     if (folder[0] == 'v')
@@ -237,25 +238,33 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         using namespace dx11;
 
         InputAssembler::IA(topology::triList);
-        Blend::Set(blendmode::on, blendop::add);
+        Blend::Set(blendmode::alpha, blendop::add);
         Depth::Depth(depthmode::off);
         Rasterizer::Cull(cullmode::back);
 
-        Draw::SetRenderTarget(eval(TexList::sprites::body), 0);
         Draw::SetRenderTarget(eval(TexList::rt::mainRT), 0);
         Draw::Clear(eval(color4{ 0.0f,0.0f,0.0f,1.0f }));
         
-        Shaders::ps::sprite::params = { eval(float4{ 1.2,0.0,0.1,1.0 }) };
-        if (Shaders::PS[(int)Shaders::pixel::sprite].params == NULL)
-        {
-            ConstBuf::Create(Shaders::PS[(int)Shaders::pixel::sprite].params, sizeof(Shaders::ps::sprite::params));
-        }
+        Textures::TextureToShader(TexList::sprites::spr1, 0, targetshader::pixel);
+        Sampler::Sampler(targetshader::pixel, 0, filter::linear, addr::wrap,addr::wrap);
+
+        Shaders::ps::sprite::params = { eval(float4{ 1.2f,0.0f,0.1f,1.0f }) };
         context->UpdateSubresource(dx11::Shaders::PS[(int)Shaders::pixel::sprite].params, 0, NULL, &Shaders::ps::sprite::params, 0, 0);
         context->PSSetConstantBuffers(0, 1, &dx11::Shaders::PS[(int)Shaders::pixel::sprite].params);
 
-        Shaders::vShader((int)Shaders::vertex::sprite);
-        Shaders::pShader((int)Shaders::pixel::sprite);
+        Shaders::vShader(Shaders::vertex::sprite);
+        Shaders::pShader(Shaders::pixel::sprite);
         Draw::NullDrawer(1, 1);
+
+
+        Shaders::ps::spriteTex::params = { eval(float4{ .2f,0.0f,01.1f,1.0f }) };
+        context->UpdateSubresource(dx11::Shaders::PS[(int)Shaders::pixel::spriteTex].params, 0, NULL, &Shaders::ps::spriteTex::params, 0, 0);
+        context->PSSetConstantBuffers(0, 1, &dx11::Shaders::PS[(int)Shaders::pixel::spriteTex].params);
+
+        Shaders::vShader(Shaders::vertex::spriteTex);
+        Shaders::pShader(Shaders::pixel::spriteTex);
+        Draw::NullDrawer(1, 1);
+
 
         Draw::Present();
 

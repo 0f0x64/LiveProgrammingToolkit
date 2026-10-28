@@ -183,6 +183,7 @@
     <ClInclude Include="dx11\textures.h" />
     <ClInclude Include="dx11\TexturesResBP.h" />
     <ClInclude Include="framework.h" />
+    <ClInclude Include="gAPI.h" />
     <ClInclude Include="LivePT\consistency.h" />
     <ClInclude Include="LivePT\DbgHelpRef.h" />
     <ClInclude Include="LivePT\dragOverlay.h" />
