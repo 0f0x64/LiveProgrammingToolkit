@@ -460,28 +460,50 @@ namespace LivePT {
                     }
 
                     if (!enumFound && member) {
-                        std::string cleanEnumName = member->typeName;
-                        if (cleanEnumName.rfind("enum ", 0) == 0)  cleanEnumName.erase(0, 5);
-                        if (cleanEnumName.rfind("class ", 0) == 0) cleanEnumName.erase(0, 6);
+                        // 1. Ищем, не загружали ли мы Раньше этот тип enum из PDB
+                        auto cacheIt = g_PdbEnumCache.find(member->typeName);
 
-                        std::wstring wEnumName(cleanEnumName.begin(), cleanEnumName.end());
-                        std::vector<std::string> parsedNames;
-                        std::vector<int> parsedValues;
+                        // Если еще не загружали — загружаем ОДИН раз и сохраняем в кэш
+                        if (cacheIt == g_PdbEnumCache.end()) {
+                            std::string cleanEnumName = member->typeName;
+                            if (cleanEnumName.rfind("enum ", 0) == 0) cleanEnumName.erase(0, 5);
+                            if (cleanEnumName.rfind("class ", 0) == 0) cleanEnumName.erase(0, 6);
 
-                        if (LivePT::LoadEnumMetadataDirect(wEnumName.c_str(), parsedNames, parsedValues)) {
-                            for (size_t eIdx = 0; eIdx < parsedNames.size(); ++eIdx) {
-                                std::string cleanElemName = parsedNames[eIdx];
-                                size_t subC = cleanElemName.rfind("::");
-                                if (subC != std::string::npos) cleanElemName = cleanElemName.substr(subC + 2);
+                            std::wstring wEnumName(cleanEnumName.begin(), cleanEnumName.end());
 
-                                if (cleanElemName == enumValueToken || parsedNames[eIdx] == enumValueToken) {
-                                    finalEnumInt = parsedValues[eIdx];
-                                    enumFound = true;
-                                    break;
-                                }
+                            CachedPdbEnum newEnum;
+                            if (LivePT::LoadEnumMetadataDirect(wEnumName.c_str(), newEnum.names, newEnum.values)) {
+                                // Успешно прочитали PDB, кладем в кэш
+                                g_PdbEnumCache[member->typeName] = std::move(newEnum);
+                            }
+                            else {
+                                // Записываем пустой результат, чтобы больше никогда не пытаться читать PDB для битого/отсутствующего типа
+                                g_PdbEnumCache[member->typeName] = CachedPdbEnum{};
+                            }
+                            // Обновляем итератор на только что созданный элемент
+                            cacheIt = g_PdbEnumCache.find(member->typeName);
+                        }
+
+                        // 2. Быстро берем данные из кэша (никаких вызовов dbghelp!)
+                        const auto& cachedData = cacheIt->second;
+                        for (size_t eIdx = 0; eIdx < cachedData.names.size(); ++eIdx) {
+                            const std::string& name = cachedData.names[eIdx];
+
+                            // Используем string_view для парсинга, чтобы не выделять память через substr
+                            std::string_view cleanElemName = name;
+                            size_t subC = cleanElemName.rfind("::");
+                            if (subC != std::string::npos) {
+                                cleanElemName.remove_prefix(subC + 2);
+                            }
+
+                            if (cleanElemName == enumValueToken || name == enumValueToken) {
+                                finalEnumInt = cachedData.values[eIdx];
+                                enumFound = true;
+                                break;
                             }
                         }
                     }
+
 
                     if (!enumFound) continue;
 

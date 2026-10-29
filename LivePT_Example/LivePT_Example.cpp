@@ -65,6 +65,7 @@ void getPathParts(const ::std::string& fullPath, ::std::string& nameOnly, ::std:
     parentFolder = p.parent_path().filename().string();
 }
 
+#if LivePT_EditMode
 void recompileShader()
 {
     ::std::string name, folder;
@@ -104,7 +105,7 @@ void recompileShader()
 
     }
 }
-
+#endif
 
 
 struct {
@@ -249,7 +250,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         Rasterizer::Cull(cullmode::back);
 
         Draw::SetRenderTarget(eval(TexList::rt::mainRT), 0);
-        Draw::Clear(eval(color4{ 0.0f,0.0f,0.0f,1.0f }));
+        Draw::Clear(eval(color4{ 0.34f,0.0f,0.0f,1.0f }));
         
         
         dx11::ConstBuf::frame.time = XMFLOAT4(timer::GetCounter(),0,0,0);
@@ -258,14 +259,14 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         dx11::ConstBuf::Set(ConstBuf::cBuffer::frame, targetshader::both);
 
         gApi::ShowSprite({
-                .pos = float4(-0.36f,0.0f,0.0f,0.0f),
+                .pos = float4(-0.281f,0.0f,0.0f,0.0f),
                 .size = float4(1.0f,1.0f,1.0f,1.0f),
                 .color = float4(1.0f,1.0f,1.0f,1.0f),
                 .texture = TexList::sprites::spr1
             });
 
         gApi::ShowSprite({
-                .pos = float4(0.38f,0.00f,0.0f,0.0f),
+                .pos = float4(0.44f,0.00f,0.0f,0.0f),
                 .size = float4(1.0f,1.0f,1.0f,1.0f),
                 .color = float4(1.0f,1.0f,1.0f,1.0f),
                 .texture = TexList::sprites::spr2
