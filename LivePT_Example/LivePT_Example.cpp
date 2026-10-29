@@ -258,7 +258,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         dx11::ConstBuf::Set(ConstBuf::cBuffer::frame, targetshader::both);
 
         gApi::ShowSprite({
-                .pos = float4(-0.36f,0.0f,0.0f,0.0f),
+                .pos = float4(-0.34f,0.0f,0.0f,0.0f),
                 .size = float4(1.0f,1.0f,1.0f,1.0f),
                 .color = float4(1.0f,1.0f,1.0f,1.0f),
                 .texture = TexList::sprites::spr1

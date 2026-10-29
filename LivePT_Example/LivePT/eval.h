@@ -312,30 +312,80 @@ namespace LivePT {
         return true;
     }
 
+    inline std::string_view TrimView(std::string_view sv) {
+        auto start = sv.find_first_not_of(" \t\r\n.");
+        if (start == std::string_view::npos) return "";
+        auto end = sv.find_last_not_of(" \t\r\n");
+        return sv.substr(start, end - start + 1);
+    }
+
+    std::vector<std::string_view> SplitByOuterCommas(std::string_view input) {
+        std::vector<std::string_view> tokens;
+
+        size_t start = 0;
+        int braceCount = 0;   // Для отслеживания {}
+        int parenCount = 0;   // Для отслеживания ()
+
+        size_t length = input.length();
+        for (size_t i = 0; i < length; ++i) {
+            char c = input[i];
+
+            // Отслеживаем уровни вложенности скобок
+            if (c == '{') {
+                braceCount++;
+            }
+            else if (c == '}') {
+                if (braceCount > 0) braceCount--;
+            }
+            else if (c == '(') {
+                parenCount++;
+            }
+            else if (c == ')') {
+                if (parenCount > 0) parenCount--;
+            }
+            // Если нашли запятую на самом верхнем уровне
+            else if (c == ',' && braceCount == 0 && parenCount == 0) {
+                tokens.push_back(input.substr(start, i - start));
+                start = i + 1;
+            }
+        }
+
+        // Добавляем последний токен после крайней запятой (или всю строку, если запятых не было)
+        if (start <= length) {
+            tokens.push_back(input.substr(start, length - start));
+        }
+
+        return tokens;
+    }
+
     inline void WriteStructBytes(
         char* byteBase,
         const std::string& curTypeName,
-        const std::string& curInnerText,
+        std::string_view curInnerText,
         DWORD absoluteBaseOffset,
         int targetId,
         size_t structTotalSize)
     {
-        std::vector<StructMemberDesc> membersCache = LivePT::LookupStructMembersFromParams(curTypeName);
+        const auto& membersCache = LivePT::LookupStructMembersFromParams(curTypeName);
 
         if (membersCache.empty()) {
-            std::string valClean = curInnerText;
+            std::string_view valClean = curInnerText;
             size_t subOpen = valClean.find('(');
             size_t subClose = valClean.rfind(')');
-            if (subOpen != std::string::npos && subClose != std::string::npos && subClose > subOpen) {
+            if (subOpen != std::string_view::npos && subClose != std::string_view::npos && subClose > subOpen) {
                 valClean = valClean.substr(subOpen + 1, subClose - subOpen - 1);
             }
             while (!valClean.empty() && (valClean.back() == 'f' || valClean.back() == 'F' || valClean.back() == 'u' || valClean.back() == 'U')) {
-                valClean.pop_back();
+                valClean.remove_suffix(1);
             }
-            const char* sS = valClean.data();
-            const char* sE = valClean.data() + valClean.size();
+
             float fV = 0.0f;
-            std::from_chars(sS, sE, fV);
+            std::array<char, 64> buf;
+            size_t len = (std::min)(valClean.size(), buf.size() - 1);
+            std::copy_n(valClean.data(), len, buf.data());
+            buf[len] = '\0';
+
+            std::from_chars(buf.data(), buf.data() + len, fV);
             *reinterpret_cast<float*>(byteBase) = fV;
             paramDesc[targetId].parsedFieldsOffsets.insert(absoluteBaseOffset);
             return;
@@ -344,21 +394,21 @@ namespace LivePT {
         auto tokens = LivePT::SplitByOuterCommas(curInnerText);
         size_t positionalIndex = 0;
 
-        for (const auto& token : tokens) {
-            std::string fieldName = "";
-            std::string valueStr = token;
+        for (const auto& tokenStr : tokens) {
+            std::string_view token(tokenStr);
+            std::string_view fieldName;
+            std::string_view valueStr = token;
             const StructMemberDesc* member = nullptr;
 
             size_t eqPos = std::string::npos;
-            int bCount = 0;
-            int pCount = 0;
+            int bCount = 0, pCount = 0;
 
             for (size_t i = 0; i < token.length(); ++i) {
                 char c = token[i];
                 if (c == '{') bCount++;
-                else if (c == '}') { bCount--; if (bCount < 0) bCount = 0; }
+                else if (c == '}') bCount = (bCount > 0) ? bCount - 1 : 0;
                 else if (c == '(') pCount++;
-                else if (c == ')') { pCount--; if (pCount < 0) pCount = 0; }
+                else if (c == ')') pCount = (pCount > 0) ? pCount - 1 : 0;
 
                 if (c == '=' && bCount == 0 && pCount == 0) {
                     eqPos = i;
@@ -367,12 +417,8 @@ namespace LivePT {
             }
 
             if (eqPos != std::string::npos) {
-                fieldName = token.substr(0, eqPos);
-                fieldName.erase(0, fieldName.find_first_not_of(" \t\r\n."));
-                fieldName.erase(fieldName.find_last_not_of(" \t\r\n") + 1);
-                valueStr = token.substr(eqPos + 1);
-                valueStr.erase(0, valueStr.find_first_not_of(" \t\r\n"));
-                valueStr.erase(valueStr.find_last_not_of(" \t\r\n") + 1);
+                fieldName = TrimView(token.substr(0, eqPos));
+                valueStr = TrimView(token.substr(eqPos + 1));
 
                 for (size_t mIdx = 0; mIdx < membersCache.size(); ++mIdx) {
                     if (membersCache[mIdx].name == fieldName) {
@@ -395,44 +441,39 @@ namespace LivePT {
             DWORD currentAbsoluteFieldOffset = absoluteBaseOffset + member->offset;
 
             bool isPureEnumField = (valueStr.find("::") != std::string::npos) && (valueStr.find('{') == std::string::npos);
-
-            // ДОБАВЛЯЕМ ПРОВЕРКУ !isPrimitive
-            if (!isPureEnumField && !LivePT::LookupStructMembersFromParams(member->typeName).empty()) {
+            const auto& nestedMembers = LivePT::LookupStructMembersFromParams(member->typeName);
+            if (!isPureEnumField && !nestedMembers.empty()) {
                 size_t openB = valueStr.find('{');
                 size_t closeB = valueStr.rfind('}');
                 if (openB == std::string::npos) openB = valueStr.find('(');
                 if (closeB == std::string::npos) closeB = valueStr.rfind(')');
 
                 if (openB != std::string::npos && closeB != std::string::npos && closeB > openB) {
-                    std::string nestedInnerText = valueStr.substr(openB + 1, closeB - openB - 1);
+                    std::string_view nestedInnerText = valueStr.substr(openB + 1, closeB - openB - 1);
                     WriteStructBytes(fieldAddress, member->typeName, nestedInnerText, currentAbsoluteFieldOffset, targetId, structTotalSize);
                 }
             }
             else {
-                std::string cleanPrimitiveStr = valueStr;
+                std::string_view cleanPrimitiveStr = valueStr;
                 size_t pOpen = cleanPrimitiveStr.find('(');
                 size_t pClose = cleanPrimitiveStr.rfind(')');
-                if (pOpen != std::string::npos && pClose != std::string::npos && pClose > pOpen) {
+                if (pOpen != std::string_view::npos && pClose != std::string_view::npos && pClose > pOpen) {
                     cleanPrimitiveStr = cleanPrimitiveStr.substr(pOpen + 1, pClose - pOpen - 1);
                 }
-
                 while (!cleanPrimitiveStr.empty() && (cleanPrimitiveStr.back() == 'f' || cleanPrimitiveStr.back() == 'F' ||
-                    cleanPrimitiveStr.back() == 'u' || cleanPrimitiveStr.back() == 'U' ||
-                    cleanPrimitiveStr.back() == 'l' || cleanPrimitiveStr.back() == 'L')) {
-                    cleanPrimitiveStr.pop_back();
+                    cleanPrimitiveStr.back() == 'u' || cleanPrimitiveStr.back() == 'U' || cleanPrimitiveStr.back() == 'l' || cleanPrimitiveStr.back() == 'L')) {
+                    cleanPrimitiveStr.remove_suffix(1);
                 }
 
                 size_t dColon = cleanPrimitiveStr.rfind("::");
                 if (dColon != std::string::npos) {
-                    std::string enumValueToken = cleanPrimitiveStr.substr(dColon + 2);
-                    enumValueToken.erase(0, enumValueToken.find_first_not_of(" \t\r\n"));
-                    enumValueToken.erase(enumValueToken.find_last_not_of(" \t\r\n") + 1);
+                    std::string_view enumValueToken = cleanPrimitiveStr.substr(dColon + 2);
+                    enumValueToken = TrimView(enumValueToken);
 
                     while (!enumValueToken.empty() && (enumValueToken.back() == ')' || enumValueToken.back() == '}' || enumValueToken.back() == ',')) {
-                        enumValueToken.pop_back();
+                        enumValueToken.remove_suffix(1);
                     }
-                    enumValueToken.erase(0, enumValueToken.find_first_not_of(" \t\r\n"));
-                    enumValueToken.erase(enumValueToken.find_last_not_of(" \t\r\n") + 1);
+                    enumValueToken = TrimView(enumValueToken);
 
                     int finalEnumInt = 0;
                     bool enumFound = false;
@@ -440,14 +481,11 @@ namespace LivePT {
                     for (const auto& p : paramDesc) {
                         if (p.enumInfo.isEnum && !p.enumInfo.elements.empty()) {
                             for (const auto& elem : p.enumInfo.elements) {
-                                std::string cleanElemName = elem.name;
-                                if (cleanElemName.rfind("enum ", 0) == 0)  cleanElemName.erase(0, 5);
-                                if (cleanElemName.rfind("class ", 0) == 0) cleanElemName.erase(0, 6);
-
+                                std::string_view cleanElemName = elem.name;
+                                if (cleanElemName.rfind("enum ", 0) == 0) cleanElemName.remove_prefix(5);
+                                if (cleanElemName.rfind("class ", 0) == 0) cleanElemName.remove_prefix(6);
                                 size_t subC = cleanElemName.rfind("::");
-                                if (subC != std::string::npos) {
-                                    cleanElemName = cleanElemName.substr(subC + 2);
-                                }
+                                if (subC != std::string::npos) cleanElemName = cleanElemName.substr(subC + 2);
 
                                 if (cleanElemName == enumValueToken || elem.name == enumValueToken) {
                                     finalEnumInt = elem.value;
@@ -461,19 +499,16 @@ namespace LivePT {
 
                     if (!enumFound && member) {
                         std::string cleanEnumName = member->typeName;
-                        if (cleanEnumName.rfind("enum ", 0) == 0)  cleanEnumName.erase(0, 5);
+                        if (cleanEnumName.rfind("enum ", 0) == 0) cleanEnumName.erase(0, 5);
                         if (cleanEnumName.rfind("class ", 0) == 0) cleanEnumName.erase(0, 6);
-
                         std::wstring wEnumName(cleanEnumName.begin(), cleanEnumName.end());
                         std::vector<std::string> parsedNames;
                         std::vector<int> parsedValues;
-
                         if (LivePT::LoadEnumMetadataDirect(wEnumName.c_str(), parsedNames, parsedValues)) {
                             for (size_t eIdx = 0; eIdx < parsedNames.size(); ++eIdx) {
-                                std::string cleanElemName = parsedNames[eIdx];
+                                std::string_view cleanElemName = parsedNames[eIdx];
                                 size_t subC = cleanElemName.rfind("::");
                                 if (subC != std::string::npos) cleanElemName = cleanElemName.substr(subC + 2);
-
                                 if (cleanElemName == enumValueToken || parsedNames[eIdx] == enumValueToken) {
                                     finalEnumInt = parsedValues[eIdx];
                                     enumFound = true;
@@ -486,41 +521,31 @@ namespace LivePT {
                     if (!enumFound) continue;
 
                     *reinterpret_cast<int*>(fieldAddress) = finalEnumInt;
-
                     DWORD realEnumSize = (member->size < 4) ? 4 : member->size;
-
                     for (DWORD b = 0; b < realEnumSize; ++b) {
                         paramDesc[targetId].parsedFieldsOffsets.insert(currentAbsoluteFieldOffset + b);
                     }
                     continue;
                 }
 
-                const char* strStart = cleanPrimitiveStr.data();
-                const char* strEnd = cleanPrimitiveStr.data() + cleanPrimitiveStr.size();
+                std::array<char, 64> buf;
+                size_t len = (std::min)(cleanPrimitiveStr.size(), buf.size() - 1);
+                std::copy_n(cleanPrimitiveStr.data(), len, buf.data());
+                buf[len] = '\0';
+                const char* strStart = buf.data();
+                const char* strEnd = buf.data() + len;
 
                 if (member->size == 4) {
-                    bool isFloat = (member->typeName == "float");
-                    bool parsedSuccessfully = false;
-
-                    if (isFloat) {
-                        float val = 0.0f;
-                        auto [ptr, ec] = std::from_chars(strStart, strEnd, val);
-                        if (ec == std::errc{}) {
+                    float val = 0.0f;
+                    auto [ptr, ec] = std::from_chars(strStart, strEnd, val);
+                    if (ec == std::errc{}) {
+                        if (member->typeName == "float") {
                             *reinterpret_cast<float*>(fieldAddress) = val;
-                            parsedSuccessfully = true; 
                         }
-                    }
-                    else {
-                        float val = 0.0f;
-                        auto [ptr, ec] = std::from_chars(strStart, strEnd, val);
-                        if (ec == std::errc{}) {
+                        else {
                             *reinterpret_cast<int*>(fieldAddress) = static_cast<int>(val);
-                            parsedSuccessfully = true; 
                         }
-                    }
-
-                    if (parsedSuccessfully) {
-                        for (DWORD b = 0; b < member->size; ++b) {
+                        for (DWORD b = 0; b < 4; ++b) {
                             paramDesc[targetId].parsedFieldsOffsets.insert(currentAbsoluteFieldOffset + b);
                         }
                     }
@@ -530,8 +555,7 @@ namespace LivePT {
                     auto [ptr, ec] = std::from_chars(strStart, strEnd, val);
                     if (ec == std::errc{}) {
                         *reinterpret_cast<double*>(fieldAddress) = val;
-
-                        for (DWORD b = 0; b < member->size; ++b) {
+                        for (DWORD b = 0; b < 8; ++b) {
                             paramDesc[targetId].parsedFieldsOffsets.insert(currentAbsoluteFieldOffset + b);
                         }
                     }
@@ -556,12 +580,10 @@ namespace LivePT {
                             parsedOk = true;
                         }
                     }
-
                     if (parsedOk) {
                         paramDesc[targetId].parsedFieldsOffsets.insert(currentAbsoluteFieldOffset);
                     }
                 }
-
             }
         }
     }
