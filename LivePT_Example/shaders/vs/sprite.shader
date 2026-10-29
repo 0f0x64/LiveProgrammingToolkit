@@ -1,6 +1,8 @@
 cbuffer params : register(b0)
 {
     float4 position;
+    float4 size;
+    float4 rotation;
 };
 
 cbuffer frame : register(b2)

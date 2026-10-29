@@ -111,11 +111,8 @@ namespace LivePT {
         std::vector<int> values;
     };
 
-    // Хэш-карта: "ИмяТипаEnum" -> "Списки имен и значений"
-    // Ключом будет оригинальный member->typeName (например, "enum MyNamespace::GameStatus")
     inline std::unordered_map<std::string, CachedPdbEnum> g_PdbEnumCache;
 
-    // Теперь обновляем сам метод LoadEnumMetadataDirect
     inline bool LoadEnumMetadataDirect(const wchar_t* targetEnumName, std::vector<std::string>& outNames, std::vector<int>& outValues) {
         if (!EnsureDbgHelpInitialized()) return false;
 
@@ -188,8 +185,6 @@ namespace LivePT {
         }
         return !outNames.empty();
     }
-
-
 
     struct DbgHelpStructContext {
         HANDLE hProcess;

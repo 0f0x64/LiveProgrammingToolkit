@@ -7,19 +7,8 @@
 #pragma comment(lib, "User32.lib")
 
 #include "enumMenu.h"
-namespace Widgets {
 
-    inline float GetWidgetScale(HWND hwnd = NULL) {
-        if (hwnd && ::IsWindow(hwnd)) {
-            UINT dpi = ::GetDpiForWindow(hwnd);
-            if (dpi > 0) return static_cast<float>(dpi) / 96.0f;
-        }
-        HDC hdc = ::GetDC(NULL);
-        int dpiY = ::GetDeviceCaps(hdc, LOGPIXELSY);
-        ::ReleaseDC(NULL, hdc);
-        return static_cast<float>(dpiY) / 96.0f;
-    }
-}
+
 namespace LivePT {
 
     inline void SaveActiveDocument();

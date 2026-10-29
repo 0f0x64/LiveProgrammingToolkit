@@ -164,6 +164,7 @@
     </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="app.h" />
     <ClInclude Include="dx11\audio.h" />
     <ClInclude Include="dx11\blend.h" />
     <ClInclude Include="dx11\camera.h" />
@@ -183,7 +184,6 @@
     <ClInclude Include="dx11\textures.h" />
     <ClInclude Include="dx11\TexturesResBP.h" />
     <ClInclude Include="framework.h" />
-    <ClInclude Include="gAPI.h" />
     <ClInclude Include="LivePT\consistency.h" />
     <ClInclude Include="LivePT\DbgHelpRef.h" />
     <ClInclude Include="LivePT\dragOverlay.h" />
@@ -196,6 +196,8 @@
     <ClInclude Include="LivePT\vsEditor.h" />
     <ClInclude Include="LivePT\windowManagement.h" />
     <ClInclude Include="LivePT_Example.h" />
+    <ClInclude Include="renderer\gAPI.h" />
+    <ClInclude Include="renderer\timer.h" />
     <ClInclude Include="Resource.h" />
     <ClInclude Include="shaders\psList.h" />
     <ClInclude Include="shaders\shadersList.h" />

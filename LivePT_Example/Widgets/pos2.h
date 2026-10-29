@@ -85,7 +85,7 @@ namespace Widgets {
             HPEN hMutedPen = CreatePen(PS_SOLID, 1, RGB(55, 55, 58));
             HPEN oldPen = (HPEN)SelectObject(memDC, hMutedPen);
 
-            float scale = GetWidgetScale(hwnd);
+            float scale = ::LivePT::GetWidgetScale(hwnd);
             int currentGridStep = static_cast<int>(g_posCtx.BASE_gridStep * scale);
             if (currentGridStep < 5) currentGridStep = 5;
 
@@ -244,7 +244,7 @@ namespace Widgets {
             wc.hbrBackground = CreateSolidBrush(RGB(30, 30, 32)); return RegisterClassExA(&wc) != 0;
             }();
 
-        float scale = GetWidgetScale();
+        float scale = ::LivePT::GetWidgetScale();
         int scaledWidth = static_cast<int>(g_posCtx.BASE_width * scale);
         int scaledHeight = static_cast<int>(g_posCtx.BASE_height * scale);
 

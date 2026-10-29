@@ -5,6 +5,8 @@ namespace vs {
         struct
         {
             float4 position;
+            float4 size;
+            float4 rotation;
         } params;
 
     }

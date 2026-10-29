@@ -31,7 +31,7 @@ namespace Widgets {
         HWND hWheelStatic = NULL;
         HWND hValueStatic = NULL;
 
-        color3 currentRGB = { 255, 255, 255 };
+        ::gApi::color3 currentRGB = {255, 255, 255};
         std::function<void(std::string)> vsUpdaterCallback = nullptr;
         std::function<void(unsigned char, unsigned char, unsigned char)> textGenerator = nullptr;
 
@@ -88,9 +88,9 @@ namespace Widgets {
             static_cast<DWORD>(b * 255);
     }
 
-    inline color3 HsvToRgbStruct(float H, float S, float V) {
+    inline ::gApi::color3 HsvToRgbStruct(float H, float S, float V) {
         DWORD gdiColor = HsvToGdiColor(H, S, V);
-        return color3{
+        return ::gApi::color3{
             static_cast<unsigned char>((gdiColor >> 16) & 0xFF),
             static_cast<unsigned char>((gdiColor >> 8) & 0xFF),
             static_cast<unsigned char>(gdiColor & 0xFF)
@@ -107,7 +107,7 @@ namespace Widgets {
     }
 
     inline void ProcessWheelClick(HWND hwnd, int mouseX, int mouseY) {
-        float scale = GetWidgetScale(hwnd);
+        float scale = ::LivePT::GetWidgetScale(hwnd);
         int currentCenterX = static_cast<int>(g_pickerCtx.BASE_centerX * scale);
         int currentCenterY = static_cast<int>(g_pickerCtx.BASE_centerY * scale);
         int currentRadius = static_cast<int>(g_pickerCtx.BASE_radius * scale);
@@ -128,7 +128,7 @@ namespace Widgets {
     }
 
     inline void ProcessValueClick(HWND hwnd, int mouseY) {
-        float scale = GetWidgetScale(hwnd);
+        float scale = ::LivePT::GetWidgetScale(hwnd);
         int currentValTop = static_cast<int>(g_pickerCtx.BASE_valTop * scale);
         int currentValHeight = static_cast<int>(g_pickerCtx.BASE_valHeight * scale);
 
@@ -145,7 +145,7 @@ namespace Widgets {
         switch (uMsg) {
         case WM_SETCURSOR: {
             POINT pt; GetCursorPos(&pt); ScreenToClient(hwnd, &pt);
-            float scale = GetWidgetScale(hwnd);
+            float scale = ::LivePT::GetWidgetScale(hwnd);
             int cx = static_cast<int>(g_pickerCtx.BASE_centerX * scale);
             int cy = static_cast<int>(g_pickerCtx.BASE_centerY * scale);
             int r = static_cast<int>(g_pickerCtx.BASE_radius * scale);
@@ -177,7 +177,7 @@ namespace Widgets {
             RECT clientRc; GetClientRect(hwnd, &clientRc);
             int w = clientRc.right - clientRc.left;
             int h = clientRc.bottom - clientRc.top;
-            float scale = GetWidgetScale(hwnd);
+            float scale = ::LivePT::GetWidgetScale(hwnd);
 
             HDC memDC = CreateCompatibleDC(hdc);
             HBITMAP memBM = CreateCompatibleBitmap(hdc, w, h);
@@ -291,7 +291,7 @@ namespace Widgets {
 
         case WM_LBUTTONDOWN: {
             POINT pt = { LOWORD(lParam), HIWORD(lParam) };
-            float scale = GetWidgetScale(hwnd);
+            float scale = ::LivePT::GetWidgetScale(hwnd);
 
             int cx = static_cast<int>(g_pickerCtx.BASE_centerX * scale);
             int cy = static_cast<int>(g_pickerCtx.BASE_centerY * scale);
@@ -425,7 +425,7 @@ namespace Widgets {
             return RegisterClassExA(&wc) != 0;
             }();
 
-        float scale = GetWidgetScale();
+        float scale = ::LivePT::GetWidgetScale();
         int scaledWidth = static_cast<int>(g_pickerCtx.BASE_windowWidth * scale);
         int scaledHeight = static_cast<int>(g_pickerCtx.BASE_windowHeight * scale);
         int calculatedWindowY = mousePos.y - scaledHeight - 20;

@@ -44,7 +44,7 @@ namespace Widgets {
 
     inline void ProcessRadarClick(HWND hwnd, int mouseX, int mouseY) {
 
-        float scale = GetWidgetScale(hwnd);
+        float scale = ::LivePT::GetWidgetScale(hwnd);
         int currentCenterX = static_cast<int>(g_angleCtx.BASE_centerX * scale);
         int currentCenterY = static_cast<int>(g_angleCtx.BASE_centerY * scale);
 
@@ -102,7 +102,7 @@ namespace Widgets {
             FillRect(memDC, &lpDrawItem->rcItem, hBg);
             DeleteObject(hBg);
 
-            float scale = GetWidgetScale(hwnd);
+            float scale = ::LivePT::GetWidgetScale(hwnd);
             int cx = static_cast<int>(g_angleCtx.BASE_centerX * scale);
             int cy = static_cast<int>(g_angleCtx.BASE_centerY * scale);
             int r = static_cast<int>(g_angleCtx.BASE_radius * scale);
@@ -149,7 +149,7 @@ namespace Widgets {
         case WM_LBUTTONDOWN: {
             POINT pt = { LOWORD(lParam), HIWORD(lParam) };
 
-            float scale = GetWidgetScale(hwnd);
+            float scale = ::LivePT::GetWidgetScale(hwnd);
             int cx = static_cast<int>(g_angleCtx.BASE_centerX * scale);
             int cy = static_cast<int>(g_angleCtx.BASE_centerY * scale);
             int r = static_cast<int>(g_angleCtx.BASE_radius * scale);
@@ -231,7 +231,7 @@ namespace Widgets {
             return RegisterClassExA(&wc) != 0;
             }();
 
-        float scale = GetWidgetScale();
+        float scale = ::LivePT::GetWidgetScale();
         int scaledWidth = static_cast<int>(g_angleCtx.BASE_width * scale);
         int scaledHeight = static_cast<int>(g_angleCtx.BASE_height * scale);
 

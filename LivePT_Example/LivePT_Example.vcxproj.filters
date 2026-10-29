@@ -31,6 +31,9 @@
     <Filter Include="Source Files\shaders\ps">
       <UniqueIdentifier>{23e347ac-06ea-4c1e-b751-f0418f96041d}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\renderer">
+      <UniqueIdentifier>{d14dec94-f511-425a-8c62-78088fd9d399}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="framework.h">
@@ -153,7 +156,13 @@
     <ClInclude Include="shaders\vsList.h">
       <Filter>Source Files\shaders</Filter>
     </ClInclude>
-    <ClInclude Include="gAPI.h">
+    <ClInclude Include="renderer\gAPI.h">
+      <Filter>Source Files\renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="renderer\timer.h">
+      <Filter>Source Files\renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="app.h">
       <Filter>Source Files</Filter>
     </ClInclude>
   </ItemGroup>

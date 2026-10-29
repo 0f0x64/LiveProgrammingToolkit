@@ -267,6 +267,7 @@ namespace Textures
 
 	void TextureToShader(auto tex, unsigned int slot, targetshader tA = targetshader::both)
 	{
+
 		if (tA == targetshader::both || tA == targetshader::vertex)
 		{
 			context->VSSetShaderResources(slot, 1, &Texture[(int)tex].TextureResView);

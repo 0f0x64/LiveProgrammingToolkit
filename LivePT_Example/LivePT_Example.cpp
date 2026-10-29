@@ -19,93 +19,7 @@ void recompileShader();
 
 #define TIMER_ID 1
 
-//simple class for demo purposes
-enum class ptype { circle, box, roundbox };
 
-struct color3 {
-    unsigned char r;
-    unsigned char g;
-    unsigned char b;
-};
-#include "Widgets\color3.h"
-LPT_REGISTER_TYPE("color3", Widgets::color3Callback);
-LPT_REGISTER_DRAG("color3", DrugLogic::color3Drag);
-
-struct pos2 {
-    float x;
-    float y;
-};
-#include "Widgets\pos2.h"
-LPT_REGISTER_TYPE("pos2", Widgets::pos2Callback);
-LPT_REGISTER_DRAG("pos2", DrugLogic::pos2Drag);
-
-struct size2 {
-    float w;
-    float h;
-};
-LPT_REGISTER_TYPE("size2", Widgets::pos2Callback);
-LPT_REGISTER_DRAG("size2", DrugLogic::size2Drag);
-
-typedef float angle;
-#include "Widgets\angle.h"
-LPT_REGISTER_TYPE("angle", Widgets::angleCallback);
-
-#include <filesystem>
-namespace fs = ::std::filesystem;
-
-void getPathParts(const ::std::string& fullPath, ::std::string& nameOnly, ::std::string& parentFolder) {
-    fs::path p(fullPath);
-
-    // 1. Имя файла без расширения (stem)
-    nameOnly = p.stem().string();
-
-    // 2. Название папки на один уровень выше
-    // p.parent_path() возвращает полный путь к папке, 
-    // .filename() извлекает только последнее имя в этом пути
-    parentFolder = p.parent_path().filename().string();
-}
-
-#if LivePT_EditMode
-void recompileShader()
-{
-    ::std::string name, folder;
-    
-    getPathParts(LivePT::g_currentActiveFile, name, folder);
-
-    ::std::string rPath = "/" + folder + "/" + name + dx11::Shaders::shaderExtension;
-
-    // detect vertex/pixel shader and slot
-    if (folder[0] == 'v')
-    {
-        int i = 0;
-        while (i < dx11::Shaders::vsCount)
-        {
-            if (!strcmp(dx11::Shaders::vsList[i], name.c_str()))
-            {
-                dx11::Shaders::CreateVS(i, rPath.c_str(), true);
-                break;
-            }
-            i++;
-        }
-
-    }
-
-    if (folder[0] == 'p')
-    {
-        int i = 0;
-        while (i < dx11::Shaders::psCount)
-        {
-            if (!strcmp(dx11::Shaders::psList[i], name.c_str()))
-            {
-                dx11::Shaders::CreatePS(i, rPath.c_str(), true);
-                break;
-            }
-            i++;
-        }
-
-    }
-}
-#endif
 
 
 struct {
@@ -115,43 +29,6 @@ struct {
     int h;
 } gc;
 
-struct Primitive {
-    pos2 pos;
-    size2 size;
-    angle Angle;
-    color3 color;
-    ptype type;
-    bool show;
-};
-
-int drawCounter = 0;
-int curSel = -1;
-
-bool IsPrimitiveSelected(int posX, int posY, HWND hwnd) {
-    POINT mousePos;
-    if (!GetCursorPos(&mousePos)) {
-        return false;
-    }
-
-    if (!ScreenToClient(hwnd, &mousePos)) {
-        return false;
-    }
-
-    int dx = mousePos.x - posX;
-    int dy = mousePos.y - posY;
-
-    if ((dx * dx + dy * dy) > 100) {
-        return false;
-    }
-
-    if ((GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0) {
-
-        curSel = drawCounter;
-        return true;
-    }
-
-    return false;
-}
 
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     switch (uMsg) {
@@ -164,9 +41,9 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
     return DefWindowProcA(hwnd, uMsg, wParam, lParam);
 }
 
-#include "renderer\gAPI.h"
 #include "renderer\timer.h"
-
+#include "renderer\gAPI.h"
+#include "app.h"
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
 
@@ -203,13 +80,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     if (hwnd == NULL) return 0;
 
     dx11::Init(hwnd);
-   
+    App::init();
 
     ShowWindow(hwnd, nCmdShow);
 
     MSG msg = { 0 };
 
-    timer::StartCounter();
+    
 
     while (msg.message != WM_QUIT)
     {
@@ -241,38 +118,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
 #endif
 
-        //UpdateFrame(timer::GetCounter());
-        using namespace dx11;
-
-        InputAssembler::IA(topology::triList);
-        Blend::Set(blendmode::alpha, blendop::add);
-        Depth::Depth(depthmode::off);
-        Rasterizer::Cull(cullmode::back);
-
-        Draw::SetRenderTarget(eval(TexList::rt::mainRT), 0);
-        Draw::Clear(eval(color4{ 0.34f,0.0f,0.0f,1.0f }));
-        
-        
-        dx11::ConstBuf::frame.time = XMFLOAT4(timer::GetCounter(),0,0,0);
-        dx11::ConstBuf::frame.aspect = XMFLOAT4(0,0,0,0);
-        dx11::ConstBuf::Update(ConstBuf::cBuffer::frame);
-        dx11::ConstBuf::Set(ConstBuf::cBuffer::frame, targetshader::both);
-
-        gApi::ShowSprite({
-                .pos = float4(-0.281f,0.0f,0.0f,0.0f),
-                .size = float4(1.0f,1.0f,1.0f,1.0f),
-                .color = float4(1.0f,1.0f,1.0f,1.0f),
-                .texture = TexList::sprites::spr1
-            });
-
-        gApi::ShowSprite({
-                .pos = float4(0.44f,0.00f,0.0f,0.0f),
-                .size = float4(1.0f,1.0f,1.0f,1.0f),
-                .color = float4(1.0f,1.0f,1.0f,1.0f),
-                .texture = TexList::sprites::spr2
-            });
-
-        Draw::Present();
+        App::Loop();
 
         LivePT::ProcessEdit();// don't forget this call
 
