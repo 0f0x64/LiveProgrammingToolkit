@@ -3,6 +3,12 @@ cbuffer params : register(b0)
     float4 position;
 };
 
+cbuffer frame : register(b2)
+{
+    float4 time;
+    float4 aspect;
+};
+
 struct VS_OUTPUT_POS_UV
 {
     float4 pos : SV_POSITION;
@@ -17,6 +23,7 @@ VS_OUTPUT_POS_UV VS(uint vID : SV_VertexID, uint iID : SV_InstanceID)
 
     float4 pos = float4(map[vID]-.5,0,1);
     pos.xy += position.xy;
+    pos.y+=sin(time.x*.01)*.01;
 //pos.xy +=pos2(-42.88f, -6.21f)*.01*float2(1.,-1);
     float2 uv = map[vID];
     VS_OUTPUT_POS_UV output = { pos, uv};

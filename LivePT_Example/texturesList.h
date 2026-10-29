@@ -6,4 +6,5 @@ List(rt) {
 
 List(sprites) {
     Tex(spr1, tType::flat, tFormat::u8, 512, 512, false, false, "sprite.png")
+    Tex(spr2, tType::flat, tFormat::u8, 512, 512, false, false, "fanta.png")
 };

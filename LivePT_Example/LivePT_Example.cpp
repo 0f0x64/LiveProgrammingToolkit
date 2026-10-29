@@ -163,6 +163,10 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
     return DefWindowProcA(hwnd, uMsg, wParam, lParam);
 }
 
+#include "renderer\gAPI.h"
+#include "renderer\timer.h"
+
+
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
 
     const char CLASS_NAME[] = "WindowClass";
@@ -203,6 +207,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     ShowWindow(hwnd, nCmdShow);
 
     MSG msg = { 0 };
+
+    timer::StartCounter();
 
     while (msg.message != WM_QUIT)
     {
@@ -245,32 +251,25 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         Draw::SetRenderTarget(eval(TexList::rt::mainRT), 0);
         Draw::Clear(eval(color4{ 0.0f,0.0f,0.0f,1.0f }));
         
-        Shaders::vs::sprite::params = { eval(float4{ -0.43f,0.0f,0.0f,0.0f }) };
-        ConstBuf::Update(dx11::Shaders::VS[(int)Shaders::vertex::sprite].params, Shaders::vs::sprite::params);
-        Shaders::SetVSParamCB(Shaders::vertex::sprite);
-        Shaders::vShader(Shaders::vertex::sprite);
-
-        Shaders::ps::sprite::params = { eval(float4{ 1.0f,0.0f,0.0f,1.0f }) };
-        ConstBuf::Update(dx11::Shaders::PS[(int)Shaders::pixel::sprite].params, Shaders::ps::sprite::params);
-        Shaders::SetPSParamCB(Shaders::pixel::sprite);
-        Textures::TextureToShader(TexList::sprites::spr1, 0, targetshader::pixel);
-        Sampler::Sampler(targetshader::pixel, 0, filter::linear, addr::wrap, addr::wrap);
-        Shaders::pShader(Shaders::pixel::sprite);
         
-        Draw::NullDrawer(1, 1);
+        dx11::ConstBuf::frame.time = XMFLOAT4(timer::GetCounter(),0,0,0);
+        dx11::ConstBuf::frame.aspect = XMFLOAT4(0,0,0,0);
+        dx11::ConstBuf::Update(ConstBuf::cBuffer::frame);
+        dx11::ConstBuf::Set(ConstBuf::cBuffer::frame, targetshader::both);
 
-        Shaders::vs::spriteTex::params = { eval(float4{ 0.5f,0.0f,0.0f,0.0f }) };
-        ConstBuf::Update(dx11::Shaders::VS[(int)Shaders::vertex::spriteTex].params, Shaders::vs::spriteTex::params);
-        Shaders::SetVSParamCB(Shaders::vertex::spriteTex);
-        Shaders::vShader(Shaders::vertex::spriteTex);
+        gApi::ShowSprite({
+                .pos = float4(-0.36f,0.0f,0.0f,0.0f),
+                .size = float4(1.0f,1.0f,1.0f,1.0f),
+                .color = float4(1.0f,1.0f,1.0f,1.0f),
+                .texture = TexList::sprites::spr1
+            });
 
-        Shaders::ps::spriteTex::params = { eval(float4{ 0.0f,0.6f,0.0f,1.0f }) };
-        ConstBuf::Update(dx11::Shaders::PS[(int)Shaders::pixel::spriteTex].params, Shaders::ps::spriteTex::params);
-        Shaders::SetPSParamCB(Shaders::pixel::spriteTex);
-        Shaders::pShader(Shaders::pixel::spriteTex);
-
-        Draw::NullDrawer(1, 1);
-
+        gApi::ShowSprite({
+                .pos = float4(0.38f,0.00f,0.0f,0.0f),
+                .size = float4(1.0f,1.0f,1.0f,1.0f),
+                .color = float4(1.0f,1.0f,1.0f,1.0f),
+                .texture = TexList::sprites::spr2
+            });
 
         Draw::Present();
 
