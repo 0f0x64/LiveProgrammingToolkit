@@ -303,11 +303,17 @@ namespace Shaders {
 		context->PSSetShader(NULL, NULL, 0);
 	}
 
+	void SetVSParamCB(auto i)
+	{
+		context->VSSetConstantBuffers(0, 1, &Shaders::VS[(int)i].params);
+	}
+
+	void SetPSParamCB(auto i)
+	{
+		context->PSSetConstantBuffers(0, 1, &Shaders::PS[(int)i].params);
+	}
+
 }
-
-
-//#include "generated\constBufReflect.h"
-
 
 void paramConstBufInit()
 {

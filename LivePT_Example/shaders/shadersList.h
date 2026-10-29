@@ -4,6 +4,7 @@ namespace vs {
 
         struct
         {
+            float4 position;
         } params;
 
     }
@@ -12,6 +13,7 @@ namespace vs {
 
         struct
         {
+            float4 position;
         } params;
 
     }

@@ -48,7 +48,7 @@ namespace Textures
 		tdesc = {
 			.Width = (UINT)cTex.size.x,
 			.Height = (UINT)cTex.size.y,
-			.MipLevels = cTex.mipMaps ? (UINT)(_log2(max(cTex.size.x, cTex.size.y))) : 0,
+			.MipLevels = cTex.mipMaps ? (UINT)(_log2(max(cTex.size.x, cTex.size.y))) : 1,
 			.ArraySize = 1,
 			.Format = dxTFormat[(int)cTex.format],
 			.SampleDesc = {
