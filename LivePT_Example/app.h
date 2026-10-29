@@ -9,20 +9,22 @@ namespace App {
 	{
         gApi::Start();
 
-        gApi::Clear(gApi::color3{42, 38, 52});
+        gApi::Clear(color3{42, 38, 52});
 
         gApi::ShowSprite({
-                .pos = gApi::pos2(-0.492f,0.0f),
-                .size = gApi::size2(1.0f,1.0f),
-                .rotation = gApi::angle(0.0f),
-                .color = float4(1.0f,1.0f,1.0f,1.0f),
+                .pos = pos2{ -0.492f,0.0f},
+                .size = size2{1.0f,1.0f},
+                .rotation = angle(0.0f),
+                .color = float4{1.0f,1.0f,1.0f,1.0f},
+                .texture = (int)TexList::sprites::spr1
             });
 
         gApi::ShowSprite({
-                .pos = gApi::pos2(-0.492f,0.0f),
-                .size = gApi::size2(1.0f,1.0f),
-                .rotation = gApi::angle(0.0f),
-                .color = float4(1.0f,1.0f,1.0f,1.0f),
+                .pos = pos2{ -0.492f,0.0f},
+                .size = size2{1.0f,1.0f},
+                .rotation = angle(0.0f),
+                .color = float4{1.0f,1.0f,1.0f,1.0f},
+                .texture = (int)TexList::sprites::spr1
             });
 
         gApi::End();

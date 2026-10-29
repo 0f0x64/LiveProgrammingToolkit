@@ -31,7 +31,7 @@ namespace Widgets {
         HWND hWheelStatic = NULL;
         HWND hValueStatic = NULL;
 
-        ::gApi::color3 currentRGB = {255, 255, 255};
+        ::color3 currentRGB = {255, 255, 255};
         std::function<void(std::string)> vsUpdaterCallback = nullptr;
         std::function<void(unsigned char, unsigned char, unsigned char)> textGenerator = nullptr;
 
@@ -88,9 +88,9 @@ namespace Widgets {
             static_cast<DWORD>(b * 255);
     }
 
-    inline ::gApi::color3 HsvToRgbStruct(float H, float S, float V) {
+    inline ::color3 HsvToRgbStruct(float H, float S, float V) {
         DWORD gdiColor = HsvToGdiColor(H, S, V);
-        return ::gApi::color3{
+        return ::color3{
             static_cast<unsigned char>((gdiColor >> 16) & 0xFF),
             static_cast<unsigned char>((gdiColor >> 8) & 0xFF),
             static_cast<unsigned char>(gdiColor & 0xFF)

@@ -58,9 +58,7 @@ void recompileShader()
 
 using namespace dx11;
 
-namespace gApi {
-
-	struct color3 {
+struct color3 {
 		unsigned char r;
 		unsigned char g;
 		unsigned char b;
@@ -87,6 +85,10 @@ namespace gApi {
 	typedef float angle;
 	#include "Widgets\angle.h"
 	LPT_REGISTER_TYPE("angle", Widgets::angleCallback);
+
+namespace gApi {
+
+	
 
 	int drawCounter = 0;
 	int curSel = -1;
@@ -147,6 +149,7 @@ namespace gApi {
 		size2 size;
 		angle rotation;
 		float4 color;
+		int texture;
 	};
 
 	LPT_LIVE_FUNCTION(void, ShowSprite, spriteDesc, in)
@@ -163,8 +166,7 @@ namespace gApi {
 		Shaders::ps::sprite::params = { in.color };
 		ConstBuf::Update(dx11::Shaders::PS[(int)Shaders::pixel::sprite].params, Shaders::ps::sprite::params);
 		Shaders::SetPSParamCB(Shaders::pixel::sprite);
-		//Textures::TextureToShader(in.texture, 0, targetshader::pixel);
-		Textures::TextureToShader(0, 0, targetshader::pixel);
+		Textures::TextureToShader(in.texture, 0, targetshader::pixel);
 		Sampler::Sampler(targetshader::pixel, 0, filter::linear, addr::wrap, addr::wrap);
 		Shaders::pShader(Shaders::pixel::sprite);
 
