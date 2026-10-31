@@ -76,6 +76,12 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <LinkIncremental>false</LinkIncremental>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <LinkIncremental>false</LinkIncremental>
+  </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
@@ -220,6 +226,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="dx11\createShaderList.js" />
+    <None Include="shaders\lib\utils.shader" />
     <None Include="shaders\ps\sprite.shader" />
     <None Include="shaders\ps\spriteTex.shader" />
     <None Include="shaders\vs\sprite.shader" />

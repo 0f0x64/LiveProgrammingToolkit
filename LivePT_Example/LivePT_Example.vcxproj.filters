@@ -34,6 +34,9 @@
     <Filter Include="Source Files\renderer">
       <UniqueIdentifier>{d14dec94-f511-425a-8c62-78088fd9d399}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\shaders\lib">
+      <UniqueIdentifier>{e6361773-ad4d-4b1d-aab1-7f82534b0f3c}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="framework.h">
@@ -199,6 +202,9 @@
     </None>
     <None Include="shaders\vs\spriteTex.shader">
       <Filter>Source Files\shaders\vs</Filter>
+    </None>
+    <None Include="shaders\lib\utils.shader">
+      <Filter>Source Files\shaders\lib</Filter>
     </None>
   </ItemGroup>
 </Project>

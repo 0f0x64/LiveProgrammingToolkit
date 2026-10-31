@@ -91,10 +91,10 @@ namespace dx11
 
 #if EditMode
 
-/*	void Resize()
+	void Resize()
 	{
-		aspect = float(height) / float(width);
-		iaspect = float(width) / float(height);
+		screen.aspect = float(screen.height) / float(screen.width);
+		screen.iaspect = float(screen.width) / float(screen.height);
 
 		ID3D11RenderTargetView* nullViews[] = { nullptr };
 		context->OMSetRenderTargets(1, nullViews, 0);
@@ -107,11 +107,11 @@ namespace dx11
 		device->CreateRenderTargetView(Textures::Texture[0].pTexture, NULL, &Textures::Texture[0].RenderTargetView[0][0]);
 		Textures::Texture[0].pTexture->Release();
 		Textures::Texture[0].pDepth->Release();
-		Textures::Create(0, Textures::tType::flat, Textures::tFormat::u8, XMFLOAT2((float)width, (float)height), false, true);
+		Textures::Create(0, tType::flat, tFormat::u8, screen.width, screen.height, false, true);
 		
-		Camera::viewCam.pInit();
+	//	Camera::viewCam.pInit();
 	}
-	*/
+	
 #endif
 
 }

@@ -12,15 +12,10 @@ void recompileShader();
 
 // ---------------------- d3d renderer ------------------------
 #define EditMode true
-#define DebugMode true
+#define DebugMode false
 #define ExternalResourcesMode true
 #include "dx11/dx.h"
 // ------------------------------------------------------------
-
-#define TIMER_ID 1
-
-
-
 
 struct {
     HWND hWnd;
@@ -30,20 +25,30 @@ struct {
 } gc;
 
 
+
+
+#include "renderer\timer.h"
+#include "renderer\gAPI.h"
+#include "app.h"
+bool resize = true;
+
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     switch (uMsg) {
 
+    case WM_SIZE:
+    {
+        screen.width = LOWORD(lParam);
+        screen.height = HIWORD(lParam);
+        resize = true;
+        return 0;
+    }
+
     case WM_DESTROY:
-        KillTimer(hwnd, TIMER_ID);
         PostQuitMessage(0);
         return 0;
     }
     return DefWindowProcA(hwnd, uMsg, wParam, lParam);
 }
-
-#include "renderer\timer.h"
-#include "renderer\gAPI.h"
-#include "app.h"
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
 
@@ -117,6 +122,17 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         //if (GetAsyncKeyState(VK_ESCAPE) || timer::frameBeginTime / 1000. > DEMO_DURATION) { break; }
 
 #endif
+
+        if (IsIconic(hwnd))
+        {
+            return 0;
+        }
+
+        if (resize)
+        {
+            dx11::Resize();
+            resize = false;
+        }
 
         App::Loop();
 

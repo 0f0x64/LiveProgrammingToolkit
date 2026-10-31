@@ -88,8 +88,6 @@ struct color3 {
 
 namespace gApi {
 
-	
-
 	int drawCounter = 0;
 	int curSel = -1;
 
@@ -149,7 +147,7 @@ namespace gApi {
 		size2 size;
 		angle rotation;
 		float4 color;
-		int texture;
+		TexList::sprites texture;
 	};
 
 	LPT_LIVE_FUNCTION(void, ShowSprite, spriteDesc, in)
@@ -157,7 +155,7 @@ namespace gApi {
 		Shaders::vs::sprite::params = {
 			.position = float4{ in.pos.x, in.pos.y, 0.f, 0.f},
 			.size = float4{ in.size.w,in.size.h, 0.f,0.f},
-			.rotation = float4{in.rotation,0.f,0.f,0.f}
+			.rotation = float4{in.rotation*(float)M_PI/180.f,0.f,0.f,0.f}
 		};
 		ConstBuf::Update(dx11::Shaders::VS[(int)Shaders::vertex::sprite].params, Shaders::vs::sprite::params);
 		Shaders::SetVSParamCB(Shaders::vertex::sprite);

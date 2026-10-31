@@ -196,11 +196,16 @@ namespace Textures
 			// Предполагаем, что у cTex есть поле filePath (например, std::string или std::wstring)
 			// и текстура не является кубической (для кубических карт логика загрузки сложнее)
 			if (fileName && cTex.type != tType::cube) {
+
+				char path[MAX_PATH];
+				strcpy_s(path, MAX_PATH, "textures/");
+				strcat_s(path, MAX_PATH, fileName);
+
 				int width = 0, height = 0, channels = 0;
 
 				// Загружаем PNG и принудительно приводим к 4 байтам на пиксель (RGBA)
 				stbi_set_flip_vertically_on_load(true);
-				imgData = stbi_load(fileName, &width, &height, &channels, 4);
+				imgData = stbi_load(path, &width, &height, &channels, 4);
 
 				if (imgData) {
 					// Корректируем описание текстуры под размеры файла
