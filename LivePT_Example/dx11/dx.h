@@ -12,6 +12,11 @@
 
 #define FRAMES_PER_SECOND 60
 #define DirectXDebugMode true
+#define EditMode true
+#define DebugMode true
+#define NoExternalResourcesMode false
+
+bool resize = true;
 
 using namespace DirectX;
 
@@ -63,7 +68,7 @@ namespace dx11
 
 	#include "types.h"
 	#include "constBuf.h"
-//	#include "camera.h"
+	#include "camera.h"
 	#include "blend.h"
 	#include "rasterizer.h"
 	#include "depth.h"

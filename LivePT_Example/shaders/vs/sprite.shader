@@ -11,6 +11,17 @@ cbuffer frame : register(b2)
     float4 aspect;
 };
 
+cbuffer camera : register(b1)
+{
+    float4x4 world;
+    float4x4 view;
+    float4x4 proj;
+    float4x4 world2;
+    float4x4 view2;
+    float4x4 proj2;
+
+};
+
 struct VS_OUTPUT_POS_UV
 {
     float4 pos : SV_POSITION;
@@ -29,7 +40,11 @@ VS_OUTPUT_POS_UV VS(uint vID : SV_VertexID, uint iID : SV_InstanceID)
     pos.xy=rot(pos.xyz,rotation);
     pos.xy*=size.xy;
     pos.xy += position.xy;
-    pos.y+=sin(time.x*.01)*.01;
+    pos.y+=sin(time.x*.006)*.01;
+
+    pos=mul(pos,view);
+    pos=mul(pos,proj);
+    
 //pos.xy +=pos2(-42.88f, -6.21f)*.01*float2(1.,-1);
     float2 uv = map[vID];
     VS_OUTPUT_POS_UV output = { pos, uv};

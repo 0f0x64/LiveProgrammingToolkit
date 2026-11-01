@@ -18,7 +18,7 @@ namespace TexList {
 #endif
 
     using namespace dx11;
-    #include "../texturesList.h"
+    #include "../renderer/texturesList.h"
 
 #ifdef reg
 }

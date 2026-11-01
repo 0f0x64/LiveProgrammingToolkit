@@ -10,10 +10,10 @@ namespace ConstBuf
 
 	//b1 
 	struct {
-		XMMATRIX world[2];
-		XMMATRIX view[2];
-		XMMATRIX proj[2];
-	} camera;//update per camera set
+		XMMATRIX world;
+		XMMATRIX view;
+		XMMATRIX proj;
+	} camera[2];//update per camera set
 
 	//b2
 	struct {

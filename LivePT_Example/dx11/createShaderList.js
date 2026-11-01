@@ -6,7 +6,7 @@ var VERTEX_MACRO_FILE = fso.BuildPath(scriptPath, "../shaders/vsList.h");
 var PIXEL_MACRO_FILE = fso.BuildPath(scriptPath, "../shaders/psList.h");
 
 // Путь для новой задачи (общий файл структур cbuffer)
-var CBUFFER_LIST_FILE = fso.BuildPath(scriptPath, "../shaders/shadersList.h");
+var CBUFFER_LIST_FILE = fso.BuildPath(scriptPath, "../shaders/paramStruct.h");
 
 function main() {
     // Абсолютные пути к исходным папкам
@@ -41,7 +41,7 @@ function main() {
 
     cbOutFile.Close();
 
-    WScript.Echo("[graphics Api prebuld] shader lists created successfully");
+    WScript.Echo("[graphics Api prebuld] shaders param struct created successfully");
 }
 
 // Старая проверенная функция для макросов shader(имя)

@@ -5,13 +5,7 @@ namespace fs = ::std::filesystem;
 
 void getPathParts(const ::std::string& fullPath, ::std::string& nameOnly, ::std::string& parentFolder) {
 	fs::path p(fullPath);
-
-	// 1. Имя файла без расширения (stem)
 	nameOnly = p.stem().string();
-
-	// 2. Название папки на один уровень выше
-	// p.parent_path() возвращает полный путь к папке, 
-	// .filename() извлекает только последнее имя в этом пути
 	parentFolder = p.parent_path().filename().string();
 }
 
@@ -58,7 +52,7 @@ void recompileShader()
 
 using namespace dx11;
 
-struct color3 {
+	struct color3 {
 		unsigned char r;
 		unsigned char g;
 		unsigned char b;
@@ -92,6 +86,7 @@ namespace gApi {
 	int curSel = -1;
 
 	bool IsPrimitiveSelected(int posX, int posY, HWND hwnd) {
+
 		POINT mousePos;
 		if (!GetCursorPos(&mousePos)) {
 			return false;
@@ -124,10 +119,10 @@ namespace gApi {
 		Depth::Depth(depthmode::off);
 		Rasterizer::Cull(cullmode::back);
 
-		Draw::SetRenderTarget(eval(TexList::rt::mainRT), 0);
+		Draw::SetRenderTarget(TexList::rt::mainRT, 0);
 
-		dx11::ConstBuf::frame.time = XMFLOAT4(timer::GetCounter(), 0, 0, 0);
-		dx11::ConstBuf::frame.aspect = XMFLOAT4(0, 0, 0, 0);
+		dx11::ConstBuf::frame.time = XMFLOAT4((float)timer::GetCounter(), 0, 0, 0);
+		dx11::ConstBuf::frame.aspect = XMFLOAT4(dx11::screen.width/ (float)dx11::screen.height, dx11::screen.height/ (float)dx11::screen.width, 0, 0);
 		dx11::ConstBuf::Update(ConstBuf::cBuffer::frame);
 		dx11::ConstBuf::Set(ConstBuf::cBuffer::frame, targetshader::both);
 	}
@@ -169,5 +164,39 @@ namespace gApi {
 		Shaders::pShader(Shaders::pixel::sprite);
 
 		Draw::NullDrawer(1, 1);
+	}
+
+	struct cam {
+		float3 eye;
+		float3 at;
+		float3 up;
+		float angle;
+	};
+
+	LPT_LIVE_FUNCTION(void, SetCamera, cam, in)
+	{
+		Camera::Set(in.eye, in.at, in.up, in.angle);
+	}
+
+	struct cam2d {
+		pos2 eye;
+		float angle;
+	};
+
+	LPT_LIVE_FUNCTION(void, SetCamera2d, cam2d, in)
+	{
+		float dist = -100;
+		XMVECTOR Eye = XMVECTOR{ in.eye.x,in.eye.y,dist, 0.0f }/100.;
+		XMVECTOR At = XMVECTOR{ in.eye.x, in.eye.y, 0, 0.0f } / 100.;
+		XMVECTOR Up = XMVECTOR{ 0, 1, 0, 0.0f };
+
+		ConstBuf::camera[0] = {
+			.world = XMMatrixIdentity(),
+			.view = XMMatrixTranspose(XMMatrixLookAtLH(Eye, At, Up)),
+			.proj = XMMatrixTranspose(XMMatrixPerspectiveFovLH(Camera::DegreesToRadians(in.angle), dx11::screen.iaspect, 0.01f, 100.0f))
+		};
+
+		ConstBuf::Update(ConstBuf::cBuffer::camera);
+		ConstBuf::Set(ConstBuf::cBuffer::camera, targetshader::both);
 	}
 }

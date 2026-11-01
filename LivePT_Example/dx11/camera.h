@@ -1,20 +1,27 @@
 typedef struct {
-	float x;
-	float y;
-	float z;
-} vec3;
-
-typedef struct {
 	XMVECTOR eye;
 	XMVECTOR at;
 	XMVECTOR up;
 	float angle;
 } camData;
 
-
-
 namespace Camera
 {
+	using namespace dx11;
+
+	#ifndef M_PI
+	#define M_PI 3.14159265358979323846
+	#endif
+
+	float DegreesToRadians(float degrees)
+	{
+		return degrees * (float)M_PI / 180.f;
+	}
+
+	float RadiansToDegrees(float radians)
+	{
+		return radians * 180.f / (float)M_PI;
+	}
 
 	#if EditMode
 
@@ -35,15 +42,14 @@ namespace Camera
 
 			world = XMMatrixIdentity();
 			view = XMMatrixLookAtLH(Eye, At, Up);
-			proj = XMMatrixPerspectiveFovLH(DegreesToRadians(angle), width / (FLOAT)height, 0.01f, 100.0f);
+			proj = XMMatrixPerspectiveFovLH(DegreesToRadians(angle), screen.aspect, 0.01f, 100.0f);
 		}
 
-		#if EditMode
-			void pInit()
-			{
-				proj = XMMatrixPerspectiveFovLH(DegreesToRadians(angle), width / (FLOAT)height, 0.01f, 100.0f);
-			}
-		#endif
+		void pInit()
+		{
+			proj = XMMatrixPerspectiveFovLH(DegreesToRadians(angle), screen.aspect, 0.01f, 100.0f);
+		}
+
 
 	} viewCam;
 
@@ -56,26 +62,13 @@ namespace Camera
 		XMVECTOR At =  XMVECTOR{at.x, at.y, at.z, 0.0f};
 		XMVECTOR Up =  XMVECTOR{up.x, up.y, up.z, 0.0f};
 
-		ConstBuf::camera = {
+		ConstBuf::camera[0] = {
 			.world = XMMatrixIdentity(),
 			.view = XMMatrixTranspose(XMMatrixLookAtLH(Eye, At, Up)),
-			.proj = XMMatrixTranspose(XMMatrixPerspectiveFovLH(DegreesToRadians(angle), dx11::iaspect, 0.01f, 100.0f))
+			.proj = XMMatrixTranspose(XMMatrixPerspectiveFovLH(DegreesToRadians(angle), dx11::screen.iaspect, 0.01f, 100.0f))
 		};
 
-		#if EditMode
-
-			if (viewCam.overRide)
-			{
-				ConstBuf::camera = {
-					.world = viewCam.world,
-					.view = XMMatrixTranspose(viewCam.view),
-					.proj = XMMatrixTranspose(viewCam.proj)
-				};
-			}
-
-		#endif	
-
 		ConstBuf::Update(ConstBuf::cBuffer::camera);
-		ConstBuf::Set(ConstBuf::cBuffer::camera, ConstBuf::target::both);
+		ConstBuf::Set(ConstBuf::cBuffer::camera, targetshader::both);
 	}
 }

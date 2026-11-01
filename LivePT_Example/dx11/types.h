@@ -1,4 +1,6 @@
 struct int4 { int x; int y; int z; int w; };
+struct float2 { float x; float y; };
+struct float3 { float x; float y; float z; };
 struct float4 { float x; float y; float z; float w; };
 struct color4 { float r; float g; float b; float a; };
 

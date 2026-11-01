@@ -11,9 +11,6 @@ void recompileShader();
 #include "LivePT/LivePT.h" // incude it for using lib
 
 // ---------------------- d3d renderer ------------------------
-#define EditMode true
-#define DebugMode false
-#define ExternalResourcesMode true
 #include "dx11/dx.h"
 // ------------------------------------------------------------
 
@@ -24,29 +21,30 @@ struct {
     int h;
 } gc;
 
-
-
-
 #include "renderer\timer.h"
 #include "renderer\gAPI.h"
-#include "app.h"
-bool resize = true;
+#include "app\app.h"
+
 
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+
     switch (uMsg) {
 
-    case WM_SIZE:
-    {
-        screen.width = LOWORD(lParam);
-        screen.height = HIWORD(lParam);
-        resize = true;
-        return 0;
+        case WM_SIZE:
+        {
+            screen.width = LOWORD(lParam);
+            screen.height = HIWORD(lParam);
+            resize = true;
+            return 0;
+        }
+
+        case WM_DESTROY:
+        {
+            PostQuitMessage(0);
+            return 0;
+        }
     }
 
-    case WM_DESTROY:
-        PostQuitMessage(0);
-        return 0;
-    }
     return DefWindowProcA(hwnd, uMsg, wParam, lParam);
 }
 
@@ -91,12 +89,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
     MSG msg = { 0 };
 
-    
-
     while (msg.message != WM_QUIT)
     {
 
-#if EditMode
+    #if EditMode
 
         while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
         {
@@ -109,9 +105,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             DispatchMessage(&msg);
         }
 
-#else
+    #else
 
-        // Проверяем сообщения Windows
         if (PeekMessage(&msg, NULL, 0U, 0U, PM_REMOVE)) {
             TranslateMessage(&msg);
             DispatchMessage(&msg);
@@ -121,7 +116,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         //PeekMessageA(&msg, NULL, 0, 0, PM_REMOVE);
         //if (GetAsyncKeyState(VK_ESCAPE) || timer::frameBeginTime / 1000. > DEMO_DURATION) { break; }
 
-#endif
+    #endif
 
         if (IsIconic(hwnd))
         {
