@@ -135,5 +135,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
     }
 
+    dx11::Audio::ReleaseAudioEngine();
+
     return 0;
 }

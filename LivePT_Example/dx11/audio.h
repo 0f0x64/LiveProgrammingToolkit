@@ -1,253 +1,324 @@
 #include <xaudio2.h>
 #pragma comment(lib, "xaudio2.lib")
 
+// Компилируем реализацию методов stb_vorbis непосредственно в этом файле
+#define int32  STB_VORBIS_INT32_TMP
+#define uint32 STB_VORBIS_UINT32_TMP
+#define int16  STB_VORBIS_INT16_TMP
+#define uint16 STB_VORBIS_UINT16_TMP
+#include "../thirdParty/stb_vorbis.c"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 namespace Audio
 {
-#define MAXCHANNELS 32
-#define max_audio 256
+    // Значения по умолчанию для процедурного синтезатора (для файлов заменятся реальными данными)
+    constexpr DWORD SAMPLE_RATE = 44100;
+    constexpr WORD CHANNELS = 1;
+    constexpr WORD BITS_PER_SAMPLE = 16;
 
-	struct RIFF_HEADER {
-		char chunkId[4];
-		unsigned long chunkSize;
-		char format[4];
-	};
+    constexpr size_t MAX_SOUNDS = 10;      // Максимум уникальных звуков в системе
+    constexpr size_t VOICES_PER_SOUND = 4; // Пул полифонии (одновременных голосов) на каждый звук
 
-	struct WAVE_FORMAT {
-		char subChunkId[4];
-		unsigned long subChunkSize;
-		unsigned short audioFormat;
-		unsigned short numChannels;
-		unsigned long sampleRate;
-		unsigned long byteRate;
-		unsigned short blockAlign;
-		unsigned short bitsPerSample;
-	};
+    // Структура для хранения данных одного звука
+    struct Sound {
+        IXAudio2SourceVoice* sourceVoices[VOICES_PER_SOUND]{};
+        BYTE* audioData = nullptr;
+        DWORD dataSize = 0;
+        double durationSeconds = 0.0;
+        bool isUsed = false;
+        bool isLoadedFromFile = false; // Флаг для разделения способов аллокации памяти
+        bool isLooped = false;         // Флаг режима бесконечного повторения
+        size_t nextVoiceIndex = 0;
+    };
 
-	struct WAVE_DATA {
-		char subChunkId[4];
-		unsigned long subChunkSize;
-	};
+    // Структура аудио-движка
+    struct AudioEngine {
+        IXAudio2* pXAudio2 = nullptr;
+        IXAudio2MasteringVoice* pMasterVoice = nullptr;
+        Sound sounds[MAX_SOUNDS]{};
+        HRESULT coInitResult = E_FAIL;
+    };
 
-	struct soundDesc {
-		std::vector<BYTE> data;
-		WAVEFORMATEX format;
-	};
+    // Глобальный объект движка
+    AudioEngine g_Engine{};
 
-	struct VoiceController {
-		IXAudio2SourceVoice* voice;
-		int soundIndex;
-		bool isLooping;
-		float volume;
+    using WaveGenerator = double(*)(double angle, double time, double duration);
 
-		VoiceController() : voice(nullptr), soundIndex(-1), isLooping(false), volume(1.0f) {}
-		VoiceController(IXAudio2SourceVoice* v, int idx, bool loop, float vol)
-			: voice(v), soundIndex(idx), isLooping(loop), volume(vol) {
-		}
-	};
+    // --- Функция огибающей (Линейный Decay) ---
+    double ApplyDecay(double time, double duration) {
+        if (time >= duration) return 0.0;
+        constexpr double lambda = 4.0;
+        double exponentialFactor = exp(-lambda * (time / duration));
+        double endValue = exp(-lambda);
+        return (exponentialFactor - endValue) / (1.0 - endValue);
+    }
 
-	IXAudio2* pXAudio2;
-	IXAudio2MasteringVoice* pMasteringVoice;
-	XAUDIO2_BUFFER buffer;
-	BYTE* channel[MAXCHANNELS];
+    // --- Колбэки генерации аудиоданных для синтезатора ---
+    double GenerateSawtooth(double angle, double time, double duration) {
+        double wave = 2.0 * fmod(time * 440.0, 1.0) - 1.0;
+        return wave * ApplyDecay(time, duration);
+    }
 
-	int len;
-	int channelLen;
+    // --- Вспомогательная функция безопасной очистки аудиослота ---
+    void FreeSoundSlot(Sound& sound) {
+        if (!sound.isUsed) return;
 
-	soundDesc Sounds[max_audio];
+        for (size_t v = 0; v < VOICES_PER_SOUND; ++v) {
+            if (sound.sourceVoices[v]) {
+                sound.sourceVoices[v]->DestroyVoice();
+            }
+        }
+        if (sound.audioData) {
+            if (sound.isLoadedFromFile) {
+                free(sound.audioData); // stb_vorbis использует стандартный malloc
+            }
+            else {
+                HeapFree(GetProcessHeap(), 0, sound.audioData); // Синтезатор работает с кучей Windows
+            }
+        }
+        sound = {};
+    }
 
-	int soundsCount;
+    // Декларации функций управления, которые будут во второй части
+    bool CreateSound(size_t index, double durationSeconds, WaveGenerator generator);
+    bool LoadSound(size_t index, const char* filepath);
+    void PlaySoundX(size_t index, bool loop);
+    void PauseSoundX(size_t index);
+    void StopSoundX(size_t index);
+    void ReleaseAudioEngine();
 
-	void Init() {
-		IXAudio2SourceVoice* pSourceVoice;
+    // --- Инициализация аудиосистемы ---
+    bool Init() {
+        g_Engine.coInitResult = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+        if (FAILED(g_Engine.coInitResult) && g_Engine.coInitResult != RPC_E_CHANGED_MODE) {
+            return false;
+        }
 
-		HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-		if (FAILED(hr)) {
-			Log("Failed to coinitialize ex");
-			return;
-		}
+        if (FAILED(XAudio2Create(&g_Engine.pXAudio2, 0, XAUDIO2_DEFAULT_PROCESSOR))) {
+            if (g_Engine.coInitResult == S_OK) CoUninitialize();
+            return false;
+        }
 
-		hr = XAudio2Create(&pXAudio2, 0);
-		if (FAILED(hr)) {
-			Log("Failed to create XAudio2");
-			return;
-		}
+        if (FAILED(g_Engine.pXAudio2->CreateMasteringVoice(&g_Engine.pMasterVoice))) {
+            g_Engine.pXAudio2->Release();
+            g_Engine.pXAudio2 = nullptr;
+            if (g_Engine.coInitResult == S_OK) CoUninitialize();
+            return false;
+        }
 
-		hr = pXAudio2->CreateMasteringVoice(&pMasteringVoice);
-		if (FAILED(hr)) {
-			Log("Failed to create mastering voice");
-			return;
-		}
+        // Примеры инициализации ресурсов движка:
+        //CreateSound(0, 1.5, GenerateSawtooth); // Слот 0: процедурный звук пилы
+        LoadSound(0, "punch.ogg");          // Слот 1: загрузка OGG файла
+        LoadSound(1, "lose_scissors_stone.ogg");
+        LoadSound(2, "win_paper_stone.ogg");
+        LoadSound(3, "win_scissors_paper.ogg");
+        LoadSound(4, "gong.ogg");
 
-		for (int x = 0; x < MAXCHANNELS - 1; x++)
-		{
-			channel[x] = new BYTE[channelLen * 2 * 2];
-			ZeroMemory(channel[x], channelLen * 2 * 2);
-		}
+        return true;
+    }
 
-		channel[MAXCHANNELS - 1] = new BYTE[len * 2 * 2];
-		ZeroMemory(channel[MAXCHANNELS - 1], len * 2 * 2);
+    // --- Конец Части 1. Продолжение функций генерации и загрузки ниже ---
+    // --- Продолжение пространства имен Audio ---
 
-		WAVEFORMATEX waveformat;
-		waveformat.wFormatTag = WAVE_FORMAT_PCM;
-		waveformat.nChannels = 2;
-		waveformat.nSamplesPerSec = 44100;
-		waveformat.nAvgBytesPerSec = 44100 * 2 * 2;
-		waveformat.nBlockAlign = 2 * 16 / 8;
-		waveformat.wBitsPerSample = 16;
-		waveformat.cbSize = 0;
+    // --- Загрузка .ogg файла через stb_vorbis ---
+    bool LoadSound(size_t index, const char* filepath) {
+        if (index >= MAX_SOUNDS || !filepath) return false;
 
-		hr = pXAudio2->CreateSourceVoice(&pSourceVoice, &waveformat);
+        char pName[MAX_PATH];
+        strcpy_s(pName, MAX_PATH, "sound/");
+        strcat_s(pName, MAX_PATH, filepath);
 
-		ZeroMemory(&buffer, sizeof(buffer));
-		buffer.AudioBytes = 2 * 2 * len;
-		buffer.pAudioData = channel[MAXCHANNELS - 1];
-		buffer.Flags = XAUDIO2_END_OF_STREAM;
-		buffer.PlayBegin = 0;
-		buffer.PlayLength = 0;
+        Sound& sound = g_Engine.sounds[index];
+        FreeSoundSlot(sound); // Сброс предыдущего контента из выбранного слота
 
-		hr = pSourceVoice->SubmitSourceBuffer(&buffer);
-		pSourceVoice->Stop(0, 0);
-	};
+        int channels = 0;
+        int sampleRate = 0;
+        short* outputBuffer = nullptr;
 
-	IXAudio2SourceVoice* Play(int soundIndex, bool loop = false, float volume = 1.0f) {
-		if (soundIndex < 0 || soundIndex >= soundsCount) return nullptr;
+        // Полное декодирование файла из диска силами stb_vorbis
+        int totalSamplesPerChannel = stb_vorbis_decode_filename(
+            pName,
+            &channels,
+            &sampleRate,
+            &outputBuffer
+        );
 
-		soundDesc& sound = Sounds[soundIndex];
-		if (sound.data.empty()) return nullptr;
+        // Если возвращен отрицательный код — файл не найден или поврежден
+        if (totalSamplesPerChannel < 0) {
+            return false;
+        }
 
-		IXAudio2SourceVoice* pVoice = nullptr;
-		HRESULT hr = pXAudio2->CreateSourceVoice(&pVoice, &sound.format);
-		if (FAILED(hr)) return nullptr;
+        sound.isLoadedFromFile = true;
+        sound.audioData = reinterpret_cast<BYTE*>(outputBuffer);
 
-		XAUDIO2_BUFFER voiceBuffer = {};
-		voiceBuffer.pAudioData = sound.data.data();
-		voiceBuffer.AudioBytes = (UINT32)sound.data.size();
-		voiceBuffer.Flags = XAUDIO2_END_OF_STREAM;
+        WORD bitsPerSample = 16; // stb_vorbis гарантированно выдает 16-битный PCM
+        WORD blockAlign = (channels * bitsPerSample) / 8;
 
-		// Если зациклено, устанавливаем флаг
-		if (loop) {
-			voiceBuffer.LoopCount = XAUDIO2_LOOP_INFINITE;
-			voiceBuffer.LoopBegin = 0;
-			voiceBuffer.LoopLength = 0;
-		}
+        sound.dataSize = totalSamplesPerChannel * blockAlign;
+        sound.durationSeconds = static_cast<double>(totalSamplesPerChannel) / sampleRate;
+        sound.isLooped = false;
 
-		hr = pVoice->SubmitSourceBuffer(&voiceBuffer);
-		if (FAILED(hr)) {
-			pVoice->DestroyVoice();
-			return nullptr;
-		}
+        // Конфигурируем структуру формата под реальные метаданные OGG файла
+        WAVEFORMATEX wfx{};
+        wfx.wFormatTag = WAVE_FORMAT_PCM;
+        wfx.nChannels = static_cast<WORD>(channels);
+        wfx.nSamplesPerSec = static_cast<DWORD>(sampleRate);
+        wfx.wBitsPerSample = bitsPerSample;
+        wfx.nBlockAlign = blockAlign;
+        wfx.nAvgBytesPerSec = wfx.nSamplesPerSec * wfx.nBlockAlign;
+        wfx.cbSize = 0;
 
-		// Устанавливаем громкость
-		if (volume < 0.0f) volume = 0.0f;
-		if (volume > 1.0f) volume = 1.0f;
-		pVoice->SetVolume(volume);
+        // Создаем пул голосов под формат данного файла
+        for (size_t v = 0; v < VOICES_PER_SOUND; ++v) {
+            if (FAILED(g_Engine.pXAudio2->CreateSourceVoice(&sound.sourceVoices[v], &wfx, 0, XAUDIO2_DEFAULT_FREQ_RATIO, nullptr))) {
+                FreeSoundSlot(sound);
+                return false;
+            }
+        }
 
-		pVoice->Start(0);
+        sound.isUsed = true;
+        return true;
+    }
 
-		// Сохраняем контроллер
-		activeVoices.push_back(VoiceController(pVoice, soundIndex, loop, volume));
+    // --- Генерация процедурного звука ---
+    bool CreateSound(size_t index, double durationSeconds, WaveGenerator generator) {
+        if (index >= MAX_SOUNDS || !generator || durationSeconds <= 0.0) return false;
 
-		return pVoice;
-	}
+        Sound& sound = g_Engine.sounds[index];
+        FreeSoundSlot(sound);
 
-	IXAudio2SourceVoice* Play(const std::string& name, bool loop = false, float volume = 1.0f) {
-		auto it = SoundName.find(name);
-		if (it != SoundName.end()) {
-			return Play(it->second, loop, volume);
-		}
-		return nullptr;
-	}
+        sound.durationSeconds = durationSeconds;
+        sound.isLoadedFromFile = false;
+        sound.isLooped = false;
 
-	void Pause(IXAudio2SourceVoice* pVoice) {
-		if (pVoice) {
-			pVoice->Stop(0);
-		}
-	}
+        WAVEFORMATEX wfx{};
+        wfx.wFormatTag = WAVE_FORMAT_PCM;
+        wfx.nChannels = CHANNELS;
+        wfx.nSamplesPerSec = SAMPLE_RATE;
+        wfx.wBitsPerSample = BITS_PER_SAMPLE;
+        wfx.nBlockAlign = (CHANNELS * BITS_PER_SAMPLE) / 8;
+        wfx.nAvgBytesPerSec = SAMPLE_RATE * wfx.nBlockAlign;
+        wfx.cbSize = 0;
 
-	void Resume(IXAudio2SourceVoice* pVoice) {
-		if (pVoice) {
-			pVoice->Start(0);
-		}
-	}
+        for (size_t v = 0; v < VOICES_PER_SOUND; ++v) {
+            if (FAILED(g_Engine.pXAudio2->CreateSourceVoice(&sound.sourceVoices[v], &wfx, 0, XAUDIO2_DEFAULT_FREQ_RATIO, nullptr))) {
+                return false;
+            }
+        }
 
-	void Stop(IXAudio2SourceVoice* pVoice) {
-		if (pVoice) {
-			pVoice->Stop(0);
-		}
-	}
+        const DWORD totalSamples = static_cast<DWORD>(SAMPLE_RATE * sound.durationSeconds);
+        sound.dataSize = totalSamples * wfx.nBlockAlign;
 
-	void Stop(const std::string& name) {
-		auto it = SoundName.find(name);
-		if (it == SoundName.end()) return;
+        sound.audioData = static_cast<BYTE*>(HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sound.dataSize));
+        if (!sound.audioData) {
+            for (size_t v = 0; v < VOICES_PER_SOUND; ++v) sound.sourceVoices[v]->DestroyVoice();
+            return false;
+        }
 
-		int soundIndex = it->second;
-		for (auto& controller : activeVoices) {
-			if (controller.voice) {
-				controller.voice->Stop(0);
-			}
-		}
-	}
+        short* samples = reinterpret_cast<short*>(sound.audioData);
+        const double frequency = 440.0;
+        for (DWORD i = 0; i < totalSamples; ++i) {
+            double time = static_cast<double>(i) / SAMPLE_RATE;
+            double angle = 2.0 * M_PI * frequency * time;
+            samples[i] = static_cast<short>(16384.0 * generator(angle, time, sound.durationSeconds));
+        }
 
-	void StopAll() {
-		for (auto& controller : activeVoices) {
-			if (controller.voice) {
-				controller.voice->Stop(0);
-				controller.voice->DestroyVoice();
-				controller.voice = nullptr;
-			}
-		}
-		activeVoices.clear();
-	}
+        for (size_t v = 0; v < VOICES_PER_SOUND; ++v) {
+            XAUDIO2_BUFFER buffer{};
+            buffer.AudioBytes = sound.dataSize;
+            buffer.pAudioData = sound.audioData;
+            buffer.Flags = XAUDIO2_END_OF_STREAM;
+            buffer.LoopCount = 0;
 
-	void SetVolume(IXAudio2SourceVoice* pVoice, float volume) {
-		if (pVoice) {
-			if (volume < 0.0f) volume = 0.0f;
-			if (volume > 1.0f) volume = 1.0f;
+            if (FAILED(sound.sourceVoices[v]->SubmitSourceBuffer(&buffer))) {
+                FreeSoundSlot(sound);
+                return false;
+            }
+        }
 
-			pVoice->SetVolume(volume);
-		}
-	}
+        sound.isUsed = true;
+        return true;
+    }
 
-	void SetVolume(const std::string& name, float volume) {
-		auto it = SoundName.find(name);
-		if (it == SoundName.end()) return;
+    // --- Управление воспроизведением (Поддерживает полифонию и режим Loop) ---
+    void PlaySoundX(size_t index, bool loop = false) {
+        if (index >= MAX_SOUNDS || !g_Engine.sounds[index].isUsed) return;
 
-		int soundIndex = it->second;
-		for (auto& controller : activeVoices) {
-			if (controller.voice) {
-				SetVolume(controller.voice, volume);
-			}
-		}
-	}
+        Sound& sound = g_Engine.sounds[index];
+        sound.isLooped = loop;
 
-	float GetVolume(IXAudio2SourceVoice* pVoice) {
-		if (!pVoice) return 0.0f;
-		float volume;
-		pVoice->GetVolume(&volume);
-		return volume;
-	}
+        // Выбираем следующий по очереди голос из пула
+        size_t chosenIndex = sound.nextVoiceIndex;
+        IXAudio2SourceVoice* voiceToPlay = sound.sourceVoices[chosenIndex];
 
-	void DeleteVoice(IXAudio2SourceVoice* pVoice) {
-		pVoice->DestroyVoice();
-	};
+        // Проверяем, играет ли он сейчас
+        XAUDIO2_VOICE_STATE state;
+        voiceToPlay->GetState(&state, XAUDIO2_VOICE_NOSAMPLESPLAYED);
 
-	bool IsPlaying(IXAudio2SourceVoice* pVoice) {
-		if (!pVoice) return false;
-		XAUDIO2_VOICE_STATE state;
-		pVoice->GetState(&state);
-		return state.BuffersQueued > 0;
-	}
+        // Если голос занят (например, звук длинный, а мы быстро кликаем по кругу)
+        if (state.BuffersQueued > 0) {
+            voiceToPlay->Stop(0);
+            voiceToPlay->FlushSourceBuffers();
+        }
 
-	void UpdateVoices() {
-		for (auto it = activeVoices.begin(); it != activeVoices.end(); ) {
-			if (!it->voice || !IsPlaying(it->voice)) {
-				if (it->voice) {
-					it->voice->DestroyVoice();
-				}
-				it = activeVoices.erase(it);
-			}
-			else {
-				++it;
-			}
-		}
-	}
+        // Заправляем буфер непосредственно перед стартом
+        XAUDIO2_BUFFER buffer = { 0 };
+        buffer.AudioBytes = sound.dataSize;
+        buffer.pAudioData = sound.audioData;
+        buffer.Flags = XAUDIO2_END_OF_STREAM;
+        buffer.LoopCount = sound.isLooped ? XAUDIO2_LOOP_INFINITE : 0;
+
+        voiceToPlay->SubmitSourceBuffer(&buffer);
+        voiceToPlay->Start(0);
+
+        // Сдвигаем индекс для следующего вызова (0 -> 1 -> 2 -> 3 -> 0)
+        sound.nextVoiceIndex = (chosenIndex + 1) % VOICES_PER_SOUND;
+    }
+
+
+    // --- Поставить на паузу все голоса звука ---
+    void PauseSoundX(size_t index) {
+        if (index < MAX_SOUNDS && g_Engine.sounds[index].isUsed) {
+            for (size_t v = 0; v < VOICES_PER_SOUND; ++v) {
+                g_Engine.sounds[index].sourceVoices[v]->Stop(0);
+            }
+        }
+    }
+
+    // --- Мгновенная остановка с очисткой бесконечного цикла ---
+    void StopSoundX(size_t index) {
+        if (index >= MAX_SOUNDS || !g_Engine.sounds[index].isUsed) return;
+
+        Sound& sound = g_Engine.sounds[index];
+        sound.isLooped = false;
+
+        for (size_t v = 0; v < VOICES_PER_SOUND; ++v) {
+            sound.sourceVoices[v]->Stop(0);
+            sound.sourceVoices[v]->FlushSourceBuffers(); // Просто очищаем, ничего заново не шлем!
+        }
+    }
+
+    // --- Корректное освобождение ресурсов при выходе из приложения ---
+    void ReleaseAudioEngine() {
+        for (size_t i = 0; i < MAX_SOUNDS; ++i) {
+            FreeSoundSlot(g_Engine.sounds[i]);
+        }
+
+        if (g_Engine.pMasterVoice) g_Engine.pMasterVoice->DestroyVoice();
+        if (g_Engine.pXAudio2) g_Engine.pXAudio2->Release();
+
+        if (g_Engine.coInitResult == S_OK) CoUninitialize();
+    }
+} // namespace Audio
+
+#undef int32  
+#undef uint32 
+#undef int16  
+#undef uint16 

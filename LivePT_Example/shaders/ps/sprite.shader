@@ -15,6 +15,7 @@ struct VS_OUTPUT_POS_UV
 float4 PS(VS_OUTPUT_POS_UV input, bool isFrontFace : SV_IsFrontFace) : SV_Target
 {
     float4 c = screen.SampleLevel(sam1,input.uv,0);
+    c.a*=saturate(sin(input.uv.x*3.141519)*8);
     return c;
     return base_color*(1-2*length(input.uv-.5));
 

@@ -117,7 +117,7 @@ namespace gApi {
 		InputAssembler::IA(topology::triList);
 		Blend::Set(blendmode::alpha, blendop::add);
 		Depth::Depth(depthmode::off);
-		Rasterizer::Cull(cullmode::back);
+		Rasterizer::Cull(cullmode::off);
 
 		Draw::SetRenderTarget(TexList::rt::mainRT, 0);
 
@@ -141,8 +141,9 @@ namespace gApi {
 		pos2 pos;
 		size2 size;
 		angle rotation;
+		pos2 rotCentre;
 		float4 color;
-		TexList::sprites texture;
+		int texture;
 	};
 
 	LPT_LIVE_FUNCTION(void, ShowSprite, spriteDesc, in)
@@ -150,7 +151,8 @@ namespace gApi {
 		Shaders::vs::sprite::params = {
 			.position = float4{ in.pos.x, in.pos.y, 0.f, 0.f},
 			.size = float4{ in.size.w,in.size.h, 0.f,0.f},
-			.rotation = float4{in.rotation*(float)M_PI/180.f,0.f,0.f,0.f}
+			.rotation = float4{in.rotation*(float)M_PI/180.f,0.f,0.f,0.f},
+			.rotationCentre = float4{in.rotCentre.x,in.rotCentre.y,0.f,0.f}
 		};
 		ConstBuf::Update(dx11::Shaders::VS[(int)Shaders::vertex::sprite].params, Shaders::vs::sprite::params);
 		Shaders::SetVSParamCB(Shaders::vertex::sprite);

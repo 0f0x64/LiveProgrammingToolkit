@@ -7,6 +7,7 @@ namespace vs {
             float4 position;
             float4 size;
             float4 rotation;
+            float4 rotationCentre;
         } params;
 
     }

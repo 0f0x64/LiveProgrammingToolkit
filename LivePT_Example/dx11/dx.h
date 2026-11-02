@@ -78,12 +78,12 @@ namespace dx11
 	#include "shaders.h"
 	#include "draw.h"
 	#include "IA.h"
-	//#include "audio.h"
+	#include "audio.h"
 	#include "TexturesResBP.h"
 
 	void Init(HWND hwnd)
 	{
-//		Audio::Init();
+		Audio::Init();
 		Device::Init(hwnd);
 		Rasterizer::Init();
 		Depth::Init();
