@@ -38,7 +38,9 @@ VS_OUTPUT_POS_UV VS(uint vID : SV_VertexID, uint iID : SV_InstanceID)
     float2 map[6] = { 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1 };
 
     float4 pos = float4(map[vID]-.5,0,1);
-    pos.xy=rot(pos.xyz-rotationCentre.xy,rotation)+rotationCentre.xy;
+    pos.xyz=rotX(pos.xyz-rotationCentre.xyz,rotation.x)+rotationCentre.xyz;
+    pos.xyz=rotY(pos.xyz-rotationCentre.xyz,rotation.y)+rotationCentre.xyz;
+    pos.xyz=rotZ(pos.xyz-rotationCentre.xyz,rotation.z)+rotationCentre.xyz;
     pos.xy*=size.xy;
     pos.xy += position.xy;
     //pos.y+=sin(time.x*.006)*.01;

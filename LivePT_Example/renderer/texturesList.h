@@ -9,6 +9,12 @@ List(back) {
     Tex(t1, tType::flat, tFormat::u8, 256, 256, false, false, "1.png")
     Tex(t2, tType::flat, tFormat::u8, 256, 256, false, false, "2.png")
     Tex(t3, tType::flat, tFormat::u8, 256, 256, false, false, "3.png")
+    Tex(ready1, tType::flat, tFormat::u8, 512, 64, false, false, "ready1.png")
+    Tex(ready2, tType::flat, tFormat::u8, 512, 64, false, false, "ready2.png")
+    Tex(logo, tType::flat, tFormat::u8, 1024, 1024, false, false, "logo.png")
+    Tex(finger, tType::flat, tFormat::u8, 64, 96, false, false, "finger.png")
+    Tex(win, tType::flat, tFormat::u8, 512, 512, false, false, "win.png")
+    Tex(lose, tType::flat, tFormat::u8, 512, 512, false, false, "lose.png")
 };
 
 

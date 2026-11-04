@@ -113,9 +113,7 @@ namespace Audio
             return false;
         }
 
-        // Примеры инициализации ресурсов движка:
-        //CreateSound(0, 1.5, GenerateSawtooth); // Слот 0: процедурный звук пилы
-        LoadSound(0, "punch.ogg");          // Слот 1: загрузка OGG файла
+        LoadSound(0, "punch.ogg");          
         LoadSound(1, "lose_scissors_stone.ogg");
         LoadSound(2, "win_paper_stone.ogg");
         LoadSound(3, "win_scissors_paper.ogg");

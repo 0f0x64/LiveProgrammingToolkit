@@ -118,7 +118,7 @@ namespace gApi {
 		Blend::Set(blendmode::alpha, blendop::add);
 		Depth::Depth(depthmode::off);
 		Rasterizer::Cull(cullmode::off);
-
+		Sampler::Sampler(targetshader::pixel,0,filter::linear,addr::clamp, addr::clamp);
 		Draw::SetRenderTarget(TexList::rt::mainRT, 0);
 
 		dx11::ConstBuf::frame.time = XMFLOAT4((float)timer::GetCounter(), 0, 0, 0);
@@ -140,8 +140,8 @@ namespace gApi {
 	struct spriteDesc {
 		pos2 pos;
 		size2 size;
-		angle rotation;
-		pos2 rotCentre;
+		float4 rotation;
+		float4 rotCentre;
 		float4 color;
 		int texture;
 	};
@@ -151,8 +151,12 @@ namespace gApi {
 		Shaders::vs::sprite::params = {
 			.position = float4{ in.pos.x, in.pos.y, 0.f, 0.f},
 			.size = float4{ in.size.w,in.size.h, 0.f,0.f},
-			.rotation = float4{in.rotation*(float)M_PI/180.f,0.f,0.f,0.f},
-			.rotationCentre = float4{in.rotCentre.x,in.rotCentre.y,0.f,0.f}
+			.rotation = float4{
+				in.rotation.x*(float)M_PI/180.f,
+				in.rotation.y* (float)M_PI / 180.f,
+				in.rotation.z* (float)M_PI / 180.f,
+				0.f},
+			.rotationCentre = float4{in.rotCentre.x,in.rotCentre.y,in.rotCentre.z,0.f}
 		};
 		ConstBuf::Update(dx11::Shaders::VS[(int)Shaders::vertex::sprite].params, Shaders::vs::sprite::params);
 		Shaders::SetVSParamCB(Shaders::vertex::sprite);
