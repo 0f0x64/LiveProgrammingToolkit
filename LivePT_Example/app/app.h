@@ -8,9 +8,14 @@ namespace App {
     };
 
     enum { win, lose, draft };
-    int res = 0;
+    int result = 0;
+    
     int LScore = 0;
+    select LSelect = select::stone;
+
+    
     int RScore = 0;
+    select RSelect = select::stone;
 
     phase gameState = phase::start;
     float gongAmp = 0;
@@ -29,9 +34,7 @@ namespace App {
 
     enum class select {stone,scissors,paper};
 
-    select LSelect = select::stone;
-    select RSelect = select::stone;
-
+    
     bool enemyPressed = false;
     bool keyPressed = false;
     double pressedTime=0;
@@ -309,17 +312,17 @@ namespace App {
 
             if (!endTrigger)
             {
-                int result[3][3] = {
-                    //user  st     sc      p     //comp
-                        { draft,  lose,   win }, //st
-                        { win,  draft,   lose }, //sc
-                        { lose,  win,   draft }  //pap
+                int gameTable[3][3] = {
+                  //user: stone   scissors  paper     //comp
+                        { draft,  lose,     win },    //stone
+                        { win,    draft,    lose },   //scissors
+                        { lose,   win,      draft }   //paper
                 };
 
-                res = result[(int)LSelect][(int)RSelect];
+                result = gameTable[(int)LSelect][(int)RSelect];
 
-                if (res == win) RScore++;
-                if (res == lose) LScore++;
+                if (result == win) RScore++;
+                if (result == lose) LScore++;
 
                 endTrigger =true;
             }
@@ -391,11 +394,11 @@ namespace App {
         {
             if (frameTime - endTimer < 1000)
             {
-                if (res == win)
+                if (result == win)
                 {
                     Ljitter = ((rand() % 100) / 100.) * .05;
                 }
-                if (res == lose)
+                if (result == lose)
                 {
                     Rjitter = ((rand() % 100) / 100.) * .05;
                 }
