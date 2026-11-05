@@ -274,6 +274,9 @@ namespace App {
                     if (frameL > 7) frameL = 7;
                 }
             }
+            else {
+                rtL = sin((frameTime - fightStartTime) * (6. * M_PI / 3000.)) * lAmp;
+            }
 
             if (keyPressed)
             {
@@ -283,13 +286,7 @@ namespace App {
                     if (frameR > 7) frameR = 7;
                 }
             }
-
-            if (delta <= margin)
-            {
-                rtL = sin((frameTime - fightStartTime) * (6. * M_PI / 3000.)) * lAmp;
-            }
-
-            if (!keyPressed)
+            else
             {
                 rtR = sin((frameTime - fightStartTime) * (6. * M_PI / 3000.)) * rAmp;
             }
@@ -298,6 +295,11 @@ namespace App {
             if (time > 3000-1000/4.)
             {
                 gameState = phase::end;
+                if (!keyPressed)
+                {
+                    keyPressed = true;
+                    RSelect = select::stone;
+                }
             }
             endTimer = frameTime;
             endTrigger = false;
@@ -308,7 +310,7 @@ namespace App {
             if (!endTrigger)
             {
                 int result[3][3] = {
-                    //p1    st     sc      p     //p2
+                    //user  st     sc      p     //comp
                         { draft,  lose,   win }, //st
                         { win,  draft,   lose }, //sc
                         { lose,  win,   draft }  //pap
