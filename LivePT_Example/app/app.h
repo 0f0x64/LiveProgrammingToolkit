@@ -7,53 +7,55 @@ namespace App {
         restart
     };
 
+    phase gameState = phase::start;
+
+    enum class select { stone, scissors, paper };
+
     enum { win, lose, draft };
     int result = 0;
     
     int LScore = 0;
     select LSelect = select::stone;
-
-    
+    float lAmp = 0;
+    float rAmp = 0;
+    bool enemyPressed = false;
+    float Lofs = -1.05f;
+    static bool p1ready = false;
+    static int frameL = 0;
+      
     int RScore = 0;
     select RSelect = select::stone;
-
-    phase gameState = phase::start;
-    float gongAmp = 0;
+    float rtL = 0;
+    float rtR = 0;
+    bool keyPressed = false;
+    float Rofs = +1.05f;
+    static bool p2ready = false;
+    static int frameR = 0;
 
     double prevFrameTime;
     double frameTime;
-
     double gongTime;
     double fightStartTime;
     double pTimer;
     double endTimer;
     double restartTime;
+    double pressedTime = 0;
 
     bool endTrigger =  false;
     bool restartTrigger = false;
 
-    enum class select {stone,scissors,paper};
+    float gongAmp = 0;
 
-    
-    bool enemyPressed = false;
-    bool keyPressed = false;
-    double pressedTime=0;
-    float lAmp = 0;
-    float rAmp = 0;
-    float rtL = 0;
-    float rtR = 0;
-
-	void init()
-	{
-        timer::StartCounter();
-        prevFrameTime = timer::GetCounter();
-	}
+    int base_sc;
+    int base_pap;
+    float leftX;
+    float rightX;
 
     void TryPlayClientSound(size_t index, double cooldownMS) {
         if (index >= Audio::MAX_SOUNDS) return;
 
         static double s_ClientSoundTimers[Audio::MAX_SOUNDS]{};
-        static bool s_IsInitialized[Audio::MAX_SOUNDS]{}; 
+        static bool s_IsInitialized[Audio::MAX_SOUNDS]{};
 
         double currentTimeMS = timer::GetCounter();
 
@@ -65,6 +67,13 @@ namespace App {
             s_IsInitialized[index] = true;
         }
     }
+
+
+	void init()
+	{
+        timer::StartCounter();
+        prevFrameTime = timer::GetCounter();
+	}
 
     void ShowBackground()
     {
@@ -86,16 +95,7 @@ namespace App {
                 .texture = 2
             });
 
-
-        float gongMovement = eval(1.)*sin(frameTime/eval(350.));
-
-        gongMovement *= gongAmp;
-
-        if (gameState == phase::fight)
-        {
-
-            gongAmp *= .99;
-        }
+        float gongMovement = gongAmp*(eval(1.f)*sin(frameTime/eval(350.)));
 
         gApi::ShowSprite({
                 .pos = pos2{0.0f, -.2f},
@@ -117,6 +117,88 @@ namespace App {
             });
     }
 
+    void ShowHands()
+    {
+        int tTable[] = { base_sc ,base_sc,base_pap };
+        int tLeft = tTable[(int)LSelect];
+
+        static int tRight = base_sc;
+        if (keyPressed && gameState == phase::fight)
+        {
+            tRight = tTable[(int)RSelect];
+        }
+
+        float Ljitter = 0;
+        float Rjitter = 0;
+
+        if (gameState == phase::end)
+        {
+            if (frameTime - endTimer < 1000)
+            {
+                if (result == win)
+                {
+                    Ljitter = ((rand() % 100) / 100.) * .05;
+                }
+                if (result == lose)
+                {
+                    Rjitter = ((rand() % 100) / 100.) * .05;
+                }
+            }
+
+        }
+
+        float LyPos = Ljitter - 0.4;
+        float RyPos = Rjitter - 0.4;
+
+        gApi::ShowSprite({
+                .pos = pos2{leftX, LyPos},
+                .size = size2{-1.45f, 1.45f},
+                .rotation = float4{0.f,0.f,rtL,0.f },
+                .rotCentre = float4 {1.f,.0f,.0f,.0f },
+                .color = float4{1.0f,1.0f,1.0f,1.0f},
+                .texture = tLeft + frameL
+            });
+
+        gApi::ShowSprite({
+                .pos = pos2{ rightX,RyPos},
+                .size = size2{1.45f, 1.45f},
+                .rotation = float4{0.f,0.f,rtR,0.f },
+                .rotCentre = float4 {1.f,.0f,.0f,.0f },
+                .color = float4{1.0f,1.0f,1.0f,1.0f},
+                .texture = tRight + frameR
+            });
+    }
+
+    void ShowScore()
+    {
+        float step = eval(.11);
+
+        for (int i = 0; i < LScore; i++)
+        {
+            int tex = (int)TexList::back::finger;
+            gApi::ShowSprite({
+                    .pos = pos2{-1.20f + step * (float)i, 1.23f},
+                    .size = size2{0.14f, 0.19f},
+                    .rotation = float4{0.f,0.f,0.f,0.f },
+                    .rotCentre = float4 {1.f,.0f,.0f,.0f },
+                    .color = float4{1.0f,1.0f,1.0f,1.0f},
+                    .texture = tex
+                });
+        }
+        for (int i = 0; i < RScore; i++)
+        {
+            int tex = (int)TexList::back::finger;
+            gApi::ShowSprite({
+                    .pos = pos2{1.20f - step * (float)i, 1.23f},
+                    .size = size2{0.14f, 0.19f},
+                    .rotation = float4{0.f,0.f,0.f,0.f },
+                    .rotCentre = float4 {1.f,.0f,.0f,.0f },
+                    .color = float4{1.0f,1.0f,1.0f,1.0f},
+                    .texture = tex
+                });
+        }
+    }
+
 	void Loop()
 	{
         frameTime = timer::GetCounter();
@@ -132,17 +214,12 @@ namespace App {
 
         gApi::Clear(color3{12, 8, 35});
 
-        int base_sc = (int)TexList::sciss::sc1;
-        int base_pap = (int)TexList::paper::pap1;
-
         ShowBackground();
 
-        float basepos = 0.65f;
-        static float Lofs = -1.05f;
-        static float Rofs = +1.05f;
+        base_sc = (int)TexList::sciss::sc1;
+        base_pap = (int)TexList::paper::pap1;
 
-        static bool p1ready = false;
-        static bool p2ready = false;
+        float basepos = 0.65f;
 
         if (p1ready) {
             Lofs *= eval(.9);
@@ -151,10 +228,8 @@ namespace App {
             Rofs *= eval(.9);
         }
 
-        float leftX = -basepos + Lofs;
-        float rightX = basepos + Rofs;
-        static int frameL = 0;
-        static int frameR = 0;
+        leftX = -basepos + Lofs;
+        rightX = basepos + Rofs;
 
         if (gameState == phase::start)
         {
@@ -304,6 +379,9 @@ namespace App {
                     RSelect = select::stone;
                 }
             }
+
+            gongAmp *= .99;
+
             endTimer = frameTime;
             endTrigger = false;
         }
@@ -356,102 +434,10 @@ namespace App {
 
 
         //hands
-        
-        int tLeft = 0;
 
-        if (LSelect == select::stone)
-        {
-            tLeft = base_sc;
-        }
-        
-        if (LSelect == select::scissors)
-        {
-            tLeft = base_sc;
-        }
+        ShowHands();
 
-        if (LSelect == select::paper)
-        {
-            tLeft = base_pap;
-        }
-
-        static int tRight = base_sc;
-        if (keyPressed&&gameState == phase::fight)
-        {
-            if (RSelect == select::scissors)
-            {
-                tRight = base_sc;
-            }
-            if (RSelect == select::paper)
-            {
-                tRight = base_pap;
-            }
-
-        }
-        float Ljitter = 0;
-        float Rjitter = 0;
-
-        if (gameState == phase::end)
-        {
-            if (frameTime - endTimer < 1000)
-            {
-                if (result == win)
-                {
-                    Ljitter = ((rand() % 100) / 100.) * .05;
-                }
-                if (result == lose)
-                {
-                    Rjitter = ((rand() % 100) / 100.) * .05;
-                }
-            }
-
-        }
-
-        float LyPos = Ljitter - 0.4;
-        float RyPos = Rjitter - 0.4;
-
-        gApi::ShowSprite({
-                .pos = pos2{leftX, LyPos},
-                .size = size2{-1.45f, 1.45f},
-                .rotation = float4{0.f,0.f,rtL,0.f },
-                .rotCentre = float4 {1.f,.0f,.0f,.0f },
-                .color = float4{1.0f,1.0f,1.0f,1.0f},
-                .texture = tLeft + frameL
-        });
-
-        gApi::ShowSprite({
-                .pos = pos2{ rightX,RyPos},
-                .size = size2{1.45f, 1.45f},
-                .rotation = float4{0.f,0.f,rtR,0.f },
-                .rotCentre = float4 {1.f,.0f,.0f,.0f },
-                .color = float4{1.0f,1.0f,1.0f,1.0f},
-                .texture = tRight + frameR
-            });
-
-        float step= eval(.11);
-        for (int i = 0; i < LScore; i++)
-        { 
-            int tex = (int)TexList::back::finger;
-            gApi::ShowSprite({
-                    .pos = pos2{-1.20f+step*(float)i, 1.23f},
-                    .size = size2{0.14f, 0.19f},
-                    .rotation = float4{0.f,0.f,0.f,0.f },
-                    .rotCentre = float4 {1.f,.0f,.0f,.0f },
-                    .color = float4{1.0f,1.0f,1.0f,1.0f},
-                    .texture = tex
-                });
-        }
-        for (int i = 0; i < RScore; i++)
-        {
-            int tex = (int)TexList::back::finger;
-            gApi::ShowSprite({
-                    .pos = pos2{1.20f - step * (float)i, 1.23f},
-                    .size = size2{0.14f, 0.19f},
-                    .rotation = float4{0.f,0.f,0.f,0.f },
-                    .rotCentre = float4 {1.f,.0f,.0f,.0f },
-                    .color = float4{1.0f,1.0f,1.0f,1.0f},
-                    .texture = tex
-                });
-        }
+        ShowScore();
 
         if (gameState == phase::restart) {
             

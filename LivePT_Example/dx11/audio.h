@@ -314,6 +314,7 @@ namespace Audio
 
         if (g_Engine.coInitResult == S_OK) CoUninitialize();
     }
+
 } // namespace Audio
 
 #undef int32  
