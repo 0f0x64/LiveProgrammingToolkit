@@ -14,6 +14,8 @@ namespace App {
     enum { win, lose, draft };
     int result = 0;
     
+    //struct player
+
     int LScore = 0;
     select LSelect = select::stone;
     float lAmp = 0;
@@ -51,33 +53,19 @@ namespace App {
     float leftX;
     float rightX;
 
-    void TryPlayClientSound(size_t index, double cooldownMS) {
-        if (index >= Audio::MAX_SOUNDS) return;
 
-        static double s_ClientSoundTimers[Audio::MAX_SOUNDS]{};
-        static bool s_IsInitialized[Audio::MAX_SOUNDS]{};
-
-        double currentTimeMS = timer::GetCounter();
-
-        if (!s_IsInitialized[index] || (currentTimeMS - s_ClientSoundTimers[index] >= cooldownMS)) {
-
-            Audio::PlaySoundX(index);
-
-            s_ClientSoundTimers[index] = currentTimeMS;
-            s_IsInitialized[index] = true;
-        }
-    }
 
 
 	void init()
 	{
+        sound::preLoad();
         timer::StartCounter();
         prevFrameTime = timer::GetCounter();
 	}
 
     void ShowBackground()
     {
-        gApi::ShowSprite({
+        gfx::ShowSprite({
          .pos = pos2{0.0f, -0.0f},
          .size = size2{2.9f,2.9f},
          .rotation = float4{0.0f,0.0f,0.0f,0.0f},
@@ -86,7 +74,7 @@ namespace App {
          .texture = 1
             });
 
-        gApi::ShowSprite({
+        gfx::ShowSprite({
                 .pos = pos2{0.0f, -0.20f},
                 .size = size2{1.32f, 1.32f},
                 .rotation = float4{0.0f,0.0f,0.0f,0.0f},
@@ -97,7 +85,7 @@ namespace App {
 
         float gongMovement = gongAmp*(eval(1.f)*sin(frameTime/eval(350.)));
 
-        gApi::ShowSprite({
+        gfx::ShowSprite({
                 .pos = pos2{0.0f, -.2f},
                 .size = size2{1.32f, 1.32f},
                 .rotation = float4{gongMovement,0.0f,0.0f,0.0f},
@@ -107,7 +95,7 @@ namespace App {
             });
 
         int tlogo = (int)TexList::back::logo;
-        gApi::ShowSprite({
+        gfx::ShowSprite({
                 .pos = pos2{ 0.f,.74f},
                 .size = size2{1.38f, 1.38f},
                 .rotation = float4{0.f,0.f,0.f,0.f },
@@ -150,7 +138,7 @@ namespace App {
         float LyPos = Ljitter - 0.4;
         float RyPos = Rjitter - 0.4;
 
-        gApi::ShowSprite({
+        gfx::ShowSpriteFX({
                 .pos = pos2{leftX, LyPos},
                 .size = size2{-1.45f, 1.45f},
                 .rotation = float4{0.f,0.f,rtL,0.f },
@@ -159,7 +147,7 @@ namespace App {
                 .texture = tLeft + frameL
             });
 
-        gApi::ShowSprite({
+        gfx::ShowSpriteFX({
                 .pos = pos2{ rightX,RyPos},
                 .size = size2{1.45f, 1.45f},
                 .rotation = float4{0.f,0.f,rtR,0.f },
@@ -176,7 +164,7 @@ namespace App {
         for (int i = 0; i < LScore; i++)
         {
             int tex = (int)TexList::back::finger;
-            gApi::ShowSprite({
+            gfx::ShowSprite({
                     .pos = pos2{-1.20f + step * (float)i, 1.23f},
                     .size = size2{0.14f, 0.19f},
                     .rotation = float4{0.f,0.f,0.f,0.f },
@@ -188,7 +176,7 @@ namespace App {
         for (int i = 0; i < RScore; i++)
         {
             int tex = (int)TexList::back::finger;
-            gApi::ShowSprite({
+            gfx::ShowSprite({
                     .pos = pos2{1.20f - step * (float)i, 1.23f},
                     .size = size2{0.14f, 0.19f},
                     .rotation = float4{0.f,0.f,0.f,0.f },
@@ -205,14 +193,14 @@ namespace App {
         if (frameTime < prevFrameTime + 16) return;
         prevFrameTime = frameTime;
 
-        gApi::Start();
+        gfx::Start();
 
-        gApi::SetCamera2d({
+        gfx::SetCamera2d({
             .eye = pos2{0.0f, 0.0f},
             .angle = 109
             });
 
-        gApi::Clear(color3{12, 8, 35});
+        gfx::Clear(color3{12, 8, 35});
 
         ShowBackground();
 
@@ -243,7 +231,7 @@ namespace App {
                 p1ready = true;
                 p2ready = true;
             }
-
+            
             if (p1ready) amp1 = 0;
             if (p2ready) amp2 = 0;
 
@@ -253,7 +241,7 @@ namespace App {
 
             if (!(p1ready && p2ready))
             {
-                gApi::ShowSprite({
+                gfx::ShowSprite({
                     .pos = pos2{ -0.f,amp1},
                     .size = size2{1.f, .2f},
                     .rotation = float4{0.f,0.f,0.f,0.f },
@@ -276,13 +264,13 @@ namespace App {
                 float delta = frameTime - pTimer;
                 if (delta > 16 * 60 * 3)
                 {
-                    Audio::PlaySoundX(4);
+                    sound::Play({ 4 });
                     gameState = phase::fight;
                     gongTime = frameTime;
                     gongAmp = eval(10);
                 }
                 else {
-                    gApi::ShowSprite({
+                    gfx::ShowSprite({
                              .pos = pos2{ 0.01f,-0.32f},
                              .size = size2{.2f, .2f},
                              .rotation = float4{0.f,0.f,0.f,0.f },
@@ -321,14 +309,14 @@ namespace App {
                 {
                     keyPressed = true;
                     RSelect = select::scissors;
-                    Audio::PlaySoundX(0);
+                    sound::Play({ 0 });
                 }
 
                 if (GetAsyncKeyState('3'))
                 {
                     keyPressed = true;
                     RSelect = select::paper;
-                    Audio::PlaySoundX(0);
+                    sound::Play({ 0 });
                 }
             }
 
@@ -342,7 +330,7 @@ namespace App {
                     LSelect = (select)(rand() % 3);
                     enemyPressed = true;
                     if (LSelect != select::stone) {
-                        Audio::PlaySoundX(0);
+                        sound::Play({ 0 });
                     }
                 }
 
@@ -448,15 +436,14 @@ namespace App {
             {
                 restartTrigger = true;
                 if (LScore > RScore) {
-                    Audio::PlaySoundX(1);
+                    sound::Play({ 1 });
                 }
-                else
-                {
-                    Audio::PlaySoundX(2);
+                else {
+                    sound::Play({ 2 });
                 }
             }
 
-            gApi::ShowSprite({
+            gfx::ShowSprite({
                     .pos = pos2{ 0.f,0.f},
                     .size = size2{1.f, 1.f},
                     .rotation = float4{0.f,0.f,0.f,0.f },
@@ -475,8 +462,18 @@ namespace App {
             }
         }
 
+        /*int tex = (int)TexList::sciss::sc1;
+        gfx::ShowSpriteFX({
+                .pos = pos2{0, 0.},
+                .size = size2{-1.45f, 1.45f},
+                .rotation = float4{0.f,0.f,0,0.f },
+                .rotCentre = float4 {1.f,.0f,.0f,.0f },
+                .color = float4{1.0f,1.0f,1.0f,1.0f},
+                .texture = tex
+            });*/
 
-        gApi::End();
+
+        gfx::End();
 
 	}
 

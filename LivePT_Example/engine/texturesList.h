@@ -19,14 +19,14 @@ List(back) {
 
 
 List(sciss) {
-    Tex(sc1, tType::flat, tFormat::u8, 512, 512, false, false, "sciss1.png")
-    Tex(sc2, tType::flat, tFormat::u8, 512, 512, false, false, "sciss2.png")
-    Tex(sc3, tType::flat, tFormat::u8, 512, 512, false, false, "sciss3.png")
-    Tex(sc4, tType::flat, tFormat::u8, 512, 512, false, false, "sciss4.png")
-    Tex(sc5, tType::flat, tFormat::u8, 512, 512, false, false, "sciss5.png")
-    Tex(sc6, tType::flat, tFormat::u8, 512, 512, false, false, "sciss6.png")
-    Tex(sc7, tType::flat, tFormat::u8, 512, 512, false, false, "sciss7.png")
-    Tex(sc8, tType::flat, tFormat::u8, 512, 512, false, false, "sciss8.png")
+    Tex(sc1, tType::flat, tFormat::u8, 512, 512, true, false, "sciss1.png")
+    Tex(sc2, tType::flat, tFormat::u8, 512, 512, true, false, "sciss2.png")
+    Tex(sc3, tType::flat, tFormat::u8, 512, 512, true, false, "sciss3.png")
+    Tex(sc4, tType::flat, tFormat::u8, 512, 512, true, false, "sciss4.png")
+    Tex(sc5, tType::flat, tFormat::u8, 512, 512, true, false, "sciss5.png")
+    Tex(sc6, tType::flat, tFormat::u8, 512, 512, true, false, "sciss6.png")
+    Tex(sc7, tType::flat, tFormat::u8, 512, 512, true, false, "sciss7.png")
+    Tex(sc8, tType::flat, tFormat::u8, 512, 512, true, false, "sciss8.png")
 };
 
 List(paper) {

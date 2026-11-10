@@ -86,15 +86,6 @@ namespace Audio
         sound = {};
     }
 
-    // Декларации функций управления, которые будут во второй части
-    bool CreateSound(size_t index, double durationSeconds, WaveGenerator generator);
-    bool LoadSound(size_t index, const char* filepath);
-    void PlaySoundX(size_t index, bool loop);
-    void PauseSoundX(size_t index);
-    void StopSoundX(size_t index);
-    void ReleaseAudioEngine();
-
-    // --- Инициализация аудиосистемы ---
     bool Init() {
         g_Engine.coInitResult = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
         if (FAILED(g_Engine.coInitResult) && g_Engine.coInitResult != RPC_E_CHANGED_MODE) {
@@ -113,19 +104,9 @@ namespace Audio
             return false;
         }
 
-        LoadSound(0, "punch.ogg");          
-        LoadSound(1, "lose_scissors_stone.ogg");
-        LoadSound(2, "win_paper_stone.ogg");
-        LoadSound(3, "win_scissors_paper.ogg");
-        LoadSound(4, "gong.ogg");
-
         return true;
     }
 
-    // --- Конец Части 1. Продолжение функций генерации и загрузки ниже ---
-    // --- Продолжение пространства имен Audio ---
-
-    // --- Загрузка .ogg файла через stb_vorbis ---
     bool LoadSound(size_t index, const char* filepath) {
         if (index >= MAX_SOUNDS || !filepath) return false;
 
@@ -136,23 +117,42 @@ namespace Audio
         Sound& sound = g_Engine.sounds[index];
         FreeSoundSlot(sound); // Сброс предыдущего контента из выбранного слота
 
+        // --- Шаг 1: Быстрая загрузка всего сжатого файла в память силами C++ ---
+        std::ifstream file(pName, std::ios::binary | std::ios::ate);
+        if (!file.is_open()) {
+            return false;
+        }
+
+        std::streamsize fileSize = file.tellg();
+        file.seekg(0, std::ios::beg);
+
+        // Временный буфер для сжатых OGG данных
+        std::vector<uint8_t> oggBuffer(fileSize);
+        if (!file.read(reinterpret_cast<char*>(oggBuffer.data()), fileSize)) {
+            return false;
+        }
+        file.close(); // Файл на диске нам больше не нужен, закрываем его
+
+        // --- Шаг 2: Полное декодирование из памяти через stb_vorbis ---
         int channels = 0;
         int sampleRate = 0;
         short* outputBuffer = nullptr;
 
-        // Полное декодирование файла из диска силами stb_vorbis
-        int totalSamplesPerChannel = stb_vorbis_decode_filename(
-            pName,
+        // Декодируем буфер, который только что считали
+        int totalSamplesPerChannel = stb_vorbis_decode_memory(
+            oggBuffer.data(),
+            static_cast<int>(oggBuffer.size()),
             &channels,
             &sampleRate,
             &outputBuffer
         );
 
-        // Если возвращен отрицательный код — файл не найден или поврежден
+        // Если возвращен отрицательный код — формат данных поврежден
         if (totalSamplesPerChannel < 0) {
             return false;
         }
 
+        // --- Шаг 3: Заполнение данных и инициализация XAudio2 ---
         sound.isLoadedFromFile = true;
         sound.audioData = reinterpret_cast<BYTE*>(outputBuffer);
 

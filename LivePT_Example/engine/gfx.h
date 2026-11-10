@@ -80,7 +80,7 @@ using namespace dx11;
 	#include "Widgets\angle.h"
 	LPT_REGISTER_TYPE("angle", Widgets::angleCallback);
 
-namespace gApi {
+namespace gfx {
 
 	int drawCounter = 0;
 	int curSel = -1;
@@ -166,8 +166,34 @@ namespace gApi {
 		ConstBuf::Update(dx11::Shaders::PS[(int)Shaders::pixel::sprite].params, Shaders::ps::sprite::params);
 		Shaders::SetPSParamCB(Shaders::pixel::sprite);
 		Textures::TextureToShader(in.texture, 0, targetshader::pixel);
-		Sampler::Sampler(targetshader::pixel, 0, filter::linear, addr::wrap, addr::wrap);
+		Sampler::Sampler(targetshader::pixel, 0, filter::linear, addr::clamp, addr::clamp);
 		Shaders::pShader(Shaders::pixel::sprite);
+
+		Draw::NullDrawer(1, 1);
+	}
+
+	LPT_LIVE_FUNCTION(void, ShowSpriteFX, spriteDesc, in)
+	{
+		Shaders::vs::sprite::params = {
+			.position = float4{ in.pos.x, in.pos.y, 0.f, 0.f},
+			.size = float4{ in.size.w,in.size.h, 0.f,0.f},
+			.rotation = float4{
+				in.rotation.x * (float)M_PI / 180.f,
+				in.rotation.y * (float)M_PI / 180.f,
+				in.rotation.z * (float)M_PI / 180.f,
+				0.f},
+			.rotationCentre = float4{in.rotCentre.x,in.rotCentre.y,in.rotCentre.z,0.f}
+		};
+		ConstBuf::Update(dx11::Shaders::VS[(int)Shaders::vertex::sprite].params, Shaders::vs::sprite::params);
+		Shaders::SetVSParamCB(Shaders::vertex::sprite);
+		Shaders::vShader(Shaders::vertex::sprite);
+
+		Shaders::ps::spriteTex::params = { in.color };
+		ConstBuf::Update(dx11::Shaders::PS[(int)Shaders::pixel::spriteTex].params, Shaders::ps::spriteTex::params);
+		Shaders::SetPSParamCB(Shaders::pixel::spriteTex);
+		Textures::TextureToShader(in.texture, 0, targetshader::pixel);
+		Sampler::Sampler(targetshader::pixel, 0, filter::linear, addr::clamp, addr::clamp);
+		Shaders::pShader(Shaders::pixel::spriteTex);
 
 		Draw::NullDrawer(1, 1);
 	}
@@ -205,4 +231,6 @@ namespace gApi {
 		ConstBuf::Update(ConstBuf::cBuffer::camera);
 		ConstBuf::Set(ConstBuf::cBuffer::camera, targetshader::both);
 	}
+
 }
+

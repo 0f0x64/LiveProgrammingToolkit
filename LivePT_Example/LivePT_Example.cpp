@@ -21,10 +21,10 @@ struct {
     int h;
 } gc;
 
-#include "renderer\timer.h"
-#include "renderer\gAPI.h"
+#include "engine\timer.h"
+#include "engine\gfx.h"
+#include "engine\sound.h"
 #include "app\app.h"
-
 
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 

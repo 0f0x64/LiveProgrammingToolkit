@@ -191,6 +191,10 @@
     <ClInclude Include="dx11\shadersReflection.h" />
     <ClInclude Include="dx11\textures.h" />
     <ClInclude Include="dx11\TexturesResBP.h" />
+    <ClInclude Include="engine\gfx.h" />
+    <ClInclude Include="engine\sound.h" />
+    <ClInclude Include="engine\texturesList.h" />
+    <ClInclude Include="engine\timer.h" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="LivePT\consistency.h" />
     <ClInclude Include="LivePT\DbgHelpRef.h" />
@@ -204,9 +208,6 @@
     <ClInclude Include="LivePT\vsEditor.h" />
     <ClInclude Include="LivePT\windowManagement.h" />
     <ClInclude Include="LivePT_Example.h" />
-    <ClInclude Include="renderer\gAPI.h" />
-    <ClInclude Include="renderer\texturesList.h" />
-    <ClInclude Include="renderer\timer.h" />
     <ClInclude Include="Resource.h" />
     <ClInclude Include="shaders\paramStruct.h" />
     <ClInclude Include="shaders\psList.h" />
