@@ -1,3 +1,5 @@
+#include "../dx11/dx.h"
+
 #if LivePT_EditMode
 
 #include <filesystem>
@@ -129,6 +131,7 @@ namespace gfx {
 
 	void End()
 	{
+		dx11::Resize();
 		Draw::Present();
 	}
 

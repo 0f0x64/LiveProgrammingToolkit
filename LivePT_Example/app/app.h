@@ -66,12 +66,12 @@ namespace App {
     void ShowBackground()
     {
         gfx::ShowSprite({
-         .pos = pos2{0.0f, -0.0f},
-         .size = size2{2.9f,2.9f},
-         .rotation = float4{0.0f,0.0f,0.0f,0.0f},
-         .rotCentre = float4{0.0f,0.0f,0.0f,0.0f},
-         .color = float4{0.0f,0.0f,0.0f,0.0f},
-         .texture = 1
+                 .pos = pos2{0.0f, -0.0f},
+                 .size = size2{2.9f,2.9f},
+                 .rotation = float4{0.0f,0.0f,0.0f,0.0f},
+                 .rotCentre = float4{0.0f,0.0f,0.0f,0.0f},
+                 .color = float4{0.0f,0.0f,0.0f,0.0f},
+                 .texture = TexList::back::b1
             });
 
         gfx::ShowSprite({
@@ -80,7 +80,7 @@ namespace App {
                 .rotation = float4{0.0f,0.0f,0.0f,0.0f},
                 .rotCentre = float4{0.0f,0.0f,0.0f,0.0f},
                 .color = float4{0.0f,0.0f,0.0f,0.0f},
-                .texture = 2
+                .texture = TexList::back::frame
             });
 
         float gongMovement = gongAmp*(eval(1.f)*sin(frameTime/eval(350.)));
@@ -91,17 +91,16 @@ namespace App {
                 .rotation = float4{gongMovement,0.0f,0.0f,0.0f},
                 .rotCentre = float4{0.0f,.250f,0.0f,0.0f},
                 .color = float4{0.0f,0.0f,0.0f,0.0f},
-                .texture = 3
+                .texture = TexList::back::gong
             });
 
-        int tlogo = (int)TexList::back::logo;
         gfx::ShowSprite({
                 .pos = pos2{ 0.f,.74f},
                 .size = size2{1.38f, 1.38f},
                 .rotation = float4{0.f,0.f,0.f,0.f },
                 .rotCentre = float4 {1.f,.0f,.0f,.0f },
                 .color = float4{1.0f,1.0f,1.0f,1.0f},
-                .texture = tlogo
+                .texture = TexList::back::logo
             });
     }
 
@@ -163,14 +162,13 @@ namespace App {
 
         for (int i = 0; i < LScore; i++)
         {
-            int tex = (int)TexList::back::finger;
             gfx::ShowSprite({
                     .pos = pos2{-1.20f + step * (float)i, 1.23f},
                     .size = size2{0.14f, 0.19f},
                     .rotation = float4{0.f,0.f,0.f,0.f },
                     .rotCentre = float4 {1.f,.0f,.0f,.0f },
                     .color = float4{1.0f,1.0f,1.0f,1.0f},
-                    .texture = tex
+                    .texture = TexList::back::finger
                 });
         }
         for (int i = 0; i < RScore; i++)
@@ -182,7 +180,7 @@ namespace App {
                     .rotation = float4{0.f,0.f,0.f,0.f },
                     .rotCentre = float4 {1.f,.0f,.0f,.0f },
                     .color = float4{1.0f,1.0f,1.0f,1.0f},
-                    .texture = tex
+                    .texture = TexList::back::finger
                 });
         }
     }
@@ -221,8 +219,8 @@ namespace App {
 
         if (gameState == phase::start)
         {
-            int t1 = (int)TexList::back::ready1;
-            int t2 = (int)TexList::back::ready2;
+            int t1 = TexList::back::ready1;
+            int t2 = TexList::back::ready2;
 
             float amp1 = sin(frameTime / eval(200.)) * eval(.020);
             float amp2 = sin(frameTime / eval(200.)) * eval(.020);
@@ -247,7 +245,7 @@ namespace App {
                     .rotation = float4{0.f,0.f,0.f,0.f },
                     .rotCentre = float4 {1.f,.0f,.0f,.0f },
                     .color = float4{1.0f,1.0f,1.0f,1.0f},
-                    .texture = t1
+                    .texture = TexList::back::ready1
                     });
             }
             static float NRtime = 0;
@@ -255,7 +253,7 @@ namespace App {
             //if (p1ready && p2ready) {
             if (p1ready) {
 
-                int bframe = (int)TexList::back::t1;
+                int bframe = TexList::back::t1;
                 int btime = floor((frameTime - NRtime) / (16 * 60));
                 if (btime > 2) btime = 2;
                 bframe += btime;
@@ -430,7 +428,7 @@ namespace App {
         if (gameState == phase::restart) {
             
             int tex = 0;
-            if (LScore > RScore) tex = (int)TexList::back::lose; else tex = (int)TexList::back::win;
+            if (LScore > RScore) tex = TexList::back::lose; else tex = TexList::back::win;
 
             if (!restartTrigger)
             {
@@ -461,17 +459,6 @@ namespace App {
                 LScore = 0;
             }
         }
-
-        /*int tex = (int)TexList::sciss::sc1;
-        gfx::ShowSpriteFX({
-                .pos = pos2{0, 0.},
-                .size = size2{-1.45f, 1.45f},
-                .rotation = float4{0.f,0.f,0,0.f },
-                .rotCentre = float4 {1.f,.0f,.0f,.0f },
-                .color = float4{1.0f,1.0f,1.0f,1.0f},
-                .texture = tex
-            });*/
-
 
         gfx::End();
 

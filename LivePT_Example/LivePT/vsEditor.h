@@ -165,7 +165,7 @@ namespace LivePT {
         if (pDTE) return true;
 
         DWORD parentPid = GetStudioProcessId();
-        Log("Target Studio PID: " + std::to_string(parentPid));
+        //Log("Target Studio PID: " + std::to_string(parentPid));
 
         pDTE = GetDTEByPid(parentPid);
         if (!pDTE) {
@@ -927,11 +927,19 @@ namespace LivePT {
         if (totalParams == 0) return;
 
         isWarmedUp = true;
+        Log("Background recursive PDB parsing started...");
 
         std::thread warmupThread([totalParams]() {
+
+            auto startTime = std::chrono::high_resolution_clock::now();
+
             auto& localParams = LivePT::getParamDesc();
             std::unordered_map<std::wstring, std::vector<StructMemberDesc>> localMetadataCache;
             localMetadataCache.reserve(16);
+
+            long long totalEnumMs = 0;
+            long long totalStructMs = 0;
+            int callIndex = 0;
 
             for (size_t i = 0; i < totalParams; ++i) {
                 auto& p = localParams[i];
@@ -1007,7 +1015,11 @@ namespace LivePT {
             }
 
             g_IsLptPdbWarmupCompleted = true;
-            Log("Background recursive PDB parsing completed. Enums and Structs isolated successfully.");
+            Log("Background recursive PDB parsing completed.");
+            auto endTime = std::chrono::high_resolution_clock::now();
+            auto duration = std::chrono::duration_cast<std::chrono::seconds>(endTime - startTime).count();
+            LivePT::Log("Warmup execution time: " + std::to_string(duration) + " seconds");
+
             });
 
         warmupThread.detach();
@@ -1017,17 +1029,9 @@ namespace LivePT {
     inline void Warmup() {
         static bool isFirstFrame = true;
         if (isFirstFrame) {
-            auto startTime = std::chrono::high_resolution_clock::now();
 
             LivePT::WarmupAllDatabaseParams();
-
-            auto endTime = std::chrono::high_resolution_clock::now();
-            auto durationMicro = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime).count();
-            double durationMilli = durationMicro / 1000.0;
-
-            LivePT::Log("Warmup execution time: " +
-                std::to_string(durationMilli) + " ms (" + std::to_string(durationMicro) + " us).");
-
+            
             isFirstFrame = false;
         }
     }

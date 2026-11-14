@@ -68,9 +68,8 @@ namespace Device
 
 #if forceAdapter
 		hr = D3D11CreateDeviceAndSwapChain(vAdapters[adapterNum], D3D_DRIVER_TYPE_UNKNOWN, NULL, DirectXDebugMode ? D3D11_CREATE_DEVICE_DEBUG : 0, 0, 0, D3D11_SDK_VERSION, &sd, &swapChain, &device, NULL, &context);
-		Log("using ");
-		Log(adaptersNames[adapterNum].c_str());
-		Log("\n");
+		Log(("using " + adaptersNames[adapterNum]).c_str());
+		
 #else
 		hr = D3D11CreateDeviceAndSwapChain(NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, DirectXDebugMode ? D3D11_CREATE_DEVICE_DEBUG : 0, 0, 0, D3D11_SDK_VERSION, &sd, &swapChain, &device, NULL, &context);
 #endif

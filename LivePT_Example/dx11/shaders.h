@@ -108,13 +108,13 @@ namespace Shaders {
 			LPCWSTR source = nameToPatchLPCWSTR(name,i,stype::vertex);
 
 			HRESULT hr = D3DCompileFromFile(source, NULL, D3D_COMPILE_STANDARD_FILE_INCLUDE, "VS", VertexShaderModel, NULL, NULL, &VS[i].pBlob, &pErrorBlob);
-			CompilerLog(source, hr, "vertex shader compiled: ", hr == VS[i].compileStatus ? logOnlyifErrors : false);
+			CompilerLog(source, hr, "[dx11] vertex shader compiled: ", hr == VS[i].compileStatus ? logOnlyifErrors : false);
 			VS[i].compileStatus = hr;
 
 			if (hr == S_OK)
 			{
 				hr = device->CreateVertexShader(VS[i].pBlob->GetBufferPointer(), VS[i].pBlob->GetBufferSize(), NULL, &VS[i].pShader);
-				LogIfError("vs creation fail\n");
+				LogIfError("[dx11] vs creation fail\n");
 			}
 
 		}
@@ -124,13 +124,13 @@ namespace Shaders {
 			LPCWSTR source = nameToPatchLPCWSTR(name, i, stype::pixel);
 
 			HRESULT hr = D3DCompileFromFile(source, NULL, D3D_COMPILE_STANDARD_FILE_INCLUDE, "PS", PixelShaderModel, NULL, NULL, &PS[i].pBlob, &pErrorBlob);
-			CompilerLog(source, hr, "pixel shader compiled: ", hr == PS[i].compileStatus ? logOnlyifErrors : false);
+			CompilerLog(source, hr, "[dx11] pixel shader compiled: ", hr == PS[i].compileStatus ? logOnlyifErrors : false);
 			PS[i].compileStatus = hr;
 
 			if (hr == S_OK)
 			{
 				hr = device->CreatePixelShader(PS[i].pBlob->GetBufferPointer(), PS[i].pBlob->GetBufferSize(), NULL, &PS[i].pShader);
-				LogIfError("vs creation fail\n");
+				LogIfError("[dx11] ps creation fail\n");
 			}
 
 		}

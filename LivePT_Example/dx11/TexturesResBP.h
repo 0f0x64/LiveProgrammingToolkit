@@ -7,7 +7,7 @@ using namespace dx11::Textures;
     #define List(name) 
 #else
     #define Tex(name, type, format, width,height, mipMaps, depth, ...) name = __COUNTER__,
-    #define List(name) enum class name
+    #define List(name) enum name
 #endif
 
 namespace TexList {
@@ -21,6 +21,7 @@ namespace TexList {
     #include "../engine/texturesList.h"
 
 #ifdef reg
+    Textures::texturesCount = count;
 }
 #endif
 

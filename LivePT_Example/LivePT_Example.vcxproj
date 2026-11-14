@@ -195,6 +195,7 @@
     <ClInclude Include="engine\sound.h" />
     <ClInclude Include="engine\texturesList.h" />
     <ClInclude Include="engine\timer.h" />
+    <ClInclude Include="engine\watcher.h" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="LivePT\consistency.h" />
     <ClInclude Include="LivePT\DbgHelpRef.h" />

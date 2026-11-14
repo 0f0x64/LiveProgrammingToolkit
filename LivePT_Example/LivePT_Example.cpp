@@ -4,14 +4,10 @@
 #include <string>
 #include <cmath>
 
-#define LPT_SHADER_COMPILE_FUNC recompileShader()
-void recompileShader();
 // ---------------- LivePT integration section ----------------
 #define LivePT_EditMode true // true for activate
+#define LivePT_SHADER_COMPILE_FUNC recompileShader
 #include "LivePT/LivePT.h" // incude it for using lib
-
-// ---------------------- d3d renderer ------------------------
-#include "dx11/dx.h"
 // ------------------------------------------------------------
 
 struct {
@@ -24,6 +20,7 @@ struct {
 #include "engine\timer.h"
 #include "engine\gfx.h"
 #include "engine\sound.h"
+#include "engine\watcher.h"
 #include "app\app.h"
 
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
@@ -32,9 +29,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 
         case WM_SIZE:
         {
-            screen.width = LOWORD(lParam);
-            screen.height = HIWORD(lParam);
-            resize = true;
+            dx11::processResizeMessage(lParam);
             return 0;
         }
 
@@ -43,6 +38,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             PostQuitMessage(0);
             return 0;
         }
+
     }
 
     return DefWindowProcA(hwnd, uMsg, wParam, lParam);
@@ -123,15 +119,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             return 0;
         }
 
-        if (resize)
-        {
-            dx11::Resize();
-            resize = false;
-        }
-
         App::Loop();
 
         LivePT::ProcessEdit();// don't forget this call
+        WatchForRecompilation();
 
     }
 

@@ -1,3 +1,11 @@
+#define FRAMES_PER_SECOND 60
+#define DirectXDebugMode true
+#define EditMode true
+#define DebugMode true
+#define NoExternalResourcesMode false
+#define forceAdapter true
+#define adapterNum 0
+
 #include <d3d11.h>
 #include <d3dcompiler.h>
 #include "DirectXMath.h"
@@ -10,31 +18,30 @@
 #pragma comment(lib, "dxguid.lib")
 #pragma comment(lib, "winmm.lib")
 
-#define FRAMES_PER_SECOND 60
-#define DirectXDebugMode true
-#define EditMode true
-#define DebugMode true
-#define NoExternalResourcesMode false
-
-bool resize = true;
-
 using namespace DirectX;
 
 namespace dx11
 {
+	bool resize = true;
+
+	struct {
+		int width;
+		int height;
+		float aspect;
+		float iaspect;
+	} screen;
+
 	typedef unsigned long uint32;
 	typedef long int32;
 
-	static inline int32 _log2(float x)
-	{
-		uint32 ix = (uint32&)x;
-		uint32 exp = (ix >> 23) & 0xFF;
-		int32 log2 = int32(exp) - 127;
-
-		return log2;
-	}
-
 	#if DebugMode | EditMode
+
+		void processResizeMessage(LPARAM lParam)
+		{
+			screen.width = LOWORD(lParam);
+			screen.height = HIWORD(lParam);
+			resize = true;
+		}
 
 		inline void Log(const std::string& text, const std::string& prefix = "[dx11] ", bool nl = true) {
 			#if EditMode
@@ -59,12 +66,7 @@ namespace dx11
 	ID3D11DeviceContext* context = NULL;
 	IDXGISwapChain* swapChain = NULL;
 	
-	struct {
-		int width;
-		int height;
-		float aspect;
-		float iaspect;
-	} screen;
+
 
 	#include "types.h"
 	#include "constBuf.h"
@@ -98,6 +100,10 @@ namespace dx11
 
 	void Resize()
 	{
+		if (!resize) return;
+		
+		resize = false;
+
 		screen.aspect = float(screen.height) / float(screen.width);
 		screen.iaspect = float(screen.width) / float(screen.height);
 

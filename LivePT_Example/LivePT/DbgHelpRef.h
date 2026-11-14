@@ -139,6 +139,7 @@ namespace LivePT {
         if (SymFromNameW(hProcess, cleanEnumName.c_str(), pSymbol)) {
             targetTypeIndex = pSymbol->TypeIndex;
         }
+
         // 2. —“–ј“≈√»я Ѕ: ‘олбек на поиск по суффиксу с наименьшей длиной (работает при using namespace)
         else {
             LptEnumSuffixContext suffixCtx = { hProcess, moduleBase, cleanEnumName, L"", 0 };

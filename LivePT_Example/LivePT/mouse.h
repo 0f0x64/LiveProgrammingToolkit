@@ -355,7 +355,9 @@ namespace LivePT {
 
                 if (isShader) {
                     AutoWrap(DISPATCH_METHOD, NULL, vtActiveDoc.pdispVal, L"Save", 0);
-                    LPT_SHADER_COMPILE_FUNC;
+                    #ifdef LivePT_SHADER_COMPILE_FUNC
+                        LivePT_SHADER_COMPILE_FUNC();
+                    #endif
                 }
             }
         }
